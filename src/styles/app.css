@@ -1,0 +1,679 @@
+/* ============================================================================
+   Component styles. Tokens come from index.css.
+   ============================================================================ */
+
+/* ---------- shell ---------- */
+.console {
+  display: grid;
+  grid-template-columns: 232px 1fr;
+  min-height: 100%;
+}
+
+.side {
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  padding: 18px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 8px 16px;
+}
+.brand-mark {
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.brand-sub {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 500;
+}
+.nav-item:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+  text-decoration: none;
+}
+.nav-item.active {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.side-foot {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.content {
+  padding: 24px;
+  min-width: 0;
+}
+
+@media (max-width: 780px) {
+  .console {
+    grid-template-columns: 1fr;
+  }
+  .side {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+  .side-foot {
+    margin-top: 0;
+    border-top: none;
+    flex-direction: row;
+    align-items: center;
+  }
+  .brand {
+    padding-bottom: 4px;
+  }
+}
+
+/* ---------- deployment badge ----------
+   Encodes state in FORM as well as colour: a dot plus a word, because a school
+   office monitor is often washed out and colour alone would not read. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+  flex: none;
+}
+.badge.is-edge .badge-dot {
+  background: var(--primary);
+}
+.badge.is-readonly {
+  border-color: color-mix(in srgb, var(--warn) 40%, var(--line));
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.badge.is-readonly .badge-dot {
+  background: var(--warn);
+}
+.badge.is-offline {
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--line));
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.badge.is-offline .badge-dot {
+  background: var(--danger);
+}
+
+/* ---------- banner ---------- */
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 24px;
+  font-size: 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.banner.is-offline {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* ---------- page furniture ---------- */
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.page-title {
+  font-size: 22px;
+  font-weight: 650;
+}
+.page-sub {
+  color: var(--ink-3);
+  font-size: 13.5px;
+  margin-top: 2px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.card-head {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line-soft);
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.card-body {
+  padding: 16px;
+}
+
+.grid-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+}
+
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.stat-label {
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-3);
+}
+.stat-value {
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  margin-top: 3px;
+}
+.stat-note {
+  font-size: 12.5px;
+  color: var(--ink-3);
+  margin-top: 2px;
+}
+
+/* ---------- tables ---------- */
+.table-wrap {
+  overflow-x: auto;
+}
+table.data {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+}
+table.data th {
+  text-align: left;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  font-weight: 600;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+table.data td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+table.data tbody tr:hover {
+  background: var(--surface-2);
+}
+td.num,
+th.num {
+  text-align: right;
+}
+
+.pill {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+.pill.ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.pill.warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.pill.danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* ---------- buttons & fields ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 550;
+}
+.btn:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+.btn.primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-ink);
+}
+.btn.primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 14px;
+}
+.field label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.field input {
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+.field .hint {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.form-error {
+  padding: 9px 11px;
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 13.5px;
+  margin-bottom: 14px;
+}
+
+.empty {
+  padding: 34px 16px;
+  text-align: center;
+  color: var(--ink-3);
+  font-size: 14px;
+}
+
+/* ---------- login ---------- */
+.login {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.login-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 26px;
+}
+.login-title {
+  font-size: 20px;
+  font-weight: 650;
+  margin-bottom: 4px;
+}
+.login-sub {
+  color: var(--ink-3);
+  font-size: 13.5px;
+  margin-bottom: 20px;
+}
+
+/* ---------- tree ---------- */
+.tree-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  margin-bottom: 14px;
+  color: var(--ink-3);
+}
+.tree-crumbs button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--primary);
+  font: inherit;
+}
+.tree-crumbs button:hover {
+  text-decoration: underline;
+}
+
+.unit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 16px;
+  border: none;
+  border-bottom: 1px solid var(--line-soft);
+  background: none;
+  color: inherit;
+  text-align: left;
+}
+.unit-row:hover {
+  background: var(--surface-2);
+}
+.unit-name {
+  font-weight: 550;
+}
+.unit-meta {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+.kind-tag {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+
+/* ---------- mark entry ----------
+   The one control on the screen that gets typed into forty times in a row, so
+   it is sized for a thumb on a cheap Android and for fast tabbing on a desktop. */
+.mark-input {
+  width: 100%;
+  max-width: 96px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.mark-input:focus {
+  border-color: var(--primary);
+  outline: 2px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  outline-offset: 0;
+}
+.mark-input:disabled {
+  background: var(--surface-2);
+  color: var(--ink-3);
+}
+/* Spinners steal width and nobody clicks them at this size. */
+.mark-input::-webkit-outer-spin-button,
+.mark-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.mark-input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* ============================================================================
+   Bulletin — the printed document.
+   ============================================================================
+   On screen it is a preview card; in print it IS the deliverable, one per page.
+   The browser's print dialog is the PDF writer: nothing to install on the
+   school's machine, and it behaves identically on the cloud and on an edge box
+   with no internet. */
+
+.bulletin-run {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.bulletin {
+  background: #fff;
+  color: #14171f;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  /* A4 proportions on screen so what you see is what prints. */
+  max-width: 800px;
+  margin: 0 auto;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.bl-head {
+  text-align: center;
+  border-bottom: 2px solid #14171f;
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+}
+.bl-school {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-weight: 600;
+}
+.bl-title {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 2px 0;
+}
+.bl-term { font-size: 12px; color: #4b5060; }
+
+.bl-id {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 3px 18px;
+  margin-bottom: 10px;
+  font-size: 12.5px;
+}
+.bl-lab {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #6a7085;
+  margin-right: 5px;
+}
+
+.bl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 10px;
+}
+.bl-table th {
+  text-align: left;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  color: #4b5060;
+  border-bottom: 1.2px solid #14171f;
+  padding: 4px 5px;
+}
+.bl-table td {
+  border-bottom: 1px solid #e3e5ea;
+  padding: 3.5px 5px;
+}
+.bl-table tfoot td {
+  border-top: 1.2px solid #14171f;
+  border-bottom: none;
+  font-weight: 600;
+  padding-top: 5px;
+}
+.bl-num, th.bl-num { text-align: right; white-space: nowrap; }
+.bl-n, th.bl-n { text-align: right; width: 22px; color: #6a7085; }
+.bl-app { color: #4b5060; font-size: 11px; }
+
+.bl-flag {
+  display: inline-block;
+  margin-left: 5px;
+  padding: 0 4px;
+  border: 1px solid #8a5a12;
+  border-radius: 2px;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #8a5a12;
+}
+.bl-flag.bl-elim { border-color: #a8321e; color: #a8321e; }
+
+.bl-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.bl-box {
+  border: 1px solid #cdd2de;
+  border-radius: 3px;
+  padding: 7px 9px;
+}
+.bl-box.bl-main { border-color: #14171f; border-width: 1.4px; }
+.bl-big {
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.bl-of { font-size: 12px; font-weight: 500; color: #6a7085; }
+.bl-sub { font-size: 11px; color: #4b5060; margin-top: 1px; }
+.bl-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.bl-row span { color: #6a7085; }
+
+.bl-council { margin-bottom: 12px; }
+.bl-appgen {
+  border: 1px solid #cdd2de;
+  border-radius: 3px;
+  min-height: 40px;
+  padding: 6px 9px;
+  margin-top: 3px;
+  font-size: 12px;
+}
+
+.bl-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  border-top: 1px solid #cdd2de;
+  padding-top: 7px;
+  font-size: 10.5px;
+  color: #4b5060;
+}
+.bl-sign { display: flex; gap: 34px; }
+.bl-sign span {
+  border-top: 1px solid #14171f;
+  padding-top: 3px;
+  min-width: 118px;
+  text-align: center;
+}
+
+/* ---------- print ---------- */
+@media print {
+  @page { size: A4; margin: 10mm; }
+
+  /* Everything that is app, not document, disappears. */
+  .side,
+  .topbar,
+  .banner,
+  .no-print { display: none !important; }
+
+  body { background: #fff; }
+  .console { display: block; }
+  .content { padding: 0; }
+  .bulletin-run { gap: 0; display: block; }
+
+  .bulletin {
+    border: none;
+    border-radius: 0;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    font-size: 10pt;
+    /* One pupil, one sheet of paper. The last one must not emit a blank page. */
+    break-after: page;
+  }
+  .bulletin:last-child { break-after: auto; }
+
+  .bl-table, .bl-grid, .bl-council, .bl-foot { break-inside: avoid; }
+  .bl-table thead { display: table-header-group; }
+
+  .bulletin, .bl-table, .bl-box, .bl-flag {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

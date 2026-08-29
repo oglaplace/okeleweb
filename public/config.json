@@ -1,0 +1,5 @@
+{
+  "apiBase": "/api",
+  "label": null,
+  "note": "Written at deploy time. On an edge box the installer rewrites apiBase and label; in the cloud the defaults are correct. Never baked into the bundle — see src/lib/runtime.ts."
+}

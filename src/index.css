@@ -1,0 +1,154 @@
+/* ============================================================================
+   Design tokens.
+   ============================================================================
+
+   System fonts throughout, deliberately. This console is used in Brazzaville
+   and Pointe-Noire where internet penetration is ~38% and data is metered —
+   a webfont is 40-80KB the school pays for on every cold load, to gain nothing
+   a director will notice. Speed IS the design here.
+
+   Palette is institutional rather than branded: ink blue for structure (the
+   colour of an official document), a warm neutral ground so long tables of
+   numbers don't glare, and semantic colours kept separate from the accent so
+   "needs attention" never competes with "this is a link".
+   ============================================================================ */
+
+:root {
+  --bg: #f6f6f4;
+  --surface: #ffffff;
+  --surface-2: #eeeeeb;
+  --ink: #17191e;
+  --ink-2: #4b5060;
+  --ink-3: #7b8194;
+  --line: #dedcd6;
+  --line-soft: #ebeae5;
+
+  --primary: #2c3a6b;
+  --primary-soft: #e7eaf3;
+  --primary-ink: #ffffff;
+
+  /* Semantic — separate from --primary on purpose. */
+  --ok: #2e6b4f;
+  --ok-soft: #e4f0ea;
+  --warn: #8a5a12;
+  --warn-soft: #f7eeda;
+  --danger: #a8321e;
+  --danger-soft: #f8e6e2;
+
+  --radius: 6px;
+  --shadow: 0 1px 2px rgba(20, 22, 30, 0.05), 0 4px 12px rgba(20, 22, 30, 0.04);
+
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101218;
+    --surface: #171a21;
+    --surface-2: #1e222b;
+    --ink: #e6e8ee;
+    --ink-2: #b0b5c2;
+    --ink-3: #838a99;
+    --line: #2b303b;
+    --line-soft: #232833;
+
+    --primary: #8fa2dc;
+    --primary-soft: #1e2436;
+    --primary-ink: #101218;
+
+    --ok: #74c39b;
+    --ok-soft: #16261f;
+    --warn: #d3a24e;
+    --warn-soft: #2a2317;
+    --danger: #e08c74;
+    --danger-soft: #2c1c18;
+
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #101218;
+  --surface: #171a21;
+  --surface-2: #1e222b;
+  --ink: #e6e8ee;
+  --ink-2: #b0b5c2;
+  --ink-3: #838a99;
+  --line: #2b303b;
+  --line-soft: #232833;
+
+  --primary: #8fa2dc;
+  --primary-soft: #1e2436;
+  --primary-ink: #101218;
+
+  --ok: #74c39b;
+  --ok-soft: #16261f;
+  --warn: #d3a24e;
+  --warn-soft: #2a2317;
+  --danger: #e08c74;
+  --danger-soft: #2c1c18;
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+#recaptcha {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
