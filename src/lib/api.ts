@@ -208,6 +208,8 @@ export interface ScaffoldReport extends ScaffoldPreview {
 /** Is this établissement ready to be used, or still an empty shell? */
 export interface Completeness {
   hasRoot: boolean;
+  /** Blueprint modules already present, so the picker can mark them. */
+  installedModules: BlueprintModule[];
   /** Nothing but a root — no screen in the console can do anything yet. */
   isEmpty: boolean;
   total: number;

@@ -47,6 +47,8 @@ const router = createRouter({
          * rest, which are all "pick a node, fill a form".
          */
         { path: "action/:id", name: "action", component: () => import("../pages/console/ActionPage.vue") },
+        /** One unit: what it is, what it holds, and everything doable to it. */
+        { path: "unit/:id", name: "unit", component: () => import("../pages/console/NodePage.vue") },
         { path: "classes/:id", name: "classe", component: () => import("../pages/console/ClassePage.vue") },
         { path: "classes/:id/notes", name: "marks", component: () => import("../pages/console/MarkEntryPage.vue") },
         { path: "classes/:id/bulletins", name: "bulletins", component: () => import("../pages/console/BulletinsPage.vue") },

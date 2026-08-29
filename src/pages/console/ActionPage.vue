@@ -106,7 +106,9 @@ async function loadOptions() {
 watch(
   spec,
   () => {
-    scopeId.value = null;
+    // Arriving from a node's own page means the scope question is already
+    // answered; asking it again would be ceremony.
+    scopeId.value = (route.query.scope as string) ?? null;
     error.value = null;
     notice.value = null;
     resetDefaults();

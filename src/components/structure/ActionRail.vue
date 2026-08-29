@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
-import { RouterLink } from "vue-router";
+import { computed, onMounted, ref, watch } from "vue";
+import { RouterLink, useRoute } from "vue-router";
 import * as api from "../../lib/api";
 import { ACTIONS, GROUPS, type ActionSpec } from "../../lib/actions";
 import Icon from "../ui/Icon.vue";
@@ -19,6 +19,9 @@ import Icon from "../ui/Icon.vue";
  * fail. Blocked and not-yet-built actions are shown with their reason rather
  * than hidden: an empty group teaches nothing.
  */
+const props = defineProps<{ collapsed?: boolean }>();
+
+const route = useRoute();
 const caps = ref<api.Capabilities | null>(null);
 const open = ref<Set<string>>(new Set(["structure", "scolarite"]));
 
@@ -30,6 +33,17 @@ async function load() {
   }
 }
 onMounted(load);
+
+/**
+ * Re-read on every navigation.
+ *
+ * This was loaded once on mount and never again, which meant the rail answered
+ * "créez d'abord une classe" for the rest of the session AFTER the operator had
+ * created one — the action they had just unlocked stayed greyed out until a
+ * full page reload. Six counts per navigation is a cheap price for a rail that
+ * tells the truth.
+ */
+watch(() => route.fullPath, load);
 defineExpose({ reload: load });
 
 /** Why an action cannot be run yet, or null when it can. */
@@ -73,15 +87,23 @@ function toggle(id: string) {
 </script>
 
 <template>
-  <div class="rail">
+  <div class="rail" :class="{ 'is-collapsed': collapsed }">
     <div v-for="g in groups" :key="g.id" class="rail-group">
-      <button class="rail-head" type="button" :aria-expanded="open.has(g.id)" @click="toggle(g.id)">
-        <Icon :name="g.icon" :size="14" class="rail-head-icon" />
+      <button
+        class="rail-head"
+        type="button"
+        :aria-expanded="open.has(g.id)"
+        :title="g.label"
+        @click="toggle(g.id)"
+      >
+        <Icon :name="g.icon" :size="15" class="rail-head-icon" />
         <span class="rail-head-label">{{ g.label }}</span>
-        <Icon :name="open.has(g.id) ? 'chevronDown' : 'chevronRight'" :size="13" />
+        <Icon :name="open.has(g.id) ? 'chevronDown' : 'chevronRight'" :size="13" class="rail-head-twist" />
       </button>
 
-      <div v-if="open.has(g.id)" class="rail-items">
+      <!-- The guide line lives on this box: one rule down the left of the
+           group's children, exactly as deep as the group goes. -->
+      <div v-if="open.has(g.id) && !collapsed" class="rail-items">
         <component
           :is="a.blocked ? 'span' : RouterLink"
           v-for="a in g.actions"
@@ -91,7 +113,6 @@ function toggle(id: string) {
           :to="a.blocked ? undefined : a.to"
           :title="a.blocked ?? a.spec.summary"
         >
-          <Icon :name="a.spec.icon" :size="14" class="rail-item-icon" />
           <span class="rail-item-text">
             <span>{{ a.spec.label }}</span>
             <span v-if="a.blocked" class="rail-why">{{ a.blocked }}</span>

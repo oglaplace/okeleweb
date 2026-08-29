@@ -21,7 +21,7 @@
    ============================================================================ */
 .console {
   display: grid;
-  grid-template-columns: 244px 1fr;
+  grid-template-columns: var(--rail-w, 244px) 1fr;
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
@@ -157,6 +157,78 @@
   display: flex;
   align-items: center;
   gap: var(--s2);
+}
+
+/**
+ * Three panes: rail, organisation, work.
+ *
+ * The tree is a column rather than a screen, because it is the thing you
+ * navigate BY. `min-height: 0` on both children for the usual reason — a grid
+ * child defaults to `auto` and refuses to shrink, so the inner scrollers never
+ * engage and the frame grows instead.
+ */
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.orgpane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+}
+.orgpane-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/**
+ * The drag handle. Four pixels wide with a generous hit area, because a
+ * one-pixel border is a target nobody can reliably grab.
+ */
+.orgpane-grip {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  width: 7px;
+  cursor: col-resize;
+  z-index: 5;
+  touch-action: none;
+}
+.orgpane-grip::after {
+  content: "";
+  position: absolute;
+  inset: 0 3px;
+  background: transparent;
+  transition: background 0.12s ease;
+}
+.orgpane-grip:hover::after,
+.orgpane-grip.is-dragging::after,
+.orgpane-grip:focus-visible::after {
+  background: var(--primary);
+}
+.orgpane-grip:focus-visible {
+  outline: none;
+}
+
+@media (max-width: 1100px) {
+  /* Below this there is no room for three columns; the tree keeps its own
+     screen via the Structure action. */
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .orgpane {
+    display: none;
+  }
 }
 
 /* The scrolling half. Capped at the viewport, centred, and it — not the page —
@@ -1523,37 +1595,99 @@ table.data td.c-text {
 }
 .rail-head-icon {
   color: var(--ink-3);
+  flex: none;
+}
+.rail-head-twist {
+  flex: none;
 }
 
+/* ── collapsed: group icons only ── */
+.rail.is-collapsed .rail-head-label,
+.rail.is-collapsed .rail-head-twist {
+  display: none;
+}
+.rail.is-collapsed .rail-head {
+  justify-content: center;
+  padding: 9px 0;
+}
+.console.rail-collapsed .side {
+  --rail-w: 56px;
+}
+.console.rail-collapsed .nav-item span,
+.console.rail-collapsed .who-text,
+.console.rail-collapsed .side-foot .btn,
+.console.rail-collapsed .brand-text,
+.console.rail-collapsed .rail-collapse-label {
+  display: none;
+}
+.console.rail-collapsed .brand,
+.console.rail-collapsed .nav-item,
+.console.rail-collapsed .who {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.rail-collapse {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px var(--s2);
+  border: none;
+  background: none;
+  border-radius: var(--radius-sm);
+  color: var(--ink-3);
+  font-size: var(--t-small);
+}
+.rail-collapse:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+/**
+ * The children of a group, with one rule down their left.
+ *
+ * The rule is a border on this box rather than a pseudo-element per item, so it
+ * spans exactly the group's children and stops with them — a per-item line
+ * leaves gaps at every margin, and a background gradient cannot know where the
+ * group ends.
+ *
+ * Aligned under the group's ICON, not its text, because that is where the eye
+ * expects the branch to descend from.
+ */
 .rail-items {
   display: flex;
   flex-direction: column;
   gap: 1px;
   padding-bottom: var(--s1);
+  margin-left: 15px;
+  border-left: 1px solid var(--line);
 }
 .rail-item {
   display: flex;
   align-items: flex-start;
   gap: 9px;
-  padding: 6px var(--s2) 6px 10px;
-  border-radius: var(--radius-sm);
+  /* No icon: sub-actions are identified by the group above them and the rule
+     beside them, and a second column of glyphs at this size is noise. */
+  padding: 6px var(--s2) 6px 13px;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   color: var(--ink-2);
   font-size: var(--t-small);
   font-weight: 500;
   line-height: 1.35;
 }
+/* The active child claims the rule, the way Cloudflare's does. */
+.rail-item.router-link-active {
+  background: var(--surface-2);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: -1px 0 0 0 var(--primary);
+}
 .rail-item:hover {
   background: var(--surface-2);
   color: var(--ink);
   text-decoration: none;
-}
-.rail-item-icon {
-  flex: none;
-  margin-top: 1px;
-  color: var(--ink-3);
-}
-.rail-item:hover .rail-item-icon {
-  color: var(--primary);
 }
 .rail-item-text {
   display: flex;
@@ -1645,9 +1779,50 @@ table.data td.c-text {
 
 .ex-row {
   display: flex;
-  align-items: center;
-  gap: 2px;
+  align-items: stretch;
+  gap: 0;
   padding-right: var(--s2);
+  min-height: 26px;
+}
+
+/**
+ * Ancestry rules.
+ *
+ * One span per ancestor that still has a sibling below it, plus an elbow into
+ * the row itself. Spans rather than a repeating background because the last
+ * child of a branch must genuinely stop the line — a gradient cannot know where
+ * a branch ends, and a line that runs past it reads as a grid rather than a
+ * tree.
+ */
+.ex-guide,
+.ex-elbow {
+  width: 14px;
+  flex: none;
+  position: relative;
+}
+.ex-guide::before,
+.ex-elbow::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--line);
+}
+.ex-guide.is-blank::before {
+  border-left-color: transparent;
+}
+/* The elbow: the rule stops halfway and turns right into the row. */
+.ex-elbow.is-last::before {
+  bottom: 50%;
+}
+.ex-elbow::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 50%;
+  width: 7px;
+  border-top: 1px solid var(--line);
 }
 .ex-row:hover {
   background: var(--surface-2);
@@ -1679,7 +1854,7 @@ table.data td.c-text {
   gap: 7px;
   flex: 1;
   min-width: 0;
-  padding: 4px 0;
+  padding: 4px 2px;
   border: none;
   background: none;
   color: var(--ink-2);
@@ -1701,12 +1876,7 @@ table.data td.c-text {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ex-code {
-  flex: none;
-  font-family: var(--mono);
-  font-size: 9.5px;
-  color: var(--ink-3);
-}
+
 
 /* ── scope picker ── */
 .scope-list {
@@ -1758,6 +1928,38 @@ table.data td.c-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Actions offered on one node — a grid of targets, not a list of links. */
+.node-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: var(--s2);
+  margin-top: var(--s1);
+}
+.node-action {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: var(--t-body);
+  font-weight: 550;
+}
+.node-action:hover {
+  border-color: var(--primary-line);
+  background: var(--surface-2);
+  color: var(--ink);
+  text-decoration: none;
+}
+.node-action .icon {
+  color: var(--ink-3);
+}
+.node-action:hover .icon {
+  color: var(--primary);
 }
 
 /* ============================================================================

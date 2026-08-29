@@ -58,22 +58,39 @@ const visible = computed(() => {
   return keep;
 });
 
-/** Flattened render list, honouring collapse and the search filter. */
+/**
+ * Flattened render list, honouring collapse and the search filter.
+ *
+ * `guides` carries, for each ancestor depth, whether that ancestor still has a
+ * sibling below it. That is what lets the vertical rules stop at the last child
+ * of a branch instead of running to the bottom of the panel — the difference
+ * between a tree that reads and a grid of stripes.
+ */
 const rows = computed(() => {
-  const out: { unit: api.TreeUnit; depth: number; hasChildren: boolean }[] = [];
-  const walk = (parentId: string | null, depth: number) => {
-    for (const u of childrenOf.value.get(parentId) ?? []) {
-      if (visible.value && !visible.value.has(u.id)) continue;
+  const out: {
+    unit: api.TreeUnit;
+    depth: number;
+    hasChildren: boolean;
+    guides: boolean[];
+    isLast: boolean;
+  }[] = [];
+
+  const walk = (parentId: string | null, depth: number, guides: boolean[]) => {
+    const siblings = (childrenOf.value.get(parentId) ?? []).filter(
+      (u) => !visible.value || visible.value.has(u.id),
+    );
+    siblings.forEach((u, i) => {
       const kids = childrenOf.value.get(u.id) ?? [];
-      out.push({ unit: u, depth, hasChildren: kids.length > 0 });
+      const isLast = i === siblings.length - 1;
+      out.push({ unit: u, depth, hasChildren: kids.length > 0, guides, isLast });
       // A search result is always expanded: hiding the hit behind a collapsed
       // parent would defeat searching for it.
       if (kids.length && (visible.value || !collapsed.value.has(u.id))) {
-        walk(u.id, depth + 1);
+        walk(u.id, depth + 1, [...guides, !isLast]);
       }
-    }
+    });
   };
-  walk(null, 0);
+  walk(null, 0, []);
   return out;
 });
 
@@ -108,8 +125,19 @@ const matches = computed(() => (visible.value ? rows.value.length : props.units.
         :key="row.unit.id"
         class="ex-row"
         :class="{ 'is-selected': selected === row.unit.id }"
-        :style="{ paddingLeft: `${6 + row.depth * 14}px` }"
       >
+        <!-- One rule per ancestor that still has a sibling below it, then the
+             elbow into this row. Drawn as spans rather than a background image
+             so the last child of a branch genuinely stops. -->
+        <span
+          v-for="(carry, i) in row.guides"
+          :key="i"
+          class="ex-guide"
+          :class="{ 'is-blank': !carry }"
+          aria-hidden="true"
+        />
+        <span v-if="row.depth > 0" class="ex-elbow" :class="{ 'is-last': row.isLast }" aria-hidden="true" />
+
         <button
           v-if="row.hasChildren"
           class="ex-twist"
@@ -121,15 +149,11 @@ const matches = computed(() => (visible.value ? rows.value.length : props.units.
         </button>
         <span v-else class="ex-twist ex-twist-leaf" aria-hidden="true" />
 
-        <button class="ex-label" type="button" @click="emit('select', row.unit)">
-          <Icon
-            :name="row.hasChildren ? 'folder' : 'fileText'"
-            :size="14"
-            class="ex-icon"
-          />
+        <button class="ex-label" type="button" :title="KIND_FR[row.unit.kind]" @click="emit('select', row.unit)">
+          <!-- Codes are gone: they are for printed documents, and in a 280px
+               panel they cost the width the names need. The kind stays as a
+               tooltip. -->
           <span class="ex-name">{{ row.unit.name }}</span>
-          <span class="ex-code">{{ row.unit.code }}</span>
-          <span class="kind-tag">{{ KIND_FR[row.unit.kind] }}</span>
         </button>
       </div>
     </div>

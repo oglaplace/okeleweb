@@ -200,7 +200,11 @@ async function install() {
           contrôle continu, secondaire en 4 + 3 ans, LMD généralisé. Une classe est
           ouverte à chaque niveau, du préscolaire au lycée technique.
         </p>
-        <ModulePicker v-model="modules" />
+        <!-- `installed` was built and never wired. Without it the picker
+             offered a module the tenant already had, the operator ticked it,
+             and the scaffold correctly skipped every row — reporting "0 créées,
+             8 déjà présentes" and showing names they had never typed. -->
+        <ModulePicker v-model="modules" :installed="state?.installedModules ?? []" />
         <div v-if="preview" class="preview">
           <div class="preview-item"><b>{{ preview.orgUnits }}</b> unités</div>
           <div class="preview-item"><b>{{ preview.levels }}</b> niveaux</div>

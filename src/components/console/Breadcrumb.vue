@@ -32,6 +32,7 @@ const trail = computed(() => {
   const NAMED: Record<string, string[]> = {
     dashboard: [],
     structure: ["Établissement", "Structure"],
+    unit: ["Établissement", "Structure"],
     enroll: ["Scolarité", "Inscrire un élève"],
     import: ["Scolarité", "Importer"],
     staff: ["Personnel"],
