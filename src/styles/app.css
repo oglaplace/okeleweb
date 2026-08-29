@@ -173,6 +173,11 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
 }
+/* No tree on this screen — the work takes the whole width rather than leaving
+   a gap where a column used to be. */
+.workspace.no-tree {
+  grid-template-columns: minmax(0, 1fr);
+}
 
 .orgpane {
   position: relative;
@@ -1610,8 +1615,16 @@ table.data td.c-text {
   justify-content: center;
   padding: 9px 0;
 }
-.console.rail-collapsed .side {
-  --rail-w: 56px;
+/**
+ * On `.console` ITSELF, not on `.side`.
+ *
+ * The grid column is declared on `.console` as `var(--rail-w, 244px)`, and
+ * custom properties inherit DOWNWARD — so setting it on `.side`, a child, could
+ * never reach the rule that reads it. The rail's contents shrank to icons while
+ * the column stayed 244px wide, leaving a band of empty surface beside them.
+ */
+.console.rail-collapsed {
+  --rail-w: 60px;
 }
 .console.rail-collapsed .nav-item span,
 .console.rail-collapsed .who-text,
@@ -1713,18 +1726,6 @@ table.data td.c-text {
 /* ============================================================================
    Explorer: the tree, in the main column.
    ============================================================================ */
-.split {
-  display: grid;
-  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
-  gap: var(--s4);
-  align-items: start;
-}
-@media (max-width: 1000px) {
-  .split {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 /* Empty / loading line inside a tree or picker. */
 .tnode-hint {
   padding: var(--s3);
@@ -1734,6 +1735,7 @@ table.data td.c-text {
 }
 
 .explorer {
+  flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -1762,9 +1764,12 @@ table.data td.c-text {
   outline: none;
 }
 
-/* Capped and scrollable: the tree is a panel, not a page that grows. */
+/* Fills the pane and scrolls inside it. A `max-height` in viewport units was
+   arbitrary — it left dead space under a short tree and clipped a long one well
+   before the pane ran out. The pane is already exactly one screen tall. */
 .explorer-tree {
-  max-height: 62vh;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: var(--s1) 0;

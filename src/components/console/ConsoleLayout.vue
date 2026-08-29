@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
-import { RouterLink, RouterView, useRouter } from "vue-router";
+import { computed, onMounted, ref } from "vue";
+import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "../../stores/auth";
 import { useDeploymentStore } from "../../stores/deployment";
 import DeploymentBadge from "./DeploymentBadge.vue";
@@ -14,6 +14,7 @@ import Icon from "../ui/Icon.vue";
 
 const auth = useAuthStore();
 const dep = useDeploymentStore();
+const route = useRoute();
 const router = useRouter();
 
 // Once signed in, re-read deployment WITH the tenant so tier and writability
@@ -35,6 +36,17 @@ function toggleRail() {
 
 /** The unit selected in the organisation pane, shared with the content. */
 const selected = ref<string | null>(null);
+
+/**
+ * The tree is shown only where it is the thing being worked on.
+ *
+ * It was permanent, and that was wrong in both directions: on the mark-entry
+ * grid it stole 280px from a screen that needs every pixel, and on a form it
+ * offered navigation nobody was about to use. Structure and a single unit are
+ * the two screens where the tree IS the subject.
+ */
+const TREE_ROUTES = new Set(["structure", "unit"]);
+const showTree = computed(() => TREE_ROUTES.has(String(route.name)));
 
 async function logout() {
   await auth.signOut();
@@ -121,8 +133,8 @@ async function logout() {
 
       <!-- Three panes: rail, organisation, work. The tree is present for every
            action rather than living inside one screen. -->
-      <div class="workspace">
-        <OrgPane :selected="selected" @select="(u) => (selected = u.id)" />
+      <div class="workspace" :class="{ 'no-tree': !showTree }">
+        <OrgPane v-if="showTree" :selected="selected" @select="(u) => (selected = u.id)" />
 
         <main class="content">
           <div class="content-inner">

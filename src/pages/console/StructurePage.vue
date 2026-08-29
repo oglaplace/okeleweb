@@ -1,26 +1,26 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { useRouter } from "vue-router";
 import * as api from "../../lib/api";
 import { useBusyStore } from "../../stores/busy";
-import Explorer from "../../components/structure/Explorer.vue";
 import ModulePicker from "../../components/structure/ModulePicker.vue";
 import Icon from "../../components/ui/Icon.vue";
 import { KIND_FR } from "../../components/structure/kinds";
 
 /**
- * The explorer: the whole tree on the left, the selected unit on the right.
+ * Structure: what the établissement is made of, and how to add to it.
  *
- * This replaces a level-by-level drill where reaching 6e B meant four clicks
- * down and four back up. The tree is now permanent — it stays put while a
- * cycle is installed or a unit created beside it, so the operator never loses
- * their place in the structure they are editing.
+ * The tree is NOT here any more. It lives in the organisation pane beside this
+ * screen, which is present for exactly the routes where the tree is the
+ * subject — so keeping a second copy in the page meant two trees side by side,
+ * each with its own selection and its own idea of what was expanded.
+ *
+ * What remains is everything the tree cannot do: install the official
+ * structure, create a unit, and see the shape of the whole thing at a glance.
+ * Selecting a node in the pane opens its own page.
  */
-const router = useRouter();
 const busy = useBusyStore();
 
 const units = ref<api.TreeUnit[]>([]);
-const selected = ref<api.TreeUnit | null>(null);
 const state = ref<api.Completeness | null>(null);
 const loading = ref(true);
 const error = ref<string | null>(null);
@@ -35,9 +35,6 @@ async function reload() {
     ]);
     units.value = tree;
     state.value = completeness;
-    if (selected.value) {
-      selected.value = tree.find((u) => u.id === selected.value!.id) ?? null;
-    }
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Chargement impossible.";
   } finally {
@@ -46,26 +43,16 @@ async function reload() {
 }
 onMounted(reload);
 
-/** Root-first path of the selected node. */
-const path = computed(() => {
-  if (!selected.value) return [];
-  const byId = new Map(units.value.map((u) => [u.id, u]));
-  const parts: api.TreeUnit[] = [];
-  let cursor: string | null = selected.value.id;
-  for (let i = 0; cursor && i < 12; i++) {
-    const u = byId.get(cursor);
-    if (!u) break;
-    parts.unshift(u);
-    cursor = u.parentId;
-  }
-  return parts;
+/** A count per kind — the shape of the établissement in one line each. */
+const byKind = computed(() => {
+  const counts = new Map<api.OrgUnitKind, number>();
+  for (const u of units.value) counts.set(u.kind, (counts.get(u.kind) ?? 0) + 1);
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]);
 });
 
-const children = computed(() =>
-  selected.value ? units.value.filter((u) => u.parentId === selected.value!.id) : [],
-);
+const roots = computed(() => units.value.filter((u) => u.parentId === null));
 
-// ── creating a unit under the selection ─────────────────────────────────────
+// ── creating a unit at the root ─────────────────────────────────────────────
 const creating = ref(false);
 const allowedKinds = ref<api.OrgUnitKind[]>([]);
 const form = ref({ kind: "" as api.OrgUnitKind | "", name: "", code: "" });
@@ -77,7 +64,7 @@ async function openCreate() {
   form.value = { kind: "", name: "", code: "" };
   try {
     // Asked, not assumed: ALLOWED_PARENTS is what the POST enforces.
-    allowedKinds.value = await api.orgUnits.allowedKinds(selected.value?.id ?? null);
+    allowedKinds.value = await api.orgUnits.allowedKinds(null);
     form.value.kind = allowedKinds.value[0] ?? "";
     creating.value = true;
   } catch (e) {
@@ -114,11 +101,11 @@ async function submitCreate() {
   try {
     await busy.run(() =>
       api.orgUnits.create({
-        parentId: selected.value?.id ?? null,
+        parentId: null,
         kind: form.value.kind as api.OrgUnitKind,
         name: form.value.name.trim(),
         code: form.value.code.trim().toUpperCase(),
-        rank: children.value.length + 1,
+        rank: roots.value.length + 1,
       }),
     );
     creating.value = false;
@@ -150,10 +137,11 @@ async function install() {
   try {
     const report = await busy.run(() => api.orgUnits.scaffold(modules.value), {
       title: "Installation de la structure",
-      detail: "Écoles, cycles, niveaux, classes, séries et périodes.",
+      detail: "Écoles, cycles, niveaux, classes, matières, séries et périodes.",
     });
     notice.value =
-      `${report.orgUnits} unité(s) créée(s)` +
+      `${report.orgUnits} unité(s), ${report.subjects} matière(s) et ` +
+      `${report.offerings} programmation(s) créées` +
       (report.skipped ? `, ${report.skipped} déjà présente(s).` : ".");
     building.value = false;
     modules.value = [];
@@ -170,8 +158,8 @@ async function install() {
       <div>
         <h1 class="page-title"><Icon name="tree" :size="19" /> Structure</h1>
         <div class="page-sub">
-          L'établissement au complet. Sélectionnez une unité pour la consulter ou y
-          ajouter des éléments.
+          L'arborescence est à gauche. Sélectionnez-y une unité pour la consulter,
+          ou ajoutez-en une ici.
         </div>
       </div>
       <div class="page-actions">
@@ -187,8 +175,8 @@ async function install() {
     <div v-if="notice" class="form-ok">{{ notice }}</div>
     <div v-if="error" class="form-error">{{ error }}</div>
 
-    <!-- The tree stays put while this is open: installing a cycle must not
-         make the operator lose their place in the structure. -->
+    <!-- The tree in the pane stays put while this is open: installing a cycle
+         must not make the operator lose their place in the structure. -->
     <div v-if="building" class="card" style="margin-bottom: var(--s4)">
       <div class="card-head">
         Structure officielle
@@ -202,10 +190,6 @@ async function install() {
           BEPC, baccalauréat. Les coefficients restent à définir : ils dépendent de
           la série, et c'est la seule chose que nous ne devinons pas à votre place.
         </p>
-        <!-- `installed` was built and never wired. Without it the picker
-             offered a module the tenant already had, the operator ticked it,
-             and the scaffold correctly skipped every row — reporting "0 créées,
-             8 déjà présentes" and showing names they had never typed. -->
         <ModulePicker v-model="modules" :installed="state?.installedModules ?? []" />
         <div v-if="preview" class="preview">
           <div class="preview-item"><b>{{ preview.orgUnits }}</b> unités</div>
@@ -221,6 +205,42 @@ async function install() {
         </span>
         <button class="btn primary" type="button" :disabled="!modules.length" @click="install">
           Installer
+        </button>
+      </div>
+    </div>
+
+    <div v-if="creating" class="card" style="margin-bottom: var(--s4)">
+      <div class="card-head">
+        Nouvel élément à la racine
+        <button class="btn sm ghost" type="button" @click="creating = false">Annuler</button>
+      </div>
+      <div class="card-body">
+        <div v-if="createError" class="form-error">{{ createError }}</div>
+        <div v-if="!allowedKinds.length" class="hint">
+          Rien ne peut être créé à la racine : le complexe existe déjà. Sélectionnez
+          une unité dans l'arborescence pour y ajouter un élément.
+        </div>
+        <div v-else class="field-row">
+          <div class="field">
+            <label for="u-kind">Type</label>
+            <select id="u-kind" v-model="form.kind">
+              <option v-for="k in allowedKinds" :key="k" :value="k">{{ KIND_FR[k] }}</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="u-name">Nom</label>
+            <input id="u-name" v-model="form.name" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="u-code">Code</label>
+            <input id="u-code" v-model="form.code" autocomplete="off" maxlength="8" />
+          </div>
+        </div>
+      </div>
+      <div class="card-foot">
+        <button class="btn primary" type="button" :disabled="!canCreate" @click="submitCreate">
+          <span v-if="createBusy" class="btn-spin" aria-hidden="true" />
+          Créer
         </button>
       </div>
     </div>
@@ -245,101 +265,22 @@ async function install() {
       </div>
     </div>
 
-    <!-- Tree left, selection right. The tree never moves. -->
-    <div v-else class="split">
-      <div class="card is-grid split-tree">
-        <Explorer
-          :units="units"
-          :selected="selected?.id ?? null"
-          @select="(u) => { selected = u; creating = false; }"
-        />
+    <!-- The shape of the whole thing, which the tree shows one branch at a
+         time and this shows at a glance. -->
+    <div v-else class="card">
+      <div class="card-head">Composition</div>
+      <div class="card-body">
+        <div class="grid-cards">
+          <div v-for="[kind, n] in byKind" :key="kind" class="stat">
+            <div class="stat-label">{{ KIND_FR[kind] }}</div>
+            <div class="stat-value">{{ n }}</div>
+          </div>
+        </div>
       </div>
-
-      <div class="split-detail">
-        <div v-if="creating" class="card" style="margin-bottom: var(--s4)">
-          <div class="card-head">
-            Nouvel élément dans « {{ selected?.name ?? 'la racine' }} »
-            <button class="btn sm ghost" type="button" @click="creating = false">Annuler</button>
-          </div>
-          <div class="card-body">
-            <div v-if="createError" class="form-error">{{ createError }}</div>
-            <div v-if="!allowedKinds.length" class="hint">
-              Rien ne peut être créé ici — une classe est le dernier échelon.
-            </div>
-            <div v-else class="field-row">
-              <div class="field">
-                <label for="u-kind">Type</label>
-                <select id="u-kind" v-model="form.kind">
-                  <option v-for="k in allowedKinds" :key="k" :value="k">{{ KIND_FR[k] }}</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="u-name">Nom</label>
-                <input id="u-name" v-model="form.name" autocomplete="off" placeholder="6e B" />
-              </div>
-              <div class="field">
-                <label for="u-code">Code</label>
-                <input id="u-code" v-model="form.code" autocomplete="off" maxlength="8" />
-              </div>
-            </div>
-          </div>
-          <div class="card-foot">
-            <button class="btn primary" type="button" :disabled="!canCreate" @click="submitCreate">
-              <span v-if="createBusy" class="btn-spin" aria-hidden="true" />
-              Créer
-            </button>
-          </div>
-        </div>
-
-        <div v-if="!selected" class="card">
-          <div class="empty">
-            <div class="empty-title">Aucune unité sélectionnée</div>
-            <div>Choisissez une unité dans l'arborescence pour voir ce qu'elle contient.</div>
-          </div>
-        </div>
-
-        <div v-else class="card">
-          <div class="card-head">
-            {{ selected.name }}
-            <span class="kind-tag">{{ KIND_FR[selected.kind] }}</span>
-          </div>
-          <div class="card-body">
-            <nav class="crumbs" style="margin-bottom: var(--s3)">
-              <template v-for="(p, i) in path" :key="p.id">
-                <span v-if="i > 0" class="crumbs-sep" aria-hidden="true">›</span>
-                <button class="crumbs-link" type="button" @click="selected = p">{{ p.name }}</button>
-              </template>
-            </nav>
-
-            <div class="grid-cards">
-              <div class="stat">
-                <div class="stat-label">Code</div>
-                <div class="stat-value" style="font-size: var(--t-h3)">{{ selected.code }}</div>
-              </div>
-              <div class="stat">
-                <div class="stat-label">Contient</div>
-                <div class="stat-value">{{ children.length }}</div>
-                <div class="stat-note">élément(s) direct(s)</div>
-              </div>
-              <div class="stat">
-                <div class="stat-label">État</div>
-                <div class="stat-value" style="font-size: var(--t-h3)">
-                  {{ selected.validTo ? "Fermé" : "Actif" }}
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="card-foot">
-            <RouterLink
-              v-if="selected.kind === 'CLASSE'"
-              class="btn"
-              :to="{ name: 'classe', params: { id: selected.id } }"
-            >Ouvrir la classe</RouterLink>
-            <button class="btn primary" type="button" @click="openCreate">
-              <Icon name="plus" /> Ajouter ici
-            </button>
-          </div>
-        </div>
+      <div class="card-foot">
+        <span class="hint" style="margin-right: auto">
+          {{ units.length }} unité(s) au total.
+        </span>
       </div>
     </div>
   </div>
