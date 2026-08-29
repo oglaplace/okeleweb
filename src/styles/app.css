@@ -2,50 +2,88 @@
    Component styles. Tokens come from index.css.
    ============================================================================ */
 
-/* ---------- shell ---------- */
+/* ---------- app shell ---------- */
 .console {
   display: grid;
-  grid-template-columns: 232px 1fr;
+  grid-template-columns: 244px 1fr;
   min-height: 100%;
 }
 
 .side {
   background: var(--surface);
   border-right: 1px solid var(--line);
-  padding: 18px 14px;
+  padding: var(--s5) var(--s3) var(--s4);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .brand {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 4px 8px 16px;
+  align-items: center;
+  gap: var(--s2);
+  padding: 0 var(--s2) var(--s5);
 }
 .brand-mark {
-  font-size: 19px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  color: var(--primary-ink);
+  font-size: var(--t-body);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.brand-name {
+  font-size: var(--t-lead);
   font-weight: 650;
   letter-spacing: -0.02em;
   color: var(--ink);
+  line-height: 1.1;
 }
 .brand-sub {
-  font-size: 11px;
+  font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+  font-weight: 600;
+}
+
+/* The platform console wears the accent so an operator can never mistake the
+   fleet view for one school's office. Same layout, different register. */
+.side.is-platform .brand-mark {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.nav-group {
+  margin-top: var(--s4);
+  padding: 0 var(--s2) var(--s1);
+  font-size: 10px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
   color: var(--ink-3);
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 8px 10px;
-  border-radius: var(--radius);
+  gap: var(--s2);
+  padding: 7px var(--s2);
+  border-radius: var(--radius-sm);
   color: var(--ink-2);
-  font-size: 14px;
+  font-size: var(--t-body);
   font-weight: 500;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 .nav-item:hover {
   background: var(--surface-2);
@@ -54,16 +92,17 @@
 }
 .nav-item.active {
   background: var(--primary-soft);
-  color: var(--primary);
+  color: var(--primary-soft-ink);
+  font-weight: 600;
 }
 
 .side-foot {
   margin-top: auto;
-  padding-top: 14px;
+  padding-top: var(--s3);
   border-top: 1px solid var(--line-soft);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--s2);
 }
 
 .main {
@@ -76,18 +115,26 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 14px 24px;
+  gap: var(--s4);
+  padding: var(--s3) var(--s6);
   border-bottom: 1px solid var(--line);
   background: var(--surface);
+  min-height: 54px;
+}
+.topbar-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
 }
 
 .content {
-  padding: 24px;
+  padding: var(--s6);
   min-width: 0;
+  max-width: 1160px;
+  width: 100%;
 }
 
-@media (max-width: 780px) {
+@media (max-width: 860px) {
   .console {
     grid-template-columns: 1fr;
   }
@@ -95,18 +142,73 @@
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
+    gap: var(--s1);
+    padding: var(--s3) var(--s4);
     border-right: none;
     border-bottom: 1px solid var(--line);
   }
+  .brand {
+    padding: 0 var(--s3) 0 0;
+  }
+  .nav-group {
+    display: none;
+  }
   .side-foot {
     margin-top: 0;
+    padding-top: 0;
     border-top: none;
     flex-direction: row;
     align-items: center;
+    margin-left: auto;
   }
-  .brand {
-    padding-bottom: 4px;
+  .topbar,
+  .content {
+    padding-left: var(--s4);
+    padding-right: var(--s4);
   }
+}
+
+/* ---------- identity chip ---------- */
+.who {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  min-width: 0;
+}
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--primary-ink);
+  font-size: var(--t-micro);
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+.who-text {
+  min-width: 0;
+  line-height: 1.25;
+}
+.who-name {
+  font-size: var(--t-small);
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.who-role {
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ---------- deployment badge ----------
@@ -116,11 +218,11 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 4px 10px;
-  border-radius: 999px;
+  padding: 4px 11px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--line);
   background: var(--surface-2);
-  font-size: 12px;
+  font-size: var(--t-small);
   font-weight: 550;
   color: var(--ink-2);
   white-space: nowrap;
@@ -156,9 +258,9 @@
 .banner {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 11px 24px;
-  font-size: 14px;
+  gap: var(--s2);
+  padding: 11px var(--s6);
+  font-size: var(--t-body);
   border-bottom: 1px solid var(--line);
   background: var(--warn-soft);
   color: var(--warn);
@@ -173,68 +275,109 @@
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
+  gap: var(--s4);
+  margin-bottom: var(--s5);
 }
 .page-title {
-  font-size: 22px;
+  font-size: var(--t-h2);
   font-weight: 650;
 }
 .page-sub {
   color: var(--ink-3);
-  font-size: 13.5px;
-  margin-top: 2px;
+  font-size: var(--t-body);
+  margin-top: 3px;
+  max-width: 62ch;
+}
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex: none;
+}
+
+.crumb-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--t-small);
+  color: var(--ink-3);
+  margin-bottom: var(--s2);
+  background: none;
+  border: none;
+  padding: 0;
+}
+.crumb-back:hover {
+  color: var(--ink);
+  text-decoration: none;
 }
 
 .card {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-xs);
 }
 .card-head {
-  padding: 13px 16px;
+  padding: var(--s3) var(--s4);
   border-bottom: 1px solid var(--line-soft);
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--t-body);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--s3);
 }
 .card-body {
-  padding: 16px;
+  padding: var(--s4);
+}
+.card-foot {
+  padding: var(--s3) var(--s4);
+  border-top: 1px solid var(--line-soft);
+  background: var(--surface-2);
+  border-radius: 0 0 var(--radius) var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s2);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
 }
 
 .grid-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--s3);
 }
 
 .stat {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 14px 16px;
+  padding: var(--s3) var(--s4) var(--s4);
 }
 .stat-label {
-  font-size: 11.5px;
+  font-size: var(--t-micro);
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.08em;
+  font-weight: 650;
   color: var(--ink-3);
 }
 .stat-value {
-  font-size: 26px;
+  font-size: var(--t-h1);
   font-weight: 650;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
   font-variant-numeric: tabular-nums;
-  margin-top: 3px;
+  margin-top: 2px;
+  line-height: 1.15;
 }
 .stat-note {
-  font-size: 12.5px;
+  font-size: var(--t-small);
   color: var(--ink-3);
-  margin-top: 2px;
+  margin-top: 3px;
 }
 
 /* ---------- tables ---------- */
@@ -244,40 +387,56 @@
 table.data {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13.5px;
+  font-size: var(--t-body);
   font-variant-numeric: tabular-nums;
 }
 table.data th {
   text-align: left;
-  font-size: 11.5px;
+  font-size: var(--t-micro);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.07em;
   color: var(--ink-3);
-  font-weight: 600;
-  padding: 9px 12px;
+  font-weight: 650;
+  padding: var(--s2) var(--s3);
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
 }
 table.data td {
-  padding: 9px 12px;
+  padding: 10px var(--s3);
   border-bottom: 1px solid var(--line-soft);
+}
+table.data tbody tr:last-child td {
+  border-bottom: none;
 }
 table.data tbody tr:hover {
   background: var(--surface-2);
+}
+table.data tr.is-clickable {
+  cursor: pointer;
 }
 td.num,
 th.num {
   text-align: right;
 }
+.cell-strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+.cell-sub {
+  font-size: var(--t-small);
+  color: var(--ink-3);
+}
 
 .pill {
   display: inline-block;
-  padding: 1px 7px;
-  border-radius: 999px;
-  font-size: 11.5px;
-  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  font-size: var(--t-micro);
+  font-weight: 650;
+  letter-spacing: 0.01em;
   background: var(--surface-2);
   color: var(--ink-2);
+  white-space: nowrap;
 }
 .pill.ok {
   background: var(--ok-soft);
@@ -291,101 +450,512 @@ th.num {
   background: var(--danger-soft);
   color: var(--danger);
 }
+.pill.accent {
+  background: var(--primary-soft);
+  color: var(--primary-soft-ink);
+}
 
-/* ---------- buttons & fields ---------- */
+/* ============================================================================
+   Buttons.
+   ============================================================================
+   Rebuilt around one rule, after a real bug: EVERY state sets background and
+   colour together, at the same specificity as the variant that owns it.
+
+   What was here before looked innocent:
+
+       .btn:hover:not(:disabled) { background: var(--surface-2); }
+       .btn.primary              { background: var(--primary);
+                                   color: var(--primary-ink); }
+       .btn.primary:hover        { filter: brightness(1.08); }
+
+   `.btn:hover:not(:disabled)` is three class-level selectors — `:not()` takes
+   the specificity of its argument — and `.btn.primary` is two. So hovering a
+   primary button replaced its background with the SECONDARY hover colour while
+   its `color` stayed `--primary-ink`. In light mode that is white text on a
+   near-white ground; in dark mode near-black text on a dark ground. Both read
+   as "the label goes dark and disappears", which is exactly what was reported.
+
+   The `filter: brightness()` was the second half of it: a filter applies to the
+   whole element, label included, so it can never fix contrast — it moves both
+   sides in the same direction. Hover now changes a background TOKEN instead.
+   ============================================================================ */
+
 .btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 7px;
-  padding: 8px 14px;
+  padding: 8px 15px;
   border-radius: var(--radius);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   background: var(--surface);
   color: var(--ink);
-  font-size: 14px;
+  font-size: var(--t-body);
   font-weight: 550;
+  line-height: 1.35;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
 }
-.btn:hover:not(:disabled) {
+
+/* Default (secondary) variant. Scoped with :not() on the other variants so it
+   cannot outrank them the way the old rule did. */
+.btn:hover:not(:disabled):not(.primary):not(.danger):not(.ghost) {
   background: var(--surface-2);
+  color: var(--ink);
+  border-color: var(--line-strong);
 }
+.btn:active:not(:disabled):not(.primary):not(.danger):not(.ghost) {
+  background: var(--surface-3);
+}
+
 .btn.primary {
   background: var(--primary);
   border-color: var(--primary);
   color: var(--primary-ink);
 }
 .btn.primary:hover:not(:disabled) {
-  filter: brightness(1.08);
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+  color: var(--primary-ink);
 }
+.btn.primary:active:not(:disabled) {
+  background: var(--primary-active);
+  border-color: var(--primary-active);
+  color: var(--primary-ink);
+}
+
+.btn.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--danger-ink);
+}
+.btn.danger:hover:not(:disabled) {
+  background: var(--danger-hover);
+  border-color: var(--danger-hover);
+  color: var(--danger-ink);
+}
+
+.btn.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink-2);
+}
+.btn.ghost:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--ink);
+  border-color: transparent;
+}
+
+.btn:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
+.btn.sm {
+  padding: 5px 11px;
+  font-size: var(--t-small);
+  border-radius: var(--radius-sm);
+}
+.btn.block {
+  width: 100%;
+}
+
+/* Icon-only: square, and it MUST carry an aria-label at the call site. */
+.btn.icon {
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  flex: none;
+}
+
+/* ---------- fields ---------- */
 .field {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  margin-bottom: 14px;
+  margin-bottom: var(--s4);
 }
 .field label {
-  font-size: 12.5px;
-  font-weight: 600;
+  font-size: var(--t-small);
+  font-weight: 650;
   color: var(--ink-2);
 }
-.field input {
+.field input,
+.field select,
+.field textarea {
   padding: 9px 11px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--ink);
   font: inherit;
+  font-size: var(--t-body);
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
-.field .hint {
-  font-size: 12px;
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: var(--ring);
+}
+.field input:disabled,
+.field select:disabled {
+  background: var(--surface-2);
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+.field input::placeholder {
   color: var(--ink-3);
 }
+.field .hint {
+  font-size: var(--t-small);
+  color: var(--ink-3);
+}
+.field.is-invalid input,
+.field.is-invalid select {
+  border-color: var(--danger);
+}
+.field .field-error {
+  font-size: var(--t-small);
+  color: var(--danger);
+  font-weight: 550;
+}
 
-.form-error {
-  padding: 9px 11px;
+.field-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0 var(--s3);
+}
+
+.fieldset {
+  border: none;
+  padding: 0;
+  margin: 0 0 var(--s5);
+}
+.fieldset legend {
+  padding: 0;
+  font-size: var(--t-micro);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+  margin-bottom: var(--s3);
+}
+
+/* Segmented control — used to pick an establishment type, where the options
+   are few, fixed, and worth reading side by side rather than in a dropdown. */
+.choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--s2);
+  margin-bottom: var(--s4);
+}
+.choice {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 11px var(--s3);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.choice:hover {
+  border-color: var(--primary-line);
+  background: var(--surface-2);
+}
+.choice input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.choice-name {
+  font-size: var(--t-body);
+  font-weight: 600;
+  color: var(--ink);
+}
+.choice-note {
+  font-size: var(--t-small);
+  color: var(--ink-3);
+  line-height: 1.35;
+}
+.choice.is-selected {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+.choice.is-selected .choice-name {
+  color: var(--primary-soft-ink);
+}
+.choice:focus-within {
+  box-shadow: var(--ring);
+}
+
+/* ---------- messages ---------- */
+.form-error,
+.form-ok {
+  display: flex;
+  gap: var(--s2);
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  font-size: var(--t-body);
+  margin-bottom: var(--s4);
+  border: 1px solid transparent;
+}
+.form-error {
   background: var(--danger-soft);
   color: var(--danger);
-  font-size: 13.5px;
-  margin-bottom: 14px;
+  border-color: color-mix(in srgb, var(--danger) 28%, transparent);
+}
+.form-ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 28%, transparent);
 }
 
 .empty {
-  padding: 34px 16px;
+  padding: var(--s7) var(--s4);
   text-align: center;
   color: var(--ink-3);
-  font-size: 14px;
+  font-size: var(--t-body);
+}
+.empty-title {
+  font-size: var(--t-h3);
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 3px;
+}
+.empty-actions {
+  margin-top: var(--s4);
+  display: flex;
+  justify-content: center;
+  gap: var(--s2);
 }
 
-/* ---------- login ---------- */
+/* ---------- toolbar / search ---------- */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-bottom: var(--s4);
+  flex-wrap: wrap;
+}
+.search {
+  flex: 1 1 240px;
+  min-width: 180px;
+  padding: 8px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-body);
+}
+.search:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: var(--ring);
+}
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--t-small);
+  color: var(--ink-2);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* ---------- loading ---------- */
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.skeleton {
+  height: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.boot {
+  min-height: 100%;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--s3);
+  color: var(--ink-3);
+}
+.boot-mark {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius);
+  background: var(--primary);
+  color: var(--primary-ink);
+  font-size: var(--t-h2);
+  font-weight: 650;
+}
+.boot-name {
+  font-size: var(--t-h3);
+  font-weight: 650;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+}
+
+/* ============================================================================
+   Login.
+   ============================================================================
+   A split panel: the product on the left, the form on the right. This screen is
+   the one a buyer sees before anything else, and often the only one they see in
+   a demo — so it carries the positioning rather than being a bare card floating
+   in grey. It collapses to the form alone under 900px, because on a phone the
+   pitch is not what the user came for. */
 .login {
   min-height: 100%;
   display: grid;
+  grid-template-columns: 1.05fr 1fr;
+}
+
+.login-pitch {
+  background: var(--primary);
+  color: var(--primary-ink);
+  padding: var(--s7) clamp(var(--s6), 6vw, 72px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--s5);
+}
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--t-lead);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.login-brand-mark {
+  display: grid;
   place-items: center;
-  padding: 24px;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  background: var(--primary-ink);
+  color: var(--primary);
+  font-weight: 700;
+}
+.login-headline {
+  font-size: clamp(26px, 3.2vw, var(--t-display));
+  font-weight: 660;
+  letter-spacing: -0.028em;
+  line-height: 1.16;
+  max-width: 18ch;
+}
+.login-lede {
+  font-size: var(--t-lead);
+  line-height: 1.55;
+  max-width: 46ch;
+  opacity: 0.86;
+}
+.login-points {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: var(--t-body);
+}
+.login-points li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  opacity: 0.9;
+}
+.login-points li::before {
+  content: "—";
+  opacity: 0.6;
+  flex: none;
+}
+.login-foot {
+  font-size: var(--t-small);
+  opacity: 0.65;
+  margin-top: auto;
+}
+
+.login-panel {
+  display: grid;
+  place-items: center;
+  padding: var(--s6) var(--s5);
+  background: var(--bg);
 }
 .login-card {
   width: 100%;
-  max-width: 380px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: var(--shadow);
-  padding: 26px;
+  max-width: 372px;
 }
 .login-title {
-  font-size: 20px;
+  font-size: var(--t-h2);
   font-weight: 650;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
 }
 .login-sub {
   color: var(--ink-3);
-  font-size: 13.5px;
-  margin-bottom: 20px;
+  font-size: var(--t-body);
+  margin-bottom: var(--s5);
+}
+.login-actions,
+.form-actions {
+  display: flex;
+  gap: var(--s2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+.login-meta {
+  margin-top: var(--s5);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--line);
+  font-size: var(--t-small);
+  color: var(--ink-3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+
+@media (max-width: 900px) {
+  .login {
+    grid-template-columns: 1fr;
+  }
+  /* The pitch is the half that goes. On a phone in a school corridor the user
+     is signing in, not evaluating the product. */
+  .login-pitch {
+    display: none;
+  }
 }
 
 /* ---------- tree ---------- */
@@ -394,8 +964,8 @@ th.num {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  font-size: 13.5px;
-  margin-bottom: 14px;
+  font-size: var(--t-body);
+  margin-bottom: var(--s4);
   color: var(--ink-3);
 }
 .tree-crumbs button {
@@ -413,14 +983,17 @@ th.num {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--s3);
   width: 100%;
-  padding: 11px 16px;
+  padding: 12px var(--s4);
   border: none;
   border-bottom: 1px solid var(--line-soft);
   background: none;
   color: inherit;
   text-align: left;
+}
+.unit-row:last-child {
+  border-bottom: none;
 }
 .unit-row:hover {
   background: var(--surface-2);
@@ -429,7 +1002,7 @@ th.num {
   font-weight: 550;
 }
 .unit-meta {
-  font-size: 12.5px;
+  font-size: var(--t-small);
   color: var(--ink-3);
 }
 
@@ -441,6 +1014,7 @@ th.num {
   border: 1px solid var(--line);
   border-radius: 3px;
   padding: 1px 5px;
+  white-space: nowrap;
 }
 
 /* ---------- mark entry ----------
@@ -450,19 +1024,19 @@ th.num {
   width: 100%;
   max-width: 96px;
   padding: 6px 8px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--ink);
   font: inherit;
-  font-size: 15px;
+  font-size: var(--t-lead);
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 .mark-input:focus {
   border-color: var(--primary);
-  outline: 2px solid color-mix(in srgb, var(--primary) 30%, transparent);
-  outline-offset: 0;
+  outline: none;
+  box-shadow: var(--ring);
 }
 .mark-input:disabled {
   background: var(--surface-2);

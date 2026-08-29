@@ -11,86 +11,170 @@
    colour of an official document), a warm neutral ground so long tables of
    numbers don't glare, and semantic colours kept separate from the accent so
    "needs attention" never competes with "this is a link".
+
+   Three token rules that the rest of the CSS depends on:
+
+     · Every colour is defined ONCE on bare `:root`, and only REDEFINED in the
+       two dark blocks. A colour whose only definition lives inside a media
+       query is invisible to the toggle.
+     · Foreground/background pairs are declared TOGETHER (--primary with
+       --primary-ink, --danger with --danger-ink). A component that sets one
+       without the other is how text ends up dark on dark — see the note on
+       `.btn` in app.css, which is exactly the bug that motivated this pass.
+     · Spacing and type come off scales, not from arithmetic at the call site.
+       Consistency at this density is most of what reads as "professional".
    ============================================================================ */
 
 :root {
-  --bg: #f6f6f4;
+  /* ── ground & ink ── */
+  --bg: #f4f4f1;
   --surface: #ffffff;
-  --surface-2: #eeeeeb;
-  --ink: #17191e;
-  --ink-2: #4b5060;
-  --ink-3: #7b8194;
-  --line: #dedcd6;
-  --line-soft: #ebeae5;
+  --surface-2: #eceae5;
+  --surface-3: #e2e0d9;
+  --ink: #15171c;
+  --ink-2: #494e5c;
+  --ink-3: #767c8d;
+  --line: #dcdad3;
+  --line-soft: #eae8e2;
+  --line-strong: #c6c4bb;
 
-  --primary: #2c3a6b;
-  --primary-soft: #e7eaf3;
+  /* ── accent ──
+     `--primary-ink` is the ONLY colour that may sit on `--primary`, and
+     `--primary-hover` exists so hover changes the background without a filter.
+     `filter: brightness()` on a button also brightens its label, which is what
+     made hovered text unreadable in both themes. */
+  --primary: #2b3a6b;
+  --primary-hover: #1f2c56;
+  --primary-active: #18234a;
   --primary-ink: #ffffff;
+  --primary-soft: #e6eaf4;
+  --primary-soft-ink: #2b3a6b;
+  --primary-line: #c3cbe3;
 
-  /* Semantic — separate from --primary on purpose. */
-  --ok: #2e6b4f;
-  --ok-soft: #e4f0ea;
-  --warn: #8a5a12;
-  --warn-soft: #f7eeda;
-  --danger: #a8321e;
-  --danger-soft: #f8e6e2;
+  /* ── semantic — separate from --primary on purpose ── */
+  --ok: #23624a;
+  --ok-soft: #e0efe7;
+  --warn: #7e5210;
+  --warn-soft: #f7edd8;
+  --danger: #9c2d1a;
+  --danger-hover: #832514;
+  --danger-soft: #f8e5e1;
+  --danger-ink: #ffffff;
 
-  --radius: 6px;
+  /* ── shape & depth ── */
+  --radius-sm: 4px;
+  --radius: 7px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+
+  --shadow-xs: 0 1px 1px rgba(20, 22, 30, 0.04);
   --shadow: 0 1px 2px rgba(20, 22, 30, 0.05), 0 4px 12px rgba(20, 22, 30, 0.04);
+  --shadow-lg: 0 2px 4px rgba(20, 22, 30, 0.06), 0 12px 32px rgba(20, 22, 30, 0.09);
+  --ring: 0 0 0 3px rgba(43, 58, 107, 0.22);
+
+  /* ── spacing scale ── */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 22px;
+  --s6: 30px;
+  --s7: 44px;
+
+  /* ── type scale ── */
+  --t-micro: 11px;
+  --t-small: 12.5px;
+  --t-body: 14px;
+  --t-lead: 15.5px;
+  --t-h3: 17px;
+  --t-h2: 21px;
+  --t-h1: 27px;
+  --t-display: 34px;
 
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  color-scheme: light;
 }
 
+/* The dark palette, defined once and applied from two selectors: the system
+   preference (unless the user pinned light) and an explicit choice. Keeping the
+   two blocks identical is what makes the toggle win in BOTH directions. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #101218;
-    --surface: #171a21;
-    --surface-2: #1e222b;
-    --ink: #e6e8ee;
-    --ink-2: #b0b5c2;
-    --ink-3: #838a99;
-    --line: #2b303b;
-    --line-soft: #232833;
+    --bg: #0e1015;
+    --surface: #16181f;
+    --surface-2: #1d2029;
+    --surface-3: #262a35;
+    --ink: #e8eaf0;
+    --ink-2: #b2b8c6;
+    --ink-3: #848b9c;
+    --line: #2a2f3a;
+    --line-soft: #22262f;
+    --line-strong: #3a404e;
 
-    --primary: #8fa2dc;
-    --primary-soft: #1e2436;
-    --primary-ink: #101218;
+    --primary: #93a5df;
+    --primary-hover: #a8b7e8;
+    --primary-active: #becaf0;
+    --primary-ink: #0e1015;
+    --primary-soft: #1c2233;
+    --primary-soft-ink: #b3c0ea;
+    --primary-line: #313a55;
 
-    --ok: #74c39b;
-    --ok-soft: #16261f;
-    --warn: #d3a24e;
-    --warn-soft: #2a2317;
-    --danger: #e08c74;
-    --danger-soft: #2c1c18;
+    --ok: #79c8a1;
+    --ok-soft: #14251e;
+    --warn: #d8a755;
+    --warn-soft: #2a2316;
+    --danger: #e6907a;
+    --danger-hover: #efa591;
+    --danger-soft: #2c1b17;
+    --danger-ink: #0e1015;
 
+    --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.35);
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 2px 4px rgba(0, 0, 0, 0.45), 0 12px 32px rgba(0, 0, 0, 0.45);
+    --ring: 0 0 0 3px rgba(147, 165, 223, 0.3);
+
+    color-scheme: dark;
   }
 }
 
 :root[data-theme="dark"] {
-  --bg: #101218;
-  --surface: #171a21;
-  --surface-2: #1e222b;
-  --ink: #e6e8ee;
-  --ink-2: #b0b5c2;
-  --ink-3: #838a99;
-  --line: #2b303b;
-  --line-soft: #232833;
+  --bg: #0e1015;
+  --surface: #16181f;
+  --surface-2: #1d2029;
+  --surface-3: #262a35;
+  --ink: #e8eaf0;
+  --ink-2: #b2b8c6;
+  --ink-3: #848b9c;
+  --line: #2a2f3a;
+  --line-soft: #22262f;
+  --line-strong: #3a404e;
 
-  --primary: #8fa2dc;
-  --primary-soft: #1e2436;
-  --primary-ink: #101218;
+  --primary: #93a5df;
+  --primary-hover: #a8b7e8;
+  --primary-active: #becaf0;
+  --primary-ink: #0e1015;
+  --primary-soft: #1c2233;
+  --primary-soft-ink: #b3c0ea;
+  --primary-line: #313a55;
 
-  --ok: #74c39b;
-  --ok-soft: #16261f;
-  --warn: #d3a24e;
-  --warn-soft: #2a2317;
-  --danger: #e08c74;
-  --danger-soft: #2c1c18;
+  --ok: #79c8a1;
+  --ok-soft: #14251e;
+  --warn: #d8a755;
+  --warn-soft: #2a2316;
+  --danger: #e6907a;
+  --danger-hover: #efa591;
+  --danger-soft: #2c1b17;
+  --danger-ink: #0e1015;
 
+  --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.35);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 2px 4px rgba(0, 0, 0, 0.45), 0 12px 32px rgba(0, 0, 0, 0.45);
+  --ring: 0 0 0 3px rgba(147, 165, 223, 0.3);
+
+  color-scheme: dark;
 }
 
 * {
@@ -108,18 +192,26 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font);
-  font-size: 15px;
+  font-size: var(--t-lead);
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Proportional figures read better in prose; every table and metric opts
+     into tabular numerals locally, where the alignment is what matters. */
+  font-variant-numeric: proportional-nums;
 }
 
 h1,
 h2,
 h3 {
   margin: 0;
-  line-height: 1.25;
-  letter-spacing: -0.01em;
+  line-height: 1.22;
+  letter-spacing: -0.014em;
   text-wrap: balance;
+}
+
+p {
+  margin: 0 0 var(--s3);
 }
 
 a {
@@ -132,12 +224,29 @@ a:hover {
 
 button {
   font: inherit;
+  color: inherit;
   cursor: pointer;
 }
 
+/* Native checkboxes and radios follow the accent, so the one control we do not
+   restyle still belongs to the same system. */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--primary);
+}
+
+/* One focus ring for the whole app, on the token so it flips with the theme.
+   Never removed on mouse users' behalf: `:focus-visible` already excludes them,
+   and a keyboard user in a school office is usually the fastest person there. */
 :focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+::selection {
+  background: var(--primary-soft);
+  color: var(--primary-soft-ink);
 }
 
 #recaptcha {

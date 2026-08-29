@@ -1,18 +1,24 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
 import { RouterLink, RouterView, useRouter } from "vue-router";
 import { useAuthStore } from "../../stores/auth";
 import { useDeploymentStore } from "../../stores/deployment";
-import DeploymentBadge from "./DeploymentBadge.vue";
 import ThemeToggle from "../ThemeToggle.vue";
 
+/**
+ * The fleet console.
+ *
+ * Same layout as a school's, deliberately — an operator demoing the product
+ * should be moving inside one system, not two. The brand mark switches to ink
+ * so the register is unmistakable: this side of the wall administers
+ * établissements, the other side runs one.
+ *
+ * There is no deployment badge here. It answers "can I write to MY complex",
+ * and a platform account has none; showing "lecture seule" to a super admin
+ * would be false.
+ */
 const auth = useAuthStore();
 const dep = useDeploymentStore();
 const router = useRouter();
-
-// Once signed in, re-read deployment WITH the tenant so tier and writability
-// are real rather than the anonymous probe's nulls.
-onMounted(() => void dep.refreshForSession());
 
 async function logout() {
   await auth.signOut();
@@ -22,21 +28,21 @@ async function logout() {
 
 <template>
   <div class="console">
-    <aside class="side">
+    <aside class="side is-platform">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">É</span>
         <span class="brand-text">
           <span class="brand-name">École</span>
-          <span class="brand-sub">Console</span>
+          <span class="brand-sub">Plateforme</span>
         </span>
       </div>
 
-      <div class="nav-group">Établissement</div>
-      <RouterLink to="/console" class="nav-item" active-class="active" exact-active-class="active">
-        Tableau de bord
+      <div class="nav-group">Fleet</div>
+      <RouterLink to="/admin" class="nav-item" active-class="active" exact-active-class="active">
+        Établissements
       </RouterLink>
-      <RouterLink to="/console/structure" class="nav-item" active-class="active">
-        Structure
+      <RouterLink to="/admin/nouveau" class="nav-item" active-class="active">
+        Nouvel établissement
       </RouterLink>
 
       <div class="side-foot">
@@ -44,7 +50,7 @@ async function logout() {
           <span class="avatar" aria-hidden="true">{{ auth.initials }}</span>
           <span class="who-text">
             <span class="who-name">{{ auth.profile?.fullName ?? "—" }}</span>
-            <span class="who-role">{{ auth.profile?.complexName ?? "—" }}</span>
+            <span class="who-role">Super administrateur</span>
           </span>
         </div>
         <button class="btn sm" type="button" @click="logout">Se déconnecter</button>
@@ -55,20 +61,13 @@ async function logout() {
       <header class="topbar">
         <div class="unit-meta">{{ dep.configLabel ?? dep.info?.label ?? "" }}</div>
         <div class="topbar-tools">
-          <DeploymentBadge />
+          <span class="pill accent">{{ dep.mode === "EDGE" ? "Serveur local" : "Cloud" }}</span>
           <ThemeToggle />
         </div>
       </header>
 
-      <!-- The one place the service ladder is visible to a user, and only when
-           something is wrong. Silence would be the worst possible answer. -->
-      <div
-        v-if="dep.banner"
-        class="banner"
-        :class="{ 'is-offline': dep.unreachable }"
-        role="status"
-      >
-        {{ dep.banner }}
+      <div v-if="dep.unreachable" class="banner is-offline" role="status">
+        Le serveur ne répond pas. Aucune modification ne sera enregistrée.
       </div>
 
       <main class="content">

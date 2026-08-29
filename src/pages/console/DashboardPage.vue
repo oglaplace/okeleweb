@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { useAuthStore } from "../../stores/auth";
 import { useDeploymentStore } from "../../stores/deployment";
 
+const auth = useAuthStore();
 const dep = useDeploymentStore();
 
 const tierLabel = computed(() => {
@@ -36,8 +38,11 @@ const tierNote = computed(() => {
   <div>
     <div class="page-head">
       <div>
-        <h1 class="page-title">Tableau de bord</h1>
-        <div class="page-sub">{{ dep.complexName ?? "Complexe" }}</div>
+        <h1 class="page-title">{{ dep.complexName ?? "Tableau de bord" }}</h1>
+        <div class="page-sub">
+          Bonjour {{ auth.profile?.fullName ?? "" }} — voici l'état de votre
+          établissement.
+        </div>
       </div>
     </div>
 
@@ -56,15 +61,17 @@ const tierNote = computed(() => {
       </div>
       <div class="stat">
         <div class="stat-label">Version</div>
-        <div class="stat-value" style="font-size: 17px">{{ dep.info?.appVersion ?? "—" }}</div>
+        <div class="stat-value" style="font-size: var(--t-h3)">
+          {{ dep.info?.appVersion ?? "—" }}
+        </div>
         <div class="stat-note">Schéma {{ dep.info?.schemaVersion ?? "—" }}</div>
       </div>
     </div>
 
-    <div class="card" style="margin-top: 20px">
+    <div class="card" style="margin-top: var(--s5)">
       <div class="card-head">Prochaines étapes</div>
       <div class="card-body">
-        <p style="margin: 0 0 10px; color: var(--ink-2)">
+        <p style="margin: 0; color: var(--ink-2)">
           Commencez par la <RouterLink to="/console/structure">structure</RouterLink> :
           créez les écoles, les cycles, les niveaux puis les classes. Les inscriptions,
           les coefficients et les bulletins s'y rattachent.

@@ -34,6 +34,17 @@ export const isRoutingError = (e: unknown) =>
 export const isOfflineError = (e: unknown) =>
   e instanceof ApiError && e.status === 0;
 
+/**
+ * True when the phone number authenticated fine but is attached to nothing.
+ *
+ * The single most common real failure, and the one that used to read as "no
+ * active account" — a sentence that tells a director their software is broken
+ * when in fact they simply have not been invited yet. The console answers it
+ * with its own screen; see LoginPage.
+ */
+export const isNoAccountError = (e: unknown) =>
+  e instanceof ApiError && e.code === "NO_ACCOUNT";
+
 async function request<T>(
   path: string,
   init: RequestInit & { auth?: boolean } = {},
@@ -88,6 +99,123 @@ export const platformInfo = (tenantId?: string) =>
 
 /** Authenticated: the signed-in user's own node + tier context. */
 export const myDeployment = () => request<DeploymentInfo>("/platform/me/deployment");
+
+// ─── identity ────────────────────────────────────────────────────────────────
+
+export interface Identity {
+  account: {
+    id: string;
+    phone: string;
+    fullName: string;
+    email: string | null;
+    /** Belongs to no établissement: an operator of the product itself. */
+    isPlatformAdmin: boolean;
+    permissions: string[];
+  };
+  deployment: DeploymentInfo;
+}
+
+/**
+ * WHO is signed in — as distinct from WHERE they are talking, which is
+ * `myDeployment`.
+ *
+ * The console's first call after an OTP. It used to be `myDeployment`, and that
+ * is why a platform account could not sign in: that endpoint answers with a
+ * tenant, a platform account has none, and the store read the null as a broken
+ * account and threw the token away.
+ */
+export const me = () => request<Identity>("/platform/me");
+
+// ─── établissements (platform staff only) ────────────────────────────────────
+
+export type EstablishmentType =
+  | "COMPLEXE" | "PRESCOLAIRE" | "PRIMAIRE" | "COLLEGE" | "LYCEE" | "UNIVERSITE";
+
+export type ServiceTier = "CONNECTED" | "RESILIENT" | "SOVEREIGN";
+
+export interface TenantSummary {
+  id: string;
+  name: string;
+  slug: string;
+  locale: string;
+  currency: string;
+  timezone: string;
+  active: boolean;
+  tier: ServiceTier;
+  authority: "CLOUD" | "EDGE";
+  migrationLockedAt: string | null;
+  createdAt: string;
+  establishmentType: EstablishmentType | null;
+  counts: { orgUnits: number; accounts: number; students: number };
+}
+
+export interface TenantAdmin {
+  id: string;
+  phone: string;
+  fullName: string;
+  email: string | null;
+  active: boolean;
+  lastSeenAt: string | null;
+  roles: string[];
+  permissions: string[];
+}
+
+export interface TenantDetail {
+  tenant: Omit<TenantSummary, "counts">;
+  root: OrgUnit | null;
+  admins: TenantAdmin[];
+  edgeNodes: {
+    id: string;
+    name: string;
+    status: string;
+    lastSeenAt: string | null;
+    appVersion: string | null;
+  }[];
+  academicYears: { id: string; label: string; isCurrent: boolean }[];
+}
+
+export interface NewTenantInput {
+  name: string;
+  slug?: string;
+  establishmentType: EstablishmentType;
+  tier?: ServiceTier;
+  locale?: string;
+  currency?: string;
+  timezone?: string;
+  code?: string;
+  admin: { phone: string; fullName: string; email?: string; role?: string };
+}
+
+export const platform = {
+  tenants: (opts: { q?: string; includeInactive?: boolean } = {}) => {
+    const qs = new URLSearchParams();
+    if (opts.q) qs.set("q", opts.q);
+    if (opts.includeInactive) qs.set("includeInactive", "true");
+    const suffix = qs.toString();
+    return request<TenantSummary[]>(`/platform/tenants${suffix ? `?${suffix}` : ""}`);
+  },
+  tenant: (id: string) => request<TenantDetail>(`/platform/tenants/${id}`),
+  createTenant: (body: NewTenantInput) =>
+    request<{
+      tenant: TenantSummary;
+      root: OrgUnit;
+      academicYear: string;
+      admin: { id: string; phone: string; fullName: string };
+    }>("/platform/tenants", { method: "POST", body: JSON.stringify(body) }),
+  updateTenant: (id: string, body: { name?: string; active?: boolean }) =>
+    request<TenantSummary>(`/platform/tenants/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  addAdmin: (
+    id: string,
+    body: { phone: string; fullName: string; email?: string; role?: string },
+  ) =>
+    request<{ account: { id: string; phone: string; fullName: string }; role: string }>(
+      `/platform/tenants/${id}/admins`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+};
 
 // ─── structure ───────────────────────────────────────────────────────────────
 
