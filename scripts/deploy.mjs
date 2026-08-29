@@ -71,6 +71,19 @@ if (process.env.VITE_USE_MOCK === "true" && !allowMock) {
   die("VITE_USE_MOCK=true would ship mock auth. Unset it, or pass --allow-mock.");
 }
 
+// VITE_API_URL is a DEV escape hatch: runtime.ts checks it before /config.json
+// and returns early if set. A build with it exported would therefore ignore the
+// config.json written below — the exact failure this script exists to prevent,
+// except silent, because the file on disk would look correct.
+if (process.env.VITE_API_URL) {
+  die(
+    `VITE_API_URL is set (${process.env.VITE_API_URL}).\n` +
+      "    src/lib/runtime.ts reads it before /config.json and returns early, so\n" +
+      "    it would be baked into the bundle and override the config.json this\n" +
+      "    script writes. Unset it — set ECOLE_API_BASE instead.",
+  );
+}
+
 // ── 2. build ────────────────────────────────────────────────────────────────
 step("building (vue-tsc + vite)");
 execFileSync("npm", ["run", "build"], { cwd: root, stdio: "inherit" });
