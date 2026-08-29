@@ -178,7 +178,7 @@ watch(yearId, () => void loadYearScoped());
     <div v-if="loading" class="card"><div class="empty">Chargement…</div></div>
 
     <!-- Preview: computed, nothing written. -->
-    <div v-else-if="preview" class="card">
+    <div v-else-if="preview" class="card is-grid">
       <div class="card-head">
         <span>Résultats — {{ preview.gradingSystem.name }}</span>
         <span class="unit-meta">
@@ -223,7 +223,7 @@ watch(yearId, () => void loadYearScoped());
     </div>
 
     <!-- Otherwise the plain roster. -->
-    <div v-else class="card">
+    <div v-else class="card is-grid">
       <div class="card-head">
         <span>Effectif</span>
         <span class="unit-meta">{{ roster.length }} élève(s)</span>

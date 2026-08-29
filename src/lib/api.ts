@@ -174,6 +174,38 @@ export interface TenantDetail {
   academicYears: { id: string; label: string; isCurrent: boolean }[];
 }
 
+// ─── blueprints ──────────────────────────────────────────────────────────────
+
+export type BlueprintModule =
+  | "PRESCOLAIRE" | "PRIMAIRE" | "COLLEGE" | "LYCEE_GENERAL"
+  | "LYCEE_TECHNIQUE" | "SUPERIEUR" | "ADMINISTRATION";
+
+export interface ScaffoldPreview {
+  modules: BlueprintModule[];
+  orgUnits: number;
+  levels: number;
+  series: number;
+  departments: number;
+}
+
+export interface ScaffoldReport extends ScaffoldPreview {
+  periods: number;
+  /** Units that already existed and were left alone. */
+  skipped: number;
+}
+
+/** Is this établissement ready to be used, or still an empty shell? */
+export interface Completeness {
+  hasRoot: boolean;
+  /** Nothing but a root — no screen in the console can do anything yet. */
+  isEmpty: boolean;
+  total: number;
+  levels: number;
+  classes: number;
+  /** Levels exist but no cohort does, so nobody can be enrolled. */
+  needsClasses: boolean;
+}
+
 export interface NewTenantInput {
   name: string;
   slug?: string;
@@ -183,6 +215,8 @@ export interface NewTenantInput {
   currency?: string;
   timezone?: string;
   code?: string;
+  /** Omit for the type's defaults; [] means "root only" and is respected. */
+  modules?: BlueprintModule[];
   admin: { phone: string; fullName: string; email?: string; role?: string };
 }
 
@@ -200,6 +234,8 @@ export const platform = {
       tenant: TenantSummary;
       root: OrgUnit;
       academicYear: string;
+      modules: BlueprintModule[];
+      scaffold: ScaffoldReport;
       admin: { id: string; phone: string; fullName: string };
     }>("/platform/tenants", { method: "POST", body: JSON.stringify(body) }),
   updateTenant: (id: string, body: { name?: string; active?: boolean }) =>
@@ -242,6 +278,31 @@ export const orgUnits = {
   ancestors: (id: string) => request<OrgUnit[]>(`/org-units/${id}/ancestors`),
   create: (body: Partial<OrgUnit> & { kind: OrgUnitKind; name: string; code: string }) =>
     request<OrgUnit>("/org-units", { method: "POST", body: JSON.stringify(body) }),
+
+  /** Is this établissement still an empty shell? Drives the console's empty state. */
+  completeness: () => request<Completeness>("/org-units/completeness"),
+
+  /**
+   * Which kinds may be created under a unit.
+   *
+   * Asked rather than hardcoded: ALLOWED_PARENTS is what the POST enforces, and
+   * a client working from its own copy offers options the server then refuses.
+   */
+  allowedKinds: (parentId?: string | null) =>
+    request<OrgUnitKind[]>(
+      `/org-units/allowed-kinds${parentId ? `?parentId=${encodeURIComponent(parentId)}` : ""}`,
+    ),
+
+  previewScaffold: (modules: BlueprintModule[]) =>
+    request<ScaffoldPreview>(
+      `/org-units/scaffold/preview?modules=${encodeURIComponent(modules.join(","))}`,
+    ),
+
+  scaffold: (modules: BlueprintModule[]) =>
+    request<ScaffoldReport>("/org-units/scaffold", {
+      method: "POST",
+      body: JSON.stringify({ modules }),
+    }),
 };
 
 // ─── enrolment ───────────────────────────────────────────────────────────────

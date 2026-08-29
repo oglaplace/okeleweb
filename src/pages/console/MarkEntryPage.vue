@@ -292,7 +292,7 @@ watch(assessmentId, () => void loadGrid());
       </div>
     </div>
 
-    <div v-else class="card">
+    <div v-else class="card is-grid">
       <div class="card-head">
         <span>{{ grid.rows.length }} élève(s)</span>
         <span class="unit-meta">

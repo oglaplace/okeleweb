@@ -454,9 +454,39 @@
    remaining width. Numbers then sit in narrow columns directly under their
    headers, and the label a reader scans for is the one thing that can breathe.
    ============================================================================ */
+/**
+ * SQUARE, deliberately.
+ *
+ * The header is a hard band of `--surface-2` spanning the full width. Inside a
+ * rounded card its top corners were clipped into arcs, so the band read as a
+ * rectangle with two bites taken out of it — the "off" corner. Rounding the
+ * band to match would have been worse: a data grid whose header curves looks
+ * like a widget, not like a register.
+ *
+ * So the table gets its own square-cornered frame rather than borrowing the
+ * card's. Square is also the right register for the content: these are rows of
+ * figures a director cross-checks against paper.
+ */
 .table-wrap {
   overflow-x: auto;
-  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--surface);
+}
+/**
+ * A card that holds a grid squares its corners and lets the table draw the
+ * frame — two borders 1px apart is the other way this looked off.
+ *
+ * An explicit class rather than `:has(> .table-wrap)`. The selector works
+ * everywhere that matters today, but when it does not it fails back to exactly
+ * the defect this replaces: a rounded card clipping a square header band. A
+ * modifier the markup states cannot silently not apply.
+ */
+.card.is-grid {
+  border-radius: 0;
+}
+.card.is-grid > .table-wrap {
+  border: none;
 }
 table.data {
   width: 100%;
@@ -481,13 +511,20 @@ table.data th {
   text-transform: uppercase;
   color: var(--ink-3);
   text-align: right;
-  padding: 9px var(--s3);
-  border-bottom: 1px solid var(--line);
+  padding: 11px var(--s4);
+  border-bottom: 1px solid var(--line-strong);
   white-space: nowrap;
 }
 table.data td {
-  padding: 10px var(--s3);
+  /* Matches the header's horizontal padding exactly — a column whose figures
+     sit on a different left edge from their label is the other half of what
+     read as "off". */
+  padding: 11px var(--s4);
   text-align: right;
+  /* Middle, not the `baseline` default: the name cell is two lines tall and
+     every figure beside it was sticking to the first line, leaving the numbers
+     hanging above the centre of their own row. */
+  vertical-align: middle;
   font-variant-numeric: tabular-nums;
   border-bottom: 1px solid var(--line-soft);
   color: var(--ink-2);
@@ -516,11 +553,25 @@ table.data td.c-name {
   white-space: normal;
 }
 table.data td.c-name {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/**
+ * The avatar-plus-name block inside a name cell.
+ *
+ * The flex box is an INNER span, never the `<td>` itself. Making the cell a
+ * flex container takes it out of table layout: its height stops being the row's
+ * height, so its `border-bottom` is drawn at its own content edge and the row
+ * rule arrives at the name column at a different y than at every other column.
+ * The result was a visible step in every separator, which read as a stray
+ * vertical line down the table.
+ */
+.cell-id {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: var(--ink);
-  font-weight: 600;
+  min-width: 0;
 }
 /* Secondary columns that are words rather than figures. */
 table.data th.c-text,
@@ -564,21 +615,25 @@ table.data td.c-text {
 }
 
 /* A key for the abbreviated numeric headers, ABOVE the table — the columns need
-   explaining before they are read, not after scrolling past every row. */
+   explaining before they are read, not after scrolling past every row.
+   Square like the header they explain: a row of pills above a square grid was
+   two different shape languages stacked on top of each other. */
 .legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin: 0 0 var(--s3);
+  gap: var(--s2);
+  /* Enough room that the key belongs to the table below it rather than
+     floating between the toolbar and the grid. */
+  margin: var(--s2) 0 var(--s3);
   padding: 0;
 }
 .legend-item {
   display: inline-flex;
   align-items: baseline;
-  gap: 6px;
-  padding: 3px 9px;
+  gap: 7px;
+  padding: 5px 10px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: 0;
   background: var(--surface-2);
   cursor: help;
 }
@@ -821,6 +876,37 @@ table.data td.c-text {
   margin-bottom: var(--s3);
 }
 
+.fieldset-note {
+  font-size: var(--t-small);
+  color: var(--ink-3);
+  line-height: 1.5;
+  max-width: 68ch;
+  margin: -4px 0 var(--s3);
+}
+
+/* What a selection would create, counted by the API from the same catalogue
+   that builds it — a number the operator can read beats a promise they cannot
+   check. */
+.preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-top: var(--s2);
+}
+.preview-item {
+  padding: 5px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: var(--t-small);
+  color: var(--ink-2);
+}
+.preview-item b {
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Segmented control — used to pick an establishment type, where the options
    are few, fixed, and worth reading side by side rather than in a dropdown. */
 .choices {
@@ -859,6 +945,28 @@ table.data td.c-text {
   font-size: var(--t-small);
   color: var(--ink-3);
   line-height: 1.35;
+}
+/* Whose rule this is — the ministry's or the trade's. Set apart from the
+   description because it is the line that stops a convention being mistaken for
+   a legal requirement. */
+.choice-basis {
+  /* Pushed to the bottom of the card so the basis lines align across a row of
+     unequal descriptions — they are meant to be compared. */
+  margin-top: auto;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  padding-top: 5px;
+  border-top: 1px dashed var(--line);
+}
+.choice.is-locked {
+  cursor: default;
+  opacity: 0.72;
+}
+.choice.is-locked:hover {
+  border-color: var(--line-strong);
+  background: var(--surface);
 }
 .choice.is-selected {
   border-color: var(--primary);
@@ -1150,7 +1258,7 @@ table.data td.c-text {
   display: flex;
   align-items: center;
   gap: var(--s2);
-  margin-bottom: var(--s4);
+  margin-bottom: var(--s3);
   flex-wrap: wrap;
 }
 .search {
@@ -1235,177 +1343,93 @@ table.data td.c-text {
 /* ============================================================================
    Login.
    ============================================================================
-   NOT the two-column split — the marketing panel on the left, the form on the
-   right. That layout is on Cloudflare, Vercel, Linear, Stripe and roughly every
-   B2B product shipped since 2019; a buyer has seen it forty times this year and
-   it says nothing about what they are signing into.
+   One centred column: wordmark, card, footnote. Nothing else.
 
-   This screen is instead the document the product exists to produce. A ruled
-   ledger ground, one sheet floating on it, the sheet laid out like an official
-   bulletin: a header band with a rule under it, a row of administrative fields,
-   the body, and a signature foot. Beside it sits a real fragment of a bulletin
-   — moyenne, rang, mention — set in the same figures the printed one uses.
+   Two earlier attempts are worth recording, because both were wrong in the
+   opposite direction. The first was the two-column marketing split, which ships
+   on every B2B product since 2019 and says nothing. The second dressed the
+   screen as a printed bulletin — ruled paper, a red margin rule, a sample
+   report card — which was distinctive and also a gimmick: clever the first
+   time, tiresome by the fifth morning, and it made a sign-in form look like a
+   document nobody could read.
 
-   The pitch is therefore the artefact rather than a paragraph about it. It is
-   also honest: this IS what comes out the other end, typeset the way it prints.
-   And because it is furniture rather than a slideshow, it does not wear out on
-   a director who signs in every morning.
+   What is left is deliberately ordinary in structure and confident in
+   execution. The weight sits in ONE place — a large, tightly-tracked wordmark —
+   and everything under it is quiet: generous spacing, one accent, one primary
+   action, no ornament. That is what reads as professional at a glance and still
+   reads as professional on the four-hundredth sign-in.
    ============================================================================ */
 .login {
-  position: relative;
   min-height: 100%;
   display: grid;
   place-items: center;
   padding: var(--s6) var(--s5);
-  overflow: hidden;
+  background: var(--bg);
 }
 
-/* Ruled paper, drawn rather than loaded — the register this replaces. Two
-   gradients and no asset, so it costs nothing on a metered connection. */
-.login::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image:
-    repeating-linear-gradient(
-      to bottom,
-      var(--line-soft) 0 1px,
-      transparent 1px 30px
-    ),
-    linear-gradient(
-      120deg,
-      color-mix(in srgb, var(--primary) 7%, transparent),
-      transparent 55%
-    );
-  opacity: 0.75;
-  pointer-events: none;
-}
-/* The margin rule of a school register — one red-ink line down the left. */
-.login::after {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 clamp(24px, 8vw, 120px);
-  width: 1px;
-  background: color-mix(in srgb, var(--danger) 30%, transparent);
-  pointer-events: none;
-}
-
-.login-frame {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 400px) minmax(0, 300px);
-  align-items: start;
-  gap: var(--s6);
+.login-col {
   width: 100%;
-  max-width: 760px;
+  max-width: 396px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
 }
 
-/* ── the sheet ── */
-.sheet {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-}
-.sheet-head {
-  padding: var(--s5) var(--s5) var(--s3);
-  border-bottom: 2px solid var(--ink);
-}
-.sheet-mark {
+/* The one bold element. Everything else defers to it. */
+.login-brand {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: var(--s3);
 }
-.sheet-mark-badge {
+.login-mark {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 40px;
+  height: 40px;
   flex: none;
-  border-radius: var(--radius-sm);
+  border-radius: 9px;
   background: var(--primary);
   color: var(--primary-ink);
-  font-size: var(--t-body);
+  font-size: 20px;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
 }
-.sheet-wordmark {
-  font-size: var(--t-h3);
+.login-wordmark {
+  font-size: 30px;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.035em;
+  line-height: 1;
   color: var(--ink);
 }
-.sheet-kicker {
-  margin-top: var(--s3);
-  font-family: var(--mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
+.login-tagline {
+  font-size: var(--t-small);
+  font-weight: 550;
+  letter-spacing: 0.02em;
   color: var(--ink-3);
+  margin-top: 3px;
 }
 
-/* The administrative row every Congolese official document opens with. Here it
-   carries the two facts a user actually needs before signing in: which server
-   they reached, and whether it answered. */
-.sheet-meta {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2px var(--s4);
-  padding: var(--s3) var(--s5);
-  border-bottom: 1px solid var(--line-soft);
-  background: var(--surface-2);
-}
-.sheet-meta-label {
-  font-size: 9.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--ink-3);
-  font-weight: 650;
-}
-.sheet-meta-value {
-  font-size: var(--t-small);
-  color: var(--ink-2);
-  font-weight: 550;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.sheet-body {
-  padding: var(--s5);
-}
-.sheet-foot {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--s3);
-  padding: var(--s3) var(--s5) var(--s4);
-  border-top: 1px solid var(--line-soft);
-}
-/* The signature line of the printed document, kept as a quiet visual rhyme. */
-.sheet-sign {
-  border-top: 1px solid var(--line-strong);
-  padding-top: 3px;
-  min-width: 118px;
-  font-size: 9.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--ink-3);
-  text-align: center;
+.login-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: var(--s6);
 }
 
 .login-title {
-  font-size: var(--t-h2);
+  font-size: var(--t-h3);
   font-weight: 650;
-  letter-spacing: -0.02em;
-  margin-bottom: 3px;
+  letter-spacing: -0.015em;
+  margin-bottom: 4px;
 }
 .login-sub {
   color: var(--ink-3);
   font-size: var(--t-body);
+  line-height: 1.5;
   margin-bottom: var(--s5);
 }
+
 .login-actions,
 .form-actions {
   display: flex;
@@ -1414,125 +1438,36 @@ table.data td.c-text {
   flex-wrap: wrap;
 }
 
-/* ── the proof column: an actual bulletin fragment ── */
-.proof {
-  padding-top: var(--s4);
-}
-.proof-lede {
-  font-size: var(--t-h3);
-  font-weight: 620;
-  letter-spacing: -0.018em;
-  line-height: 1.3;
-  color: var(--ink);
-  margin-bottom: var(--s2);
-  text-wrap: balance;
-}
-.proof-sub {
-  font-size: var(--t-body);
-  line-height: 1.55;
-  color: var(--ink-2);
-  margin-bottom: var(--s4);
-}
-
-.proof-card {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  padding: var(--s3);
-  box-shadow: var(--shadow-xs);
-}
-.proof-card-head {
-  font-family: var(--mono);
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--ink-3);
-  border-bottom: 1px solid var(--ink);
-  padding-bottom: 5px;
-  margin-bottom: var(--s2);
-}
-.proof-figures {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--s2);
-  margin-bottom: var(--s3);
-}
-.proof-fig-value {
-  font-size: var(--t-h3);
-  font-weight: 700;
-  letter-spacing: -0.025em;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
-  line-height: 1.1;
-}
-.proof-fig-label {
-  font-size: 9.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-  color: var(--ink-3);
-  font-weight: 650;
-  margin-top: 2px;
-}
-.proof-lines {
-  font-size: var(--t-small);
-  font-variant-numeric: tabular-nums;
-}
-.proof-line {
+/* Below the card, not inside it: server state and theme are about the app, not
+   about signing in. */
+.login-foot {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  gap: var(--s2);
-  padding: 3px 0;
-  border-bottom: 1px solid var(--line-soft);
-  color: var(--ink-2);
-}
-.proof-line:last-child {
-  border-bottom: none;
-}
-.proof-line b {
-  font-weight: 650;
-  color: var(--ink);
-}
-
-.proof-points {
-  list-style: none;
-  margin: var(--s4) 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
+  gap: var(--s3);
   font-size: var(--t-small);
-  color: var(--ink-2);
-  line-height: 1.5;
+  color: var(--ink-3);
 }
-.proof-points li {
-  display: flex;
-  gap: 9px;
-  align-items: baseline;
+.login-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
 }
-.proof-points li::before {
-  content: "";
-  width: 5px;
-  height: 5px;
+.login-dot {
+  width: 6px;
+  height: 6px;
   flex: none;
   border-radius: 50%;
-  background: var(--primary);
-  transform: translateY(-2px);
+  background: var(--ok);
 }
-
-@media (max-width: 820px) {
-  .login-frame {
-    grid-template-columns: minmax(0, 400px);
-    justify-content: center;
-    max-width: 400px;
-  }
-  /* The proof column goes, not the sheet. On a phone in a school corridor the
-     user is signing in, not evaluating the product. */
-  .proof {
-    display: none;
-  }
-  .login::after {
-    display: none;
-  }
+.login-dot.is-down {
+  background: var(--danger);
+}
+.login-server {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ---------- tree ---------- */

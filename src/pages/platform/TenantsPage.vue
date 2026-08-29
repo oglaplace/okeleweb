@@ -115,7 +115,7 @@ onMounted(() => void load());
 
     <div v-if="error" class="form-error">{{ error }}</div>
 
-    <div class="card">
+    <div class="card is-grid">
       <div v-if="loading" class="card-body stack">
         <div class="skeleton" style="width: 40%" />
         <div class="skeleton" style="width: 70%" />
@@ -181,10 +181,12 @@ onMounted(() => void load());
                 @keydown.enter="router.push({ name: 'tenant', params: { id: t.id } })"
               >
                 <td class="c-name">
-                  <span class="row-mark" aria-hidden="true">{{ initials(t.name) }}</span>
-                  <span class="row-text">
-                    <span class="cell-strong">{{ t.name }}</span>
-                    <span class="cell-sub">{{ t.slug }}</span>
+                  <span class="cell-id">
+                    <span class="row-mark" aria-hidden="true">{{ initials(t.name) }}</span>
+                    <span class="row-text">
+                      <span class="cell-strong">{{ t.name }}</span>
+                      <span class="cell-sub">{{ t.slug }}</span>
+                    </span>
                   </span>
                 </td>
                 <td class="c-text">

@@ -180,7 +180,7 @@ onMounted(() => void load());
       </div>
 
       <div class="stack">
-        <div class="card">
+        <div class="card is-grid">
           <div class="card-head">
             Personnes pouvant se connecter
             <button
@@ -243,10 +243,12 @@ onMounted(() => void load());
               <tbody>
                 <tr v-for="a in data.admins" :key="a.id">
                   <td class="c-name">
-                    <span class="row-mark" aria-hidden="true">{{ initials(a.fullName) }}</span>
-                    <span class="row-text">
-                      <span class="cell-strong">{{ a.fullName }}</span>
-                      <span class="cell-sub">{{ a.roles.join(", ") || "—" }}</span>
+                    <span class="cell-id">
+                      <span class="row-mark" aria-hidden="true">{{ initials(a.fullName) }}</span>
+                      <span class="row-text">
+                        <span class="cell-strong">{{ a.fullName }}</span>
+                        <span class="cell-sub">{{ a.roles.join(", ") || "—" }}</span>
+                      </span>
                     </span>
                   </td>
                   <td>{{ a.phone }}</td>
@@ -276,7 +278,7 @@ onMounted(() => void load());
           </div>
         </div>
 
-        <div v-if="data.edgeNodes.length" class="card">
+        <div v-if="data.edgeNodes.length" class="card is-grid">
           <div class="card-head">Serveurs locaux</div>
           <div class="table-wrap">
             <table class="data">

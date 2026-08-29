@@ -4,8 +4,10 @@ import { useRouter } from "vue-router";
 import * as api from "../../lib/api";
 import { useBusyStore } from "../../stores/busy";
 import PhoneInput from "../../components/ui/PhoneInput.vue";
+import ModulePicker from "../../components/structure/ModulePicker.vue";
 import {
-  ESTABLISHMENT_LABELS, ESTABLISHMENT_NOTES, TIER_LABELS, TIER_NOTES,
+  DEFAULT_MODULES, ESTABLISHMENT_LABELS, ESTABLISHMENT_NOTES,
+  TIER_LABELS, TIER_NOTES,
 } from "./labels";
 
 /**
@@ -36,6 +38,42 @@ const code = ref("");
 const adminName = ref("");
 const adminPhone = ref("");
 const adminRole = ref("Directeur Général");
+
+/**
+ * The structure this établissement will be created with.
+ *
+ * Preselected from the type and then freely editable, because "complexe
+ * scolaire" in Brazzaville means whatever that complex actually runs — half of
+ * them run a maternelle nobody asked about. Changing the type resets the
+ * selection unless the operator has already touched it: silently discarding a
+ * deliberate choice is worse than a stale default.
+ */
+const modules = ref<api.BlueprintModule[]>(DEFAULT_MODULES.COMPLEXE ?? []);
+const modulesTouched = ref(false);
+const preview = ref<api.ScaffoldPreview | null>(null);
+
+watch(establishmentType, (t) => {
+  if (!modulesTouched.value) modules.value = DEFAULT_MODULES[t] ?? [];
+});
+
+// The preview is computed by the API from the same catalogue that builds the
+// tree, so a count shown here cannot disagree with what lands.
+watch(
+  modules,
+  async (list) => {
+    if (!list.length) {
+      preview.value = null;
+      return;
+    }
+    try {
+      preview.value = await api.orgUnits.previewScaffold(list);
+    } catch {
+      // A failed preview must not block registration — it is a courtesy.
+      preview.value = null;
+    }
+  },
+  { immediate: true },
+);
 
 const working = ref(false);
 const error = ref<string | null>(null);
@@ -83,6 +121,7 @@ async function submit() {
           tier: tier.value,
           ...(slug.value ? { slug: slug.value } : {}),
           ...(code.value.trim() ? { code: code.value.trim().toUpperCase() } : {}),
+          modules: modules.value,
           admin: {
             phone: adminPhone.value,
             fullName: adminName.value.trim(),
@@ -171,6 +210,29 @@ async function submit() {
               <span class="choice-note">{{ ESTABLISHMENT_NOTES[t] }}</span>
             </label>
           </div>
+        </fieldset>
+
+        <fieldset class="fieldset">
+          <legend>Structure de départ</legend>
+          <p class="fieldset-note">
+            La structure qui fait d'un lycée un lycée vient du ministère, pas de
+            l'établissement — elle est donc créée d'avance. L'administrateur n'aura
+            qu'à y affecter le personnel, ouvrir les classes et inscrire les élèves.
+          </p>
+          <ModulePicker v-model="modules" :disabled="working" @update:model-value="modulesTouched = true" />
+
+          <div v-if="preview" class="preview">
+            <div class="preview-item">
+              <b>{{ preview.orgUnits }}</b> unités
+            </div>
+            <div class="preview-item"><b>{{ preview.levels }}</b> niveaux</div>
+            <div class="preview-item"><b>{{ preview.series }}</b> séries</div>
+            <div class="preview-item"><b>{{ preview.departments }}</b> services</div>
+          </div>
+          <p v-else class="hint">
+            Aucun module sélectionné — l'établissement sera créé vide, et son
+            administrateur construira la structure lui-même.
+          </p>
         </fieldset>
 
         <fieldset class="fieldset">
