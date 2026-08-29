@@ -226,6 +226,7 @@ async function submit() {
               <b>{{ preview.orgUnits }}</b> unités
             </div>
             <div class="preview-item"><b>{{ preview.levels }}</b> niveaux</div>
+            <div class="preview-item"><b>{{ preview.subjects }}</b> matières</div>
             <div class="preview-item"><b>{{ preview.series }}</b> séries</div>
             <div class="preview-item"><b>{{ preview.departments }}</b> services</div>
           </div>

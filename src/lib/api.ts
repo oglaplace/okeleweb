@@ -197,10 +197,14 @@ export interface ScaffoldPreview {
   classes: number;
   series: number;
   departments: number;
+  /** The cycle's national-exam papers, deduplicated across modules. */
+  subjects: number;
 }
 
 export interface ScaffoldReport extends ScaffoldPreview {
   periods: number;
+  offerings: number;
+  fiscalYears: number;
   /** Units that already existed and were left alone. */
   skipped: number;
 }
@@ -351,6 +355,34 @@ export const orgUnits = {
       body: JSON.stringify({ modules }),
     }),
 };
+
+// ─── readiness ───────────────────────────────────────────────────────────────
+
+export type Severity = "BLOCKING" | "WARNING";
+
+export interface Finding {
+  id: string;
+  severity: Severity;
+  title: string;
+  /** Why it matters, in the director's terms — not the schema's. */
+  detail: string;
+  /** Action id from lib/actions.ts, when one fixes it. */
+  action: string | null;
+  count?: number;
+}
+
+export interface Readiness {
+  /** READY only when nothing blocks. Warnings do not stop a school running. */
+  status: "READY" | "DEGRADED" | "BLOCKED";
+  blocking: number;
+  warnings: number;
+  /** Already sorted blocking-first by the server. */
+  findings: Finding[];
+  checkedAt: string;
+}
+
+/** Can this établissement run, and if not, what stops it? */
+export const readiness = () => request<Readiness>("/platform/readiness");
 
 // ─── people ──────────────────────────────────────────────────────────────────
 

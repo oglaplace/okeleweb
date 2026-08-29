@@ -1996,6 +1996,147 @@ table.data td.c-text {
 }
 
 /* ============================================================================
+   Inbox — what is stopping this établissement, top right.
+   ============================================================================
+   A count in the chrome, opening a list that is blocking-first. The badge turns
+   red only for blocking items: a permanent red dot for "no fee schedule yet"
+   trains the operator to ignore it, and then the one that mattered goes unread
+   too. */
+.inbox-wrap {
+  position: relative;
+}
+.inbox-trigger {
+  position: relative;
+  overflow: visible;
+}
+.inbox-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--ink-3);
+  color: var(--bg);
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.inbox-badge.is-blocking {
+  background: var(--danger);
+  color: var(--danger-ink);
+}
+
+/* A popover you can only close with the same button is one people leave open. */
+.inbox-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+
+.inbox {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 61;
+  width: min(420px, calc(100vw - var(--s5) * 2));
+  max-height: min(560px, 70vh);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.inbox-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px var(--s4);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.inbox-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.inbox-dot.is-degraded {
+  background: var(--warn);
+}
+.inbox-dot.is-blocked {
+  background: var(--danger);
+}
+.inbox-title {
+  font-size: var(--t-body);
+  font-weight: 650;
+  color: var(--ink);
+}
+.inbox-empty {
+  padding: var(--s5) var(--s4);
+  font-size: var(--t-body);
+  color: var(--ink-2);
+  text-align: center;
+}
+
+.inbox-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.inbox-item {
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--line-soft);
+  /* The severity is on the left edge as well as in the pill: colour alone does
+     not read on the washed-out monitors these offices run. */
+  border-left: 3px solid var(--line);
+}
+.inbox-item:last-child {
+  border-bottom: none;
+}
+.inbox-item.is-blocking {
+  border-left-color: var(--danger);
+}
+.inbox-item-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-bottom: 4px;
+}
+.inbox-item-title {
+  font-size: var(--t-body);
+  font-weight: 650;
+  color: var(--ink);
+}
+.inbox-item-detail {
+  margin: 0;
+  font-size: var(--t-small);
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.inbox-item-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 6px;
+  font-size: var(--t-small);
+  font-weight: 600;
+  color: var(--primary);
+}
+.inbox-item-go:hover {
+  text-decoration: none;
+  gap: 6px;
+}
+
+/* ============================================================================
    Hints — "bon à savoir", bottom right.
    ============================================================================
    Out of the working column entirely. Inside the page they looked like controls

@@ -9,6 +9,7 @@ import ActionRail from "../structure/ActionRail.vue";
 import Breadcrumb from "./Breadcrumb.vue";
 import HintPanel from "./HintPanel.vue";
 import OrgPane from "./OrgPane.vue";
+import Inbox from "./Inbox.vue";
 import Icon from "../ui/Icon.vue";
 
 const auth = useAuthStore();
@@ -102,6 +103,7 @@ async function logout() {
         <Breadcrumb />
         <div class="topbar-tools">
           <DeploymentBadge />
+          <Inbox />
           <ThemeToggle />
         </div>
       </header>

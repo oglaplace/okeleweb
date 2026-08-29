@@ -197,8 +197,10 @@ async function install() {
       <div class="card-body">
         <p class="fieldset-note">
           Réforme de janvier 2026 : primaire à cinq ans avec un CP unique, CEP sur
-          contrôle continu, secondaire en 4 + 3 ans, LMD généralisé. Une classe est
-          ouverte à chaque niveau, du préscolaire au lycée technique.
+          contrôle continu, secondaire en 4 + 3 ans, LMD généralisé. Chaque niveau
+          reçoit une classe et les matières des examens nationaux du cycle — CEPE,
+          BEPC, baccalauréat. Les coefficients restent à définir : ils dépendent de
+          la série, et c'est la seule chose que nous ne devinons pas à votre place.
         </p>
         <!-- `installed` was built and never wired. Without it the picker
              offered a module the tenant already had, the operator ticked it,
@@ -209,6 +211,7 @@ async function install() {
           <div class="preview-item"><b>{{ preview.orgUnits }}</b> unités</div>
           <div class="preview-item"><b>{{ preview.levels }}</b> niveaux</div>
           <div class="preview-item"><b>{{ preview.classes }}</b> classes</div>
+          <div class="preview-item"><b>{{ preview.subjects }}</b> matières</div>
           <div class="preview-item"><b>{{ preview.series }}</b> séries</div>
         </div>
       </div>
