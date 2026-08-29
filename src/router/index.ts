@@ -41,6 +41,12 @@ const router = createRouter({
         { path: "inscription", name: "enroll", component: () => import("../pages/console/EnrollPage.vue") },
         { path: "personnel", name: "staff", component: () => import("../pages/console/StaffPage.vue") },
         { path: "import", name: "import", component: () => import("../pages/console/ImportPage.vue") },
+        /**
+         * One route for every declarative action — see lib/actions.ts. Actions
+         * with a screen of their own keep their route above; this serves the
+         * rest, which are all "pick a node, fill a form".
+         */
+        { path: "action/:id", name: "action", component: () => import("../pages/console/ActionPage.vue") },
         { path: "classes/:id", name: "classe", component: () => import("../pages/console/ClassePage.vue") },
         { path: "classes/:id/notes", name: "marks", component: () => import("../pages/console/MarkEntryPage.vue") },
         { path: "classes/:id/bulletins", name: "bulletins", component: () => import("../pages/console/BulletinsPage.vue") },

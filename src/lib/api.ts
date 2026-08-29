@@ -193,6 +193,8 @@ export interface ScaffoldPreview {
   modules: BlueprintModule[];
   orgUnits: number;
   levels: number;
+  /** One cohort opened per level — a pupil enrols into the classe, not the niveau. */
+  classes: number;
   series: number;
   departments: number;
 }
@@ -280,6 +282,28 @@ export interface OrgUnit {
   validTo: string | null;
 }
 
+export interface TreeUnit {
+  id: string;
+  parentId: string | null;
+  kind: OrgUnitKind;
+  name: string;
+  code: string;
+  rank: number;
+  capacity: number | null;
+  validTo: string | null;
+  depth: number;
+}
+
+export interface SearchHit {
+  id: string;
+  parentId: string | null;
+  kind: OrgUnitKind;
+  name: string;
+  code: string;
+  /** Root-first ancestry, self excluded. */
+  path: string[];
+}
+
 export const orgUnits = {
   children: (parentId?: string | null) =>
     request<OrgUnit[]>(`/org-units${parentId ? `?parentId=${encodeURIComponent(parentId)}` : ""}`),
@@ -287,6 +311,18 @@ export const orgUnits = {
   ancestors: (id: string) => request<OrgUnit[]>(`/org-units/${id}/ancestors`),
   create: (body: Partial<OrgUnit> & { kind: OrgUnitKind; name: string; code: string }) =>
     request<OrgUnit>("/org-units", { method: "POST", body: JSON.stringify(body) }),
+
+  /**
+   * The whole tree, flat and depth-ordered, in ONE request.
+   *
+   * Lazy per-node loading is a round trip per expansion, and a director opening
+   * a complex to reach 6e B pays six of them on a metered connection.
+   */
+  tree: () => request<TreeUnit[]>("/org-units/tree"),
+
+  /** By name or code, each hit carrying the path that disambiguates it. */
+  search: (q: string) =>
+    request<SearchHit[]>(`/org-units/search?q=${encodeURIComponent(q)}`),
 
   /** Is this établissement still an empty shell? Drives the console's empty state. */
   completeness: () => request<Completeness>("/org-units/completeness"),
@@ -634,6 +670,28 @@ export const grading = {
     }),
 };
 
+// ─── finance ─────────────────────────────────────────────────────────────────
+
+export const finance = {
+  /** The SYSCOHADA chart of accounts, once per établissement. */
+  seedLedger: () => request<unknown>("/finance/ledger/seed", { method: "POST" }),
+
+  createFeeType: (body: {
+    code: string;
+    name: string;
+    recurrence?: "ONCE" | "PER_PERIOD" | "MONTHLY";
+  }) => request<unknown>("/finance/fee-types", { method: "POST", body: JSON.stringify(body) }),
+
+  createFeeSchedule: (body: {
+    orgUnitId: string;
+    academicYearId: string;
+    name: string;
+    items: { feeTypeId: string; amountXaf: number; installments?: number }[];
+  }) => request<unknown>("/finance/fee-schedules", { method: "POST", body: JSON.stringify(body) }),
+
+  feeTypes: () => request<{ id: string; code: string; name: string }[]>("/finance/fee-types"),
+};
+
 // ─── academics ───────────────────────────────────────────────────────────────
 
 export interface Period {
@@ -668,8 +726,65 @@ export interface AssessmentType {
   defaultWeight: string;
 }
 
+export interface Subject {
+  id: string;
+  code: string;
+  name: string;
+}
+
+export interface Serie {
+  id: string;
+  code: string;
+  name: string;
+}
+
 export const academics = {
   years: () => request<AcademicYear[]>("/academics/years"),
+  createYear: (body: {
+    label: string;
+    startsOn: string;
+    endsOn: string;
+    isCurrent?: boolean;
+  }) => request<AcademicYear>("/academics/years", { method: "POST", body: JSON.stringify(body) }),
+
+  subjects: () => request<Subject[]>("/academics/subjects"),
+  createSubject: (body: { code: string; name: string }) =>
+    request<Subject>("/academics/subjects", { method: "POST", body: JSON.stringify(body) }),
+
+  createPeriod: (body: {
+    orgUnitId: string;
+    academicYearId: string;
+    kind?: "TRIMESTRE" | "SEMESTRE" | "ANNEE";
+    label: string;
+    sequence: number;
+    startsOn: string;
+    endsOn: string;
+  }) => request<Period>("/academics/periods", { method: "POST", body: JSON.stringify(body) }),
+
+  lockPeriod: (id: string) =>
+    request<Period>(`/academics/periods/${id}/lock`, { method: "PATCH" }),
+
+  createOffering: (body: {
+    niveauId: string;
+    academicYearId: string;
+    subjectId: string;
+    weeklyHours?: number;
+  }) => request<CourseOffering>("/academics/offerings", { method: "POST", body: JSON.stringify(body) }),
+
+  setCoefficient: (body: {
+    niveauId: string;
+    academicYearId: string;
+    subjectId: string;
+    serieId: string | null;
+    value: number;
+  }) => request<unknown>("/academics/coefficients", { method: "PUT", body: JSON.stringify(body) }),
+
+  createAssessmentType: (body: { code: string; name: string; defaultWeight?: number }) =>
+    request<AssessmentType>("/academics/assessment-types", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   offerings: (niveauId: string, academicYearId: string) =>
     request<CourseOffering[]>(
       `/academics/offerings?niveauId=${encodeURIComponent(niveauId)}` +

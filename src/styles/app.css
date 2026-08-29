@@ -212,13 +212,17 @@
     align-items: center;
     margin-left: auto;
   }
-  /* The rail is a header strip on a phone, and an expandable tree inside a
-     wrapping row of links is unusable at 640px. The Structure page does the
-     same job with the whole screen, so the tree stands down here rather than
-     being squeezed. The action shortcuts stay — they are only links. */
-  .side-nav .tree,
-  .side-nav .nav-group {
-    display: none;
+  /* The catalogue collapses to its group headers on a phone; opening one
+     still works, but nothing is expanded by default in a header strip. */
+  .rail {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: var(--s1);
+  }
+  .hints {
+    position: static;
+    width: auto;
+    margin: var(--s4);
   }
   .main {
     overflow: visible;
@@ -1479,99 +1483,382 @@ table.data td.c-text {
 }
 
 /* ============================================================================
-   Rail: structure tree + action shortcuts.
+   Rail: the grouped action catalogue.
    ============================================================================
-   Both live in `.side-nav`, which is the one scrolling region of the sidebar —
-   see the shell note. A tree that grows with the school must not be able to
-   push "se déconnecter" off the screen. */
-
-.tree {
-  padding-bottom: var(--s2);
-}
-
-.tnode-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 5px var(--s2) 5px 8px;
-  border: none;
-  background: none;
-  border-radius: var(--radius-sm);
-  color: var(--ink-2);
-  font-size: var(--t-small);
-  text-align: left;
-  line-height: 1.3;
-}
-.tnode-row:hover {
-  background: var(--surface-2);
-  color: var(--ink);
-}
-/* 11px, not 9: at nine the open and closed triangles both render as a smudge
-   the size of a full stop, and "is this branch expanded" is the one question
-   the glyph exists to answer. */
-.tnode-twist {
-  width: 11px;
-  flex: none;
-  color: var(--ink-3);
-  font-size: 11px;
-  line-height: 1;
-  text-align: center;
-}
-.tnode-row[aria-expanded="true"] .tnode-twist {
-  color: var(--ink-2);
-}
-.tnode-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* Three letters, so a long name keeps the width it needs. */
-.tnode-kind {
-  flex: none;
-  font-family: var(--mono);
-  font-size: 8.5px;
-  letter-spacing: 0.06em;
-  color: var(--ink-3);
-}
-.tnode-hint {
-  padding: 4px var(--s2) 6px 8px;
-  font-size: var(--t-micro);
-  color: var(--ink-3);
-  font-style: italic;
-}
+   Grouped by domain, collapsible, icon-led — the Cloud-Console shape. It lives
+   in `.side-nav`, the one scrolling region of the sidebar, so a long catalogue
+   can never push "se déconnecter" off the screen. */
 
 .rail {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
 }
-.rail-item {
+.rail-group + .rail-group {
+  margin-top: var(--s1);
+}
+
+.rail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px var(--s2);
+  border: none;
+  background: none;
+  border-radius: var(--radius-sm);
+  color: var(--ink-3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.rail-head:hover {
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+.rail-head-label {
+  flex: 1;
+  text-align: left;
+}
+.rail-head-icon {
+  color: var(--ink-3);
+}
+
+.rail-items {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  padding: 6px var(--s2);
+  padding-bottom: var(--s1);
+}
+.rail-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 6px var(--s2) 6px 10px;
   border-radius: var(--radius-sm);
   color: var(--ink-2);
   font-size: var(--t-small);
   font-weight: 500;
+  line-height: 1.35;
 }
 .rail-item:hover {
   background: var(--surface-2);
   color: var(--ink);
   text-decoration: none;
 }
-/* Shown, not hidden: an unavailable action is a piece of information about the
-   school, and the reason is always something the director can go and do. */
+.rail-item-icon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--ink-3);
+}
+.rail-item:hover .rail-item-icon {
+  color: var(--primary);
+}
+.rail-item-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+/* Shown, not hidden: an unavailable action is information about the school,
+   and the reason is always something the director can go and do. */
 .rail-item.is-blocked {
+  color: var(--ink-3);
+  cursor: default;
+}
+.rail-item.is-blocked:hover {
+  background: none;
   color: var(--ink-3);
 }
 .rail-why {
   font-size: var(--t-micro);
   color: var(--ink-3);
-  opacity: 0.85;
+  opacity: 0.9;
+}
+
+/* ============================================================================
+   Explorer: the tree, in the main column.
+   ============================================================================ */
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+  gap: var(--s4);
+  align-items: start;
+}
+@media (max-width: 1000px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Empty / loading line inside a tree or picker. */
+.tnode-hint {
+  padding: var(--s3);
+  font-size: var(--t-small);
+  color: var(--ink-3);
+  font-style: italic;
+}
+
+.explorer {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.explorer-search,
+.scope-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px var(--s3);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-3);
+}
+.explorer-search input,
+.scope-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-body);
+}
+.explorer-search input:focus,
+.scope-search input:focus {
+  outline: none;
+}
+
+/* Capped and scrollable: the tree is a panel, not a page that grows. */
+.explorer-tree {
+  max-height: 62vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--s1) 0;
+}
+.explorer-foot {
+  padding: 7px var(--s3);
+  border-top: 1px solid var(--line-soft);
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+  background: var(--surface-2);
+}
+
+.ex-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: var(--s2);
+}
+.ex-row:hover {
+  background: var(--surface-2);
+}
+.ex-row.is-selected {
+  background: var(--primary-soft);
+}
+.ex-twist {
+  width: 18px;
+  height: 22px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--ink-3);
+  border-radius: 3px;
+}
+.ex-twist:hover {
+  color: var(--ink);
+}
+.ex-twist-leaf {
+  pointer-events: none;
+}
+.ex-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  padding: 4px 0;
+  border: none;
+  background: none;
+  color: var(--ink-2);
+  font-size: var(--t-small);
+  text-align: left;
+}
+.ex-row.is-selected .ex-label {
+  color: var(--primary-soft-ink);
+  font-weight: 600;
+}
+.ex-icon {
+  flex: none;
+  color: var(--ink-3);
+}
+.ex-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ex-code {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--ink-3);
+}
+
+/* ── scope picker ── */
+.scope-list {
+  max-height: 300px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line);
+  border-top: none;
+}
+.scope-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  width: 100%;
+  padding: 9px var(--s3);
+  border: none;
+  border-bottom: 1px solid var(--line-soft);
+  background: none;
+  text-align: left;
+  color: var(--ink-2);
+}
+.scope-item:last-child {
+  border-bottom: none;
+}
+.scope-item:hover {
+  background: var(--surface-2);
+}
+.scope-item.is-picked {
+  background: var(--primary-soft);
+  color: var(--primary-soft-ink);
+}
+.scope-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.scope-name {
+  font-size: var(--t-body);
+  font-weight: 600;
+  color: var(--ink);
+}
+.scope-item.is-picked .scope-name {
+  color: var(--primary-soft-ink);
+}
+.scope-path {
+  font-size: var(--t-small);
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================================================
+   Breadcrumb.
+   ============================================================================
+   Derived from the route, so it cannot be wrong on the screen that forgot to
+   set it. */
+.crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: var(--t-small);
+  min-width: 0;
+}
+.crumbs-sep {
+  color: var(--ink-3);
+}
+.crumbs-link {
+  color: var(--ink-3);
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: var(--t-small);
+}
+.crumbs-link:hover {
+  color: var(--ink);
+  text-decoration: none;
+}
+.crumbs-here {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* ============================================================================
+   Hints — "bon à savoir", bottom right.
+   ============================================================================
+   Out of the working column entirely. Inside the page they looked like controls
+   and are not: they are the state of the établissement, phrased as advice. */
+.hints {
+  position: absolute;
+  right: var(--s5);
+  bottom: var(--s5);
+  z-index: 20;
+  width: min(320px, calc(100vw - 2 * var(--s5)));
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.hints-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px var(--s3);
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--surface-2);
+  font-size: var(--t-micro);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.hints-x {
+  margin-left: auto;
+  border: none;
+  background: none;
+  padding: 0 2px;
+  color: var(--ink-3);
+  font-size: 15px;
+  line-height: 1;
+}
+.hints-x:hover {
+  color: var(--ink);
+}
+.hints-list {
+  margin: 0;
+  padding: var(--s3) var(--s3) var(--s3) calc(var(--s3) + 14px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: var(--t-small);
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+/* The hint panel is absolute against this, so the main column owns the corner. */
+.main {
+  position: relative;
+}
+
+/* Icons sit on the text baseline wherever they appear inline. */
+.icon {
+  flex: none;
+  vertical-align: -0.15em;
+}
+.page-title .icon {
+  color: var(--ink-3);
+  margin-right: 3px;
 }
 
 /* Removing one posting without leaving the row. */

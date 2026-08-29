@@ -5,8 +5,10 @@ import { useAuthStore } from "../../stores/auth";
 import { useDeploymentStore } from "../../stores/deployment";
 import DeploymentBadge from "./DeploymentBadge.vue";
 import ThemeToggle from "../ThemeToggle.vue";
-import StructureTree from "../structure/StructureTree.vue";
 import ActionRail from "../structure/ActionRail.vue";
+import Breadcrumb from "./Breadcrumb.vue";
+import HintPanel from "./HintPanel.vue";
+import Icon from "../ui/Icon.vue";
 
 const auth = useAuthStore();
 const dep = useDeploymentStore();
@@ -40,19 +42,16 @@ async function logout() {
         that is the whole point of the three-region shell.
       -->
       <nav class="side-nav">
-        <div class="nav-group">Établissement</div>
         <RouterLink to="/console" class="nav-item" active-class="active" exact-active-class="active">
-          Tableau de bord
-        </RouterLink>
-        <RouterLink to="/console/structure" class="nav-item" active-class="active">
-          Structure
+          <Icon name="home" /> Tableau de bord
         </RouterLink>
 
-        <div class="nav-group">Actions</div>
+        <!--
+          The tree used to live here and no longer does. At 244px a seven-level
+          structure is all ellipsis; it belongs in the main column, where the
+          Structure action sends it. The rail's job is the catalogue.
+        -->
         <ActionRail ref="rail" />
-
-        <div class="nav-group">Arborescence</div>
-        <StructureTree ref="tree" />
       </nav>
 
       <!-- Pinned: sign-out must stay reachable while a long list scrolls. -->
@@ -70,7 +69,7 @@ async function logout() {
 
     <div class="main">
       <header class="topbar">
-        <div class="unit-meta">{{ dep.configLabel ?? dep.info?.label ?? "" }}</div>
+        <Breadcrumb />
         <div class="topbar-tools">
           <DeploymentBadge />
           <ThemeToggle />
@@ -93,6 +92,10 @@ async function logout() {
           <RouterView />
         </div>
       </main>
+
+      <!-- Not part of the working column: state phrased as advice, in a corner
+           that can be dismissed. -->
+      <HintPanel />
     </div>
   </div>
 </template>
