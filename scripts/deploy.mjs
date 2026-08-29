@@ -20,6 +20,13 @@
  *
  * Flags:
  *   --no-upload    build + write config, skip wrangler (edge-box tarball)
+ *   --config-only  skip the build, only write dist/config.json. This is the
+ *                  Cloudflare Pages *Git integration* path: Pages runs the
+ *                  build itself, so the build command becomes
+ *                    npm run build && node scripts/deploy.mjs --config-only
+ *                  with ECOLE_API_BASE set as a Pages environment variable.
+ *                  The guards still run, and a failure here fails the Pages
+ *                  build, so a bad bundle is never published.
  *   --allow-mock   permit a build with no Firebase keys (demo only)
  */
 import { execFileSync } from "node:child_process";
@@ -30,6 +37,7 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const argv = process.argv.slice(2);
 const noUpload = argv.includes("--no-upload");
+const configOnly = argv.includes("--config-only");
 const allowMock = argv.includes("--allow-mock");
 
 const die = (msg) => {
@@ -85,8 +93,12 @@ if (process.env.VITE_API_URL) {
 }
 
 // ── 2. build ────────────────────────────────────────────────────────────────
-step("building (vue-tsc + vite)");
-execFileSync("npm", ["run", "build"], { cwd: root, stdio: "inherit" });
+if (configOnly) {
+  step("--config-only: skipping build (Pages already ran it)");
+} else {
+  step("building (vue-tsc + vite)");
+  execFileSync("npm", ["run", "build"], { cwd: root, stdio: "inherit" });
+}
 
 // ── 3. write config.json (must be AFTER build: vite copies public/ -> dist/) ─
 const dist = resolve(root, "dist");
@@ -101,8 +113,8 @@ writeFileSync(resolve(dist, "config.json"), JSON.stringify(config, null, 2) + "\
 step(`wrote dist/config.json  apiBase=${apiBase}${label ? `  label=${label}` : ""}`);
 
 // ── 4. upload ───────────────────────────────────────────────────────────────
-if (noUpload) {
-  step("--no-upload: dist/ is ready to copy onto the box");
+if (noUpload || configOnly) {
+  step(configOnly ? "--config-only: dist/config.json written, Pages will upload" : "--no-upload: dist/ is ready to copy onto the box");
   process.exit(0);
 }
 step("uploading to Cloudflare Pages");
