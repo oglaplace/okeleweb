@@ -35,6 +35,15 @@ export const isOfflineError = (e: unknown) =>
   e instanceof ApiError && e.status === 0;
 
 /**
+ * True when the établissement has been suspended by the platform.
+ *
+ * Distinct from a permission failure: nothing the user does will help, and the
+ * console says who to contact rather than showing a bare 403.
+ */
+export const isSuspendedError = (e: unknown) =>
+  e instanceof ApiError && e.code === "TENANT_SUSPENDED";
+
+/**
  * True when the phone number authenticated fine but is attached to nothing.
  *
  * The single most common real failure, and the one that used to read as "no
@@ -305,6 +314,109 @@ export const orgUnits = {
     }),
 };
 
+// ─── people ──────────────────────────────────────────────────────────────────
+
+export interface Capabilities {
+  classes: number;
+  niveaux: number;
+  units: number;
+  staff: number;
+  series: number;
+  academicYear: { id: string; label: string } | null;
+  /**
+   * What the action rail may offer, computed from what EXISTS. "Enrol a pupil"
+   * is not an action until a classe exists to enrol them into.
+   */
+  can: {
+    enrollStudent: boolean;
+    importStudents: boolean;
+    addStaff: boolean;
+    importStaff: boolean;
+    assignStaff: boolean;
+    createClasse: boolean;
+  };
+}
+
+export interface StaffMember {
+  id: string;
+  personId: string;
+  firstName: string;
+  lastName: string;
+  phone: string | null;
+  email: string | null;
+  type: "PERMANENT" | "VACATAIRE" | "STAGIAIRE";
+  baseAmountXaf: number;
+  startsOn: string;
+  endsOn: string | null;
+  active: boolean;
+  assignments: {
+    id: string;
+    role: string;
+    orgUnit: { id: string; name: string; kind: OrgUnitKind };
+  }[];
+}
+
+export interface ImportReport {
+  /** Which spreadsheet column was read as which field. Shown before writing. */
+  mapping: Record<string, string | null>;
+  total: number;
+  ready: number;
+  problems: { line: number; message: string }[];
+  imported: number;
+}
+
+export const people = {
+  capabilities: () => request<Capabilities>("/people/capabilities"),
+
+  staff: (opts: { q?: string; orgUnitId?: string } = {}) => {
+    const qs = new URLSearchParams();
+    if (opts.q) qs.set("q", opts.q);
+    if (opts.orgUnitId) qs.set("orgUnitId", opts.orgUnitId);
+    const suffix = qs.toString();
+    return request<StaffMember[]>(`/people/staff${suffix ? `?${suffix}` : ""}`);
+  },
+
+  createStaff: (body: {
+    person: {
+      firstName: string;
+      lastName: string;
+      gender?: string | null;
+      phone?: string | null;
+      email?: string | null;
+      address?: string | null;
+    };
+    type?: "PERMANENT" | "VACATAIRE" | "STAGIAIRE";
+    baseAmountXaf?: number;
+    assignment?: { orgUnitId: string; role: string };
+  }) => request<unknown>("/people/staff", { method: "POST", body: JSON.stringify(body) }),
+
+  assign: (employmentId: string, body: { orgUnitId: string; role: string }) =>
+    request<unknown>(`/people/staff/${employmentId}/assignments`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  endAssignment: (id: string) =>
+    request<unknown>(`/people/assignments/${id}`, { method: "DELETE" }),
+
+  importStudents: (body: {
+    academicYearId: string;
+    classeId: string;
+    rows: Record<string, string>[];
+    dryRun?: boolean;
+  }) =>
+    request<ImportReport>("/people/import/students", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  importStaff: (body: { rows: Record<string, string>[]; dryRun?: boolean }) =>
+    request<ImportReport>("/people/import/staff", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+};
+
 // ─── enrolment ───────────────────────────────────────────────────────────────
 
 export interface RosterRow {
@@ -316,6 +428,23 @@ export interface RosterRow {
 }
 
 export const enrollment = {
+  /** Creates the Person, the Student and the Enrolment in one call. */
+  enroll: (body: {
+    person: {
+      firstName: string;
+      lastName: string;
+      birthDate?: string | null;
+      birthPlace?: string | null;
+      gender?: string | null;
+      phone?: string | null;
+      address?: string | null;
+    };
+    academicYearId: string;
+    classeId: string;
+    serieId?: string | null;
+    isRepeating?: boolean;
+  }) => request<{ id: string }>("/enrollment", { method: "POST", body: JSON.stringify(body) }),
+
   roster: (classeId: string, academicYearId: string) =>
     request<RosterRow[]>(
       `/enrollment/roster?classeId=${encodeURIComponent(classeId)}` +

@@ -5,6 +5,8 @@ import { useAuthStore } from "../../stores/auth";
 import { useDeploymentStore } from "../../stores/deployment";
 import DeploymentBadge from "./DeploymentBadge.vue";
 import ThemeToggle from "../ThemeToggle.vue";
+import StructureTree from "../structure/StructureTree.vue";
+import ActionRail from "../structure/ActionRail.vue";
 
 const auth = useAuthStore();
 const dep = useDeploymentStore();
@@ -31,7 +33,12 @@ async function logout() {
         </span>
       </div>
 
-      <!-- The only scrolling region of the rail. -->
+      <!--
+        The only scrolling region of the rail, and now it carries three things:
+        the pages, the shortcuts, and the complex itself as a tree. All of it
+        scrolls together and none of it can push "se déconnecter" off screen —
+        that is the whole point of the three-region shell.
+      -->
       <nav class="side-nav">
         <div class="nav-group">Établissement</div>
         <RouterLink to="/console" class="nav-item" active-class="active" exact-active-class="active">
@@ -40,6 +47,12 @@ async function logout() {
         <RouterLink to="/console/structure" class="nav-item" active-class="active">
           Structure
         </RouterLink>
+
+        <div class="nav-group">Actions</div>
+        <ActionRail ref="rail" />
+
+        <div class="nav-group">Arborescence</div>
+        <StructureTree ref="tree" />
       </nav>
 
       <!-- Pinned: sign-out must stay reachable while a long list scrolls. -->

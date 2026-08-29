@@ -38,6 +38,9 @@ const router = createRouter({
       children: [
         { path: "", name: "dashboard", component: () => import("../pages/console/DashboardPage.vue") },
         { path: "structure", name: "structure", component: () => import("../pages/console/StructurePage.vue") },
+        { path: "inscription", name: "enroll", component: () => import("../pages/console/EnrollPage.vue") },
+        { path: "personnel", name: "staff", component: () => import("../pages/console/StaffPage.vue") },
+        { path: "import", name: "import", component: () => import("../pages/console/ImportPage.vue") },
         { path: "classes/:id", name: "classe", component: () => import("../pages/console/ClassePage.vue") },
         { path: "classes/:id/notes", name: "marks", component: () => import("../pages/console/MarkEntryPage.vue") },
         { path: "classes/:id/bulletins", name: "bulletins", component: () => import("../pages/console/BulletinsPage.vue") },

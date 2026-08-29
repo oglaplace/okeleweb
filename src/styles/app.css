@@ -212,6 +212,14 @@
     align-items: center;
     margin-left: auto;
   }
+  /* The rail is a header strip on a phone, and an expandable tree inside a
+     wrapping row of links is unusable at 640px. The Structure page does the
+     same job with the whole screen, so the tree stands down here rather than
+     being squeezed. The action shortcuts stay — they are only links. */
+  .side-nav .tree,
+  .side-nav .nav-group {
+    display: none;
+  }
   .main {
     overflow: visible;
   }
@@ -1468,6 +1476,138 @@ table.data td.c-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ============================================================================
+   Rail: structure tree + action shortcuts.
+   ============================================================================
+   Both live in `.side-nav`, which is the one scrolling region of the sidebar —
+   see the shell note. A tree that grows with the school must not be able to
+   push "se déconnecter" off the screen. */
+
+.tree {
+  padding-bottom: var(--s2);
+}
+
+.tnode-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px var(--s2) 5px 8px;
+  border: none;
+  background: none;
+  border-radius: var(--radius-sm);
+  color: var(--ink-2);
+  font-size: var(--t-small);
+  text-align: left;
+  line-height: 1.3;
+}
+.tnode-row:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+/* 11px, not 9: at nine the open and closed triangles both render as a smudge
+   the size of a full stop, and "is this branch expanded" is the one question
+   the glyph exists to answer. */
+.tnode-twist {
+  width: 11px;
+  flex: none;
+  color: var(--ink-3);
+  font-size: 11px;
+  line-height: 1;
+  text-align: center;
+}
+.tnode-row[aria-expanded="true"] .tnode-twist {
+  color: var(--ink-2);
+}
+.tnode-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Three letters, so a long name keeps the width it needs. */
+.tnode-kind {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 8.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+.tnode-hint {
+  padding: 4px var(--s2) 6px 8px;
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+  font-style: italic;
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.rail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px var(--s2);
+  border-radius: var(--radius-sm);
+  color: var(--ink-2);
+  font-size: var(--t-small);
+  font-weight: 500;
+}
+.rail-item:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+  text-decoration: none;
+}
+/* Shown, not hidden: an unavailable action is a piece of information about the
+   school, and the reason is always something the director can go and do. */
+.rail-item.is-blocked {
+  color: var(--ink-3);
+}
+.rail-why {
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+  opacity: 0.85;
+}
+
+/* Removing one posting without leaving the row. */
+.pill-x {
+  border: none;
+  background: none;
+  padding: 0 0 0 4px;
+  color: inherit;
+  opacity: 0.6;
+  font-size: 12px;
+  line-height: 1;
+}
+.pill-x:hover {
+  opacity: 1;
+}
+/* The status sits next to a button; without this they read as one string. */
+.c-text > .cell-sub + .btn {
+  margin-left: var(--s2);
+}
+
+.assign-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.assign-row select,
+.assign-row input {
+  padding: 5px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-small);
+  max-width: 220px;
 }
 
 /* ---------- tree ---------- */
