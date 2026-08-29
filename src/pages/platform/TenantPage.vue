@@ -2,6 +2,8 @@
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import * as api from "../../lib/api";
+import { useBusyStore } from "../../stores/busy";
+import PhoneInput from "../../components/ui/PhoneInput.vue";
 import { ESTABLISHMENT_LABELS, TIER_LABELS, TIER_NOTES } from "./labels";
 
 /**
@@ -14,6 +16,7 @@ import { ESTABLISHMENT_LABELS, TIER_LABELS, TIER_NOTES } from "./labels";
  * boxes) and nothing about a single pupil.
  */
 const route = useRoute();
+const busy = useBusyStore();
 const id = route.params.id as string;
 
 const data = ref<api.TenantDetail | null>(null);
@@ -24,20 +27,18 @@ const notice = ref<string | null>(null);
 // Add-administrator form.
 const adding = ref(false);
 const newName = ref("");
-const newPhone = ref("+242");
+const newPhone = ref("");
 const newRole = ref("Administrateur");
 const addBusy = ref(false);
 const addError = ref<string | null>(null);
 
-const phoneValid = computed(() =>
-  /^\+[1-9]\d{6,14}$/.test(newPhone.value.replace(/[\s.-]/g, "")),
-);
+const phoneValid = computed(() => /^\+242\d{9}$/.test(newPhone.value));
 
 async function load() {
   loading.value = true;
   error.value = null;
   try {
-    data.value = await api.platform.tenant(id);
+    data.value = await busy.run(() => api.platform.tenant(id));
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Chargement impossible.";
   } finally {
@@ -50,14 +51,23 @@ async function addAdmin() {
   addBusy.value = true;
   addError.value = null;
   try {
-    await api.platform.addAdmin(id, {
-      phone: newPhone.value.replace(/[\s.-]/g, ""),
-      fullName: newName.value.trim(),
-      ...(newRole.value.trim() ? { role: newRole.value.trim() } : {}),
-    });
+    // Blocking: this mints a Firebase identity for someone who is probably on
+    // the phone waiting to be told they can sign in.
+    await busy.run(
+      () =>
+        api.platform.addAdmin(id, {
+          phone: newPhone.value,
+          fullName: newName.value.trim(),
+          ...(newRole.value.trim() ? { role: newRole.value.trim() } : {}),
+        }),
+      {
+        title: "Ajout de l'administrateur",
+        detail: "Création du compte et des droits sur cet établissement.",
+      },
+    );
     notice.value = `${newName.value.trim()} peut désormais se connecter.`;
     newName.value = "";
-    newPhone.value = "+242";
+    newPhone.value = "";
     adding.value = false;
     await load();
   } catch (e) {
@@ -69,13 +79,30 @@ async function addAdmin() {
 
 async function setActive(active: boolean) {
   try {
-    await api.platform.updateTenant(id, { active });
+    await busy.run(
+      () => api.platform.updateTenant(id, { active }),
+      {
+        title: active ? "Réactivation" : "Suspension",
+        detail: active
+          ? "L'établissement redevient accessible à son personnel."
+          : "Le personnel de l'établissement ne pourra plus se connecter.",
+      },
+    );
     notice.value = active ? "Établissement réactivé." : "Établissement suspendu.";
     await load();
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Modification impossible.";
   }
 }
+
+/** Two initials for the row mark, same convention as the sidebar avatar. */
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("") || "?";
 
 const dateFmt = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString("fr-FR", { dateStyle: "medium" }) : "—";
@@ -173,12 +200,13 @@ onMounted(() => void load());
                 <label for="new-name">Nom complet</label>
                 <input id="new-name" v-model="newName" autocomplete="off" />
               </div>
-              <div class="field" :class="{ 'is-invalid': newPhone.length > 4 && !phoneValid }">
+              <div class="field">
                 <label for="new-phone">Téléphone</label>
-                <input id="new-phone" v-model="newPhone" type="tel" autocomplete="off" />
-                <span v-if="newPhone.length > 4 && !phoneValid" class="field-error">
-                  Format international attendu.
-                </span>
+                <PhoneInput
+                  id="new-phone"
+                  v-model="newPhone"
+                  :invalid="newPhone.length > 0 && !phoneValid"
+                />
               </div>
               <div class="field">
                 <label for="new-role">Fonction</label>
@@ -192,6 +220,7 @@ onMounted(() => void load());
                 :disabled="addBusy || !phoneValid || newName.trim().length < 2"
                 @click="addAdmin"
               >
+                <span v-if="addBusy" class="btn-spin" aria-hidden="true" />
                 {{ addBusy ? "Ajout…" : "Ajouter l'administrateur" }}
               </button>
               <button class="btn ghost" type="button" @click="adding = false">Annuler</button>
@@ -205,18 +234,22 @@ onMounted(() => void load());
             <table class="data">
               <thead>
                 <tr>
-                  <th>Nom</th>
+                  <th class="c-name">Personne</th>
                   <th>Téléphone</th>
-                  <th>Fonction</th>
                   <th>Dernière connexion</th>
                   <th>État</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="a in data.admins" :key="a.id">
-                  <td class="cell-strong">{{ a.fullName }}</td>
+                  <td class="c-name">
+                    <span class="row-mark" aria-hidden="true">{{ initials(a.fullName) }}</span>
+                    <span class="row-text">
+                      <span class="cell-strong">{{ a.fullName }}</span>
+                      <span class="cell-sub">{{ a.roles.join(", ") || "—" }}</span>
+                    </span>
+                  </td>
                   <td>{{ a.phone }}</td>
-                  <td>{{ a.roles.join(", ") || "—" }}</td>
                   <td>{{ dateFmt(a.lastSeenAt) }}</td>
                   <td>
                     <span v-if="a.active" class="pill ok">Actif</span>
@@ -249,7 +282,7 @@ onMounted(() => void load());
             <table class="data">
               <thead>
                 <tr>
-                  <th>Nom</th>
+                  <th class="c-name">Nom</th>
                   <th>État</th>
                   <th>Version</th>
                   <th>Dernier contact</th>
@@ -257,7 +290,7 @@ onMounted(() => void load());
               </thead>
               <tbody>
                 <tr v-for="n in data.edgeNodes" :key="n.id">
-                  <td class="cell-strong">{{ n.name }}</td>
+                  <td class="c-name cell-strong">{{ n.name }}</td>
                   <td>
                     <span class="pill" :class="n.status === 'ACTIVE' ? 'ok' : 'warn'">
                       {{ n.status }}

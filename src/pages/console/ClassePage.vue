@@ -191,26 +191,26 @@ watch(yearId, () => void loadYearScoped());
         <table class="data">
           <thead>
             <tr>
-              <th class="num">Rang</th>
-              <th>Matricule</th>
-              <th>Élève</th>
-              <th class="num">Moyenne</th>
-              <th>Mention</th>
-              <th class="num">Abs. (h)</th>
-              <th>Décision</th>
+              <th>Rang</th>
+              <th class="c-text">Matricule</th>
+              <th class="c-name">Élève</th>
+              <th>Moyenne</th>
+              <th class="c-text">Mention</th>
+              <th>Abs. (h)</th>
+              <th class="c-text">Décision</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="s in sortedPreview" :key="s.studentId">
-              <td class="num">{{ s.rank ?? "—" }}</td>
-              <td>{{ byStudent.get(s.studentId)?.student.matricule ?? "—" }}</td>
-              <td>
+              <td>{{ s.rank ?? "—" }}</td>
+              <td class="c-text">{{ byStudent.get(s.studentId)?.student.matricule ?? "—" }}</td>
+              <td class="c-name">
                 {{ byStudent.get(s.studentId) ? names(byStudent.get(s.studentId)!) : s.studentId }}
               </td>
-              <td class="num">{{ s.average ?? "—" }}</td>
-              <td>{{ s.mention ?? "—" }}</td>
-              <td class="num">{{ s.absenceHours }}</td>
-              <td>
+              <td>{{ s.average ?? "—" }}</td>
+              <td class="c-text">{{ s.mention ?? "—" }}</td>
+              <td>{{ s.absenceHours }}</td>
+              <td class="c-text">
                 <span v-if="s.isEliminated" class="pill danger">Éliminé</span>
                 <span v-else-if="s.needsResit" class="pill warn">Rattrapage</span>
                 <span v-else-if="s.isPassing" class="pill ok">Admis</span>

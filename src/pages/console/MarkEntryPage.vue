@@ -304,19 +304,19 @@ watch(assessmentId, () => void loadGrid());
         <table class="data">
           <thead>
             <tr>
-              <th style="width: 34px">N°</th>
-              <th>Matricule</th>
-              <th>Élève</th>
-              <th class="num" style="width: 120px">Note / {{ maxScore }}</th>
-              <th style="width: 90px">Absent</th>
+              <th class="c-text" style="width: 34px">N°</th>
+              <th class="c-text">Matricule</th>
+              <th class="c-name">Élève</th>
+              <th style="width: 120px">Note / {{ maxScore }}</th>
+              <th class="c-text" style="width: 90px">Absent</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="(row, i) in grid.rows" :key="row.studentId">
-              <td style="color: var(--ink-3)">{{ i + 1 }}</td>
-              <td>{{ row.matricule }}</td>
-              <td>{{ row.lastName.toUpperCase() }} {{ row.firstName }}</td>
-              <td class="num">
+              <td class="c-text" style="color: var(--ink-3)">{{ i + 1 }}</td>
+              <td class="c-text">{{ row.matricule }}</td>
+              <td class="c-name">{{ row.lastName.toUpperCase() }} {{ row.firstName }}</td>
+              <td>
                 <input
                   v-model="row.score"
                   :data-mark="i"
@@ -331,7 +331,7 @@ watch(assessmentId, () => void loadGrid());
                   @keydown="onKey($event, i)"
                 />
               </td>
-              <td>
+              <td class="c-text">
                 <input
                   v-model="row.isAbsent"
                   type="checkbox"

@@ -2,7 +2,7 @@ import { config, loadConfig, type DeploymentInfo } from "./runtime";
 import { phoneAuth } from "./firebase";
 
 /**
- * API client for the École console.
+ * API client for the TeYa console.
  *
  * Auth is a Firebase ID token (phone OTP), same identity model as teamfarm.
  * The base URL is discovered at runtime — see lib/runtime.ts — so this file

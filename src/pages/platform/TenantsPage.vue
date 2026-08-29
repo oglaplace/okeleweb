@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import * as api from "../../lib/api";
+import { useBusyStore } from "../../stores/busy";
 import { ESTABLISHMENT_LABELS, TIER_LABELS } from "./labels";
 
 /**
@@ -14,6 +15,7 @@ import { ESTABLISHMENT_LABELS, TIER_LABELS } from "./labels";
  * asks the server for different rows.
  */
 const router = useRouter();
+const busy = useBusyStore();
 
 const tenants = ref<api.TenantSummary[]>([]);
 const loading = ref(true);
@@ -25,7 +27,9 @@ async function load() {
   loading.value = true;
   error.value = null;
   try {
-    tenants.value = await api.platform.tenants({ includeInactive: includeInactive.value });
+    tenants.value = await busy.run(() =>
+      api.platform.tenants({ includeInactive: includeInactive.value }),
+    );
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Chargement impossible.";
     tenants.value = [];
@@ -47,6 +51,15 @@ const totals = computed(() => ({
   students: tenants.value.reduce((n, t) => n + t.counts.students, 0),
   accounts: tenants.value.reduce((n, t) => n + t.counts.accounts, 0),
 }));
+
+/** Initials for the row mark, same convention as the sidebar avatar. */
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("") || "?";
 
 watch(includeInactive, () => void load());
 onMounted(() => void load());
@@ -127,44 +140,70 @@ onMounted(() => void load());
         Aucun résultat pour « {{ q }} ».
       </div>
 
-      <div v-else class="table-wrap">
-        <table class="data">
-          <thead>
-            <tr>
-              <th>Établissement</th>
-              <th>Type</th>
-              <th>Formule</th>
-              <th class="num">Élèves</th>
-              <th class="num">Comptes</th>
-              <th>État</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="t in shown"
-              :key="t.id"
-              class="is-clickable"
-              tabindex="0"
-              @click="router.push({ name: 'tenant', params: { id: t.id } })"
-              @keydown.enter="router.push({ name: 'tenant', params: { id: t.id } })"
-            >
-              <td>
-                <div class="cell-strong">{{ t.name }}</div>
-                <div class="cell-sub">{{ t.slug }}</div>
-              </td>
-              <td>{{ ESTABLISHMENT_LABELS[t.establishmentType ?? "COMPLEXE"] }}</td>
-              <td>{{ TIER_LABELS[t.tier] }}</td>
-              <td class="num">{{ t.counts.students }}</td>
-              <td class="num">{{ t.counts.accounts }}</td>
-              <td>
-                <span v-if="t.migrationLockedAt" class="pill warn">Migration</span>
-                <span v-else-if="!t.active" class="pill danger">Suspendu</span>
-                <span v-else class="pill ok">Actif</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <template v-else>
+        <!-- The key sits above the table: three-letter column heads need
+             explaining before they are read, not after a page of rows. -->
+        <dl class="legend">
+          <div class="legend-item" title="Élèves inscrits, toutes années confondues">
+            <dt>ÉLV</dt>
+            <dd>Élèves</dd>
+          </div>
+          <div class="legend-item" title="Comptes du personnel pouvant se connecter">
+            <dt>CPT</dt>
+            <dd>Comptes</dd>
+          </div>
+          <div class="legend-item" title="Unités de structure : écoles, cycles, niveaux, classes">
+            <dt>STR</dt>
+            <dd>Structure</dd>
+          </div>
+        </dl>
+
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th class="c-name">Établissement</th>
+                <th class="c-text">Type</th>
+                <th class="c-text">Formule</th>
+                <th>ÉLV</th>
+                <th>CPT</th>
+                <th>STR</th>
+                <th class="c-text">État</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="t in shown"
+                :key="t.id"
+                class="is-clickable"
+                tabindex="0"
+                @click="router.push({ name: 'tenant', params: { id: t.id } })"
+                @keydown.enter="router.push({ name: 'tenant', params: { id: t.id } })"
+              >
+                <td class="c-name">
+                  <span class="row-mark" aria-hidden="true">{{ initials(t.name) }}</span>
+                  <span class="row-text">
+                    <span class="cell-strong">{{ t.name }}</span>
+                    <span class="cell-sub">{{ t.slug }}</span>
+                  </span>
+                </td>
+                <td class="c-text">
+                  {{ ESTABLISHMENT_LABELS[t.establishmentType ?? "COMPLEXE"] }}
+                </td>
+                <td class="c-text">{{ TIER_LABELS[t.tier] }}</td>
+                <td>{{ t.counts.students }}</td>
+                <td>{{ t.counts.accounts }}</td>
+                <td>{{ t.counts.orgUnits }}</td>
+                <td class="c-text">
+                  <span v-if="t.migrationLockedAt" class="pill warn">Migration</span>
+                  <span v-else-if="!t.active" class="pill danger">Suspendu</span>
+                  <span v-else class="pill ok">Actif</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
     </div>
   </div>
 </template>

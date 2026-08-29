@@ -2,18 +2,21 @@
 import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
+import { useBusyStore } from "../stores/busy";
 import { useDeploymentStore } from "../stores/deployment";
 import { firebaseConfigured } from "../lib/firebase";
+import PhoneInput from "../components/ui/PhoneInput.vue";
 import ThemeToggle from "../components/ThemeToggle.vue";
 
 const auth = useAuthStore();
+const busy = useBusyStore();
 const dep = useDeploymentStore();
 const router = useRouter();
 
 const step = ref<"phone" | "code">("phone");
-const phone = ref("+242");
+const phone = ref("");
 const code = ref("");
-const busy = ref(false);
+const working = ref(false);
 const error = ref<string | null>(null);
 
 /**
@@ -25,25 +28,32 @@ const error = ref<string | null>(null);
  * screen, and the screen's job is to say who to call.
  */
 const unlinked = computed(() => auth.unlinkedPhone);
+const phoneReady = computed(() => /^\+242\d{9}$/.test(phone.value));
+
+const serverLabel = computed(
+  () => dep.configLabel ?? dep.info?.label ?? (dep.mode === "EDGE" ? "Serveur local" : "Cloud"),
+);
+const serverState = computed(() => (dep.unreachable ? "Sans réponse" : "En ligne"));
 
 async function send() {
-  busy.value = true;
+  if (!phoneReady.value) return;
+  working.value = true;
   error.value = null;
   try {
-    await auth.sendOtp(phone.value.trim(), "recaptcha");
+    await busy.run(() => auth.sendOtp(phone.value, "recaptcha"));
     step.value = "code";
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Envoi impossible.";
   } finally {
-    busy.value = false;
+    working.value = false;
   }
 }
 
 async function verify() {
-  busy.value = true;
+  working.value = true;
   error.value = null;
   try {
-    await auth.verifyOtp(code.value.trim(), phone.value.trim());
+    await busy.run(() => auth.verifyOtp(code.value.trim(), phone.value));
     // One destination. The landing route decides which console this account
     // belongs to, so nothing here has to know.
     await router.replace({ name: "landing" });
@@ -53,7 +63,7 @@ async function verify() {
       error.value = e instanceof Error ? e.message : "Code refusé.";
     }
   } finally {
-    busy.value = false;
+    working.value = false;
   }
 }
 
@@ -67,113 +77,156 @@ function restart() {
 
 <template>
   <div class="login">
-    <!-- The half a buyer sees in a demo. It carries the positioning, because
-         this screen is often the only one they look at closely. -->
-    <aside class="login-pitch">
-      <div class="login-brand">
-        <span class="login-brand-mark" aria-hidden="true">É</span>
-        École
-      </div>
-
-      <div>
-        <h1 class="login-headline">La scolarité, tenue comme une comptabilité.</h1>
-        <p class="login-lede">
-          Inscriptions, notes, conseils de classe et bulletins officiels — pour les
-          complexes scolaires, lycées et universités du Congo-Brazzaville.
-        </p>
-      </div>
-
-      <ul class="login-points">
-        <li>Bulletins conformes, imprimés depuis le navigateur.</li>
-        <li>Coefficients par niveau et par série, modifiables sans développeur.</li>
-        <li>Fonctionne sur le serveur de l'établissement quand internet tombe.</li>
-      </ul>
-
-      <div class="login-foot">Brazzaville · Pointe-Noire</div>
-    </aside>
-
-    <div class="login-panel">
-      <div class="login-card">
-        <!-- The phone works, the account does not exist. Nothing to retry. -->
-        <template v-if="unlinked">
-          <div class="login-title">Numéro non rattaché</div>
-          <div class="login-sub">
-            Le numéro <strong>{{ unlinked }}</strong> est valide, mais il n'est rattaché
-            à aucun établissement.
+    <div class="login-frame">
+      <!-- The sheet: laid out like the document this product prints. -->
+      <div class="sheet">
+        <div class="sheet-head">
+          <div class="sheet-mark">
+            <span class="sheet-mark-badge" aria-hidden="true">T</span>
+            <span class="sheet-wordmark">TeYa</span>
           </div>
-          <div class="form-error">
-            Demandez à l'administrateur de votre établissement de vous ajouter, puis
-            réessayez.
-          </div>
-          <button class="btn block" type="button" @click="restart">
-            Essayer un autre numéro
-          </button>
-        </template>
+          <div class="sheet-kicker">Scolarité · Notes · Bulletins</div>
+        </div>
 
-        <template v-else>
-          <div class="login-title">Connexion</div>
-          <div class="login-sub">
-            {{
-              step === "phone"
-                ? "Identifiez-vous avec le numéro déclaré par votre établissement."
-                : "Saisissez le code à six chiffres reçu par SMS."
-            }}
+        <div class="sheet-meta">
+          <div>
+            <div class="sheet-meta-label">Serveur</div>
+            <div class="sheet-meta-value">{{ serverLabel }}</div>
           </div>
-
-          <!-- Shown BEFORE sign-in on purpose: "the server is unreachable" is the
-               answer to most login failures, and finding out after three rejected
-               codes is how a school decides the software is broken. -->
-          <div v-if="dep.unreachable" class="form-error">
-            Le serveur ne répond pas. Vérifiez la connexion avant de vous identifier.
+          <div>
+            <div class="sheet-meta-label">État</div>
+            <div class="sheet-meta-value">{{ serverState }}</div>
           </div>
-          <div v-else-if="error" class="form-error">{{ error }}</div>
+        </div>
 
-          <form v-if="step === 'phone'" @submit.prevent="send">
-            <div class="field">
-              <label for="phone">Numéro de téléphone</label>
-              <input
-                id="phone"
-                v-model="phone"
-                type="tel"
-                autocomplete="tel"
-                placeholder="+242 06 000 00 00"
-              />
-              <span class="hint">Format international, comme sur votre carte SIM.</span>
+        <div class="sheet-body">
+          <!-- The phone works, the account does not exist. Nothing to retry. -->
+          <template v-if="unlinked">
+            <div class="login-title">Numéro non rattaché</div>
+            <div class="login-sub">
+              Le numéro <strong>{{ unlinked }}</strong> est valide, mais il n'est
+              rattaché à aucun établissement.
             </div>
-            <button class="btn primary block" type="submit" :disabled="busy">
-              {{ busy ? "Envoi…" : "Recevoir le code" }}
+            <div class="form-error">
+              Demandez à l'administrateur de votre établissement de vous ajouter,
+              puis réessayez.
+            </div>
+            <button class="btn block" type="button" @click="restart">
+              Essayer un autre numéro
             </button>
-          </form>
+          </template>
 
-          <form v-else @submit.prevent="verify">
-            <div class="field">
-              <label for="code">Code reçu par SMS</label>
-              <input
-                id="code"
-                v-model="code"
-                inputmode="numeric"
-                autocomplete="one-time-code"
-                placeholder="123456"
-              />
-              <span v-if="!firebaseConfigured" class="hint">Mode démo : le code est 123456.</span>
-              <span v-else class="hint">Envoyé au {{ phone }}.</span>
+          <template v-else>
+            <div class="login-title">Connexion</div>
+            <div class="login-sub">
+              {{
+                step === "phone"
+                  ? "Le numéro déclaré par votre établissement."
+                  : "Le code à six chiffres reçu par SMS."
+              }}
             </div>
-            <div class="login-actions">
-              <button class="btn primary" type="submit" :disabled="busy">
-                {{ busy ? "Vérification…" : "Se connecter" }}
-              </button>
-              <button class="btn ghost" type="button" @click="step = 'phone'">
-                Changer de numéro
-              </button>
-            </div>
-          </form>
-        </template>
 
-        <div class="login-meta">
-          <span>{{ dep.configLabel ?? dep.info?.label ?? "Serveur École" }}</span>
+            <!-- Shown BEFORE sign-in on purpose: "the server is unreachable" is
+                 the answer to most login failures, and finding out after three
+                 rejected codes is how a school decides the software is broken. -->
+            <div v-if="dep.unreachable" class="form-error">
+              Le serveur ne répond pas. Vérifiez la connexion avant de vous identifier.
+            </div>
+            <div v-else-if="error" class="form-error">{{ error }}</div>
+
+            <form v-if="step === 'phone'" @submit.prevent="send">
+              <div class="field">
+                <label for="phone">Numéro de téléphone</label>
+                <PhoneInput id="phone" v-model="phone" :disabled="working" autofocus />
+                <span class="hint">Celui qui reçoit vos SMS.</span>
+              </div>
+              <button
+                class="btn primary block"
+                type="submit"
+                :disabled="working || !phoneReady"
+              >
+                <span v-if="working" class="btn-spin" aria-hidden="true" />
+                {{ working ? "Envoi…" : "Recevoir le code" }}
+              </button>
+            </form>
+
+            <form v-else @submit.prevent="verify">
+              <div class="field">
+                <label for="code">Code reçu par SMS</label>
+                <input
+                  id="code"
+                  v-model="code"
+                  inputmode="numeric"
+                  autocomplete="one-time-code"
+                  placeholder="123456"
+                />
+                <span v-if="!firebaseConfigured" class="hint">
+                  Mode démo : le code est 123456.
+                </span>
+                <span v-else class="hint">Envoyé au {{ phone }}.</span>
+              </div>
+              <div class="login-actions">
+                <button class="btn primary" type="submit" :disabled="working">
+                  <span v-if="working" class="btn-spin" aria-hidden="true" />
+                  {{ working ? "Vérification…" : "Se connecter" }}
+                </button>
+                <button class="btn ghost" type="button" @click="step = 'phone'">
+                  Changer de numéro
+                </button>
+              </div>
+            </form>
+          </template>
+        </div>
+
+        <div class="sheet-foot">
+          <span class="sheet-sign">Le Chef d'établissement</span>
           <ThemeToggle />
         </div>
       </div>
+
+      <!-- The pitch is the artefact, not a paragraph about it. -->
+      <aside class="proof">
+        <p class="proof-lede">
+          Le conseil de classe est prêt avant que vous n'entriez en salle.
+        </p>
+        <p class="proof-sub">
+          Les notes saisies une fois deviennent moyennes, rangs, mentions et
+          bulletins — avec les coefficients de votre série, pas ceux d'un logiciel
+          importé.
+        </p>
+
+        <div class="proof-card">
+          <div class="proof-card-head">Bulletin · 2e trimestre · 2nde C</div>
+
+          <div class="proof-figures">
+            <div>
+              <div class="proof-fig-value">12,84</div>
+              <div class="proof-fig-label">Moyenne</div>
+            </div>
+            <div>
+              <div class="proof-fig-value">4<span style="font-size: 12px">/38</span></div>
+              <div class="proof-fig-label">Rang</div>
+            </div>
+            <div>
+              <div class="proof-fig-value" style="font-size: 15px">A. Bien</div>
+              <div class="proof-fig-label">Mention</div>
+            </div>
+          </div>
+
+          <div class="proof-lines">
+            <div class="proof-line"><span>Mathématiques ×5</span><b>14,50</b></div>
+            <div class="proof-line"><span>Physique-Chimie ×4</span><b>13,25</b></div>
+            <div class="proof-line"><span>Français ×3</span><b>11,00</b></div>
+            <div class="proof-line"><span>SVT ×3</span><b>12,75</b></div>
+          </div>
+        </div>
+
+        <ul class="proof-points">
+          <li>Coefficients par niveau et par série, changés sans nous appeler.</li>
+          <li>Internet coupé : le serveur de l'établissement prend le relais.</li>
+          <li>Les bulletins s'impriment depuis le navigateur, rien à installer.</li>
+        </ul>
+      </aside>
     </div>
   </div>
 </template>

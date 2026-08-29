@@ -2,17 +2,46 @@
    Component styles. Tokens come from index.css.
    ============================================================================ */
 
-/* ---------- app shell ---------- */
+/* ============================================================================
+   App shell.
+   ============================================================================
+   The frame owns the viewport and NOTHING inside it grows the page: the console
+   is exactly one screen tall, and scrolling happens in two independent boxes.
+
+   The sidebar is three regions — brand, navigation, identity — of which only
+   the middle one scrolls. Letting the whole rail scroll away is the failure
+   this replaces: "se déconnecter" would leave the screen the moment a list got
+   long, which is precisely when someone wants it.
+
+   `min-height: 0` appears on every intermediate box on purpose. A flex or grid
+   child defaults to `min-height: auto`, which refuses to shrink below its
+   content, so the child's `overflow` never engages and the whole frame grows
+   instead — the single most common way a layout like this silently reverts to
+   page scrolling.
+   ============================================================================ */
 .console {
   display: grid;
   grid-template-columns: 244px 1fr;
-  min-height: 100%;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
 }
 
 .side {
   background: var(--surface);
   border-right: 1px solid var(--line);
-  padding: var(--s5) var(--s3) var(--s4);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* The only scrollable region of the rail. */
+.side-nav {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-height: 0;
+  padding: 0 var(--s3) var(--s3);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -22,7 +51,7 @@
   display: flex;
   align-items: center;
   gap: var(--s2);
-  padding: 0 var(--s2) var(--s5);
+  padding: var(--s5) var(--s3) var(--s4);
 }
 .brand-mark {
   display: grid;
@@ -96,10 +125,11 @@
   font-weight: 600;
 }
 
+/* Pinned to the bottom of the rail and never scrolled out of reach. */
 .side-foot {
-  margin-top: auto;
-  padding-top: var(--s3);
+  padding: var(--s3);
   border-top: 1px solid var(--line-soft);
+  background: var(--surface);
   display: flex;
   flex-direction: column;
   gap: var(--s2);
@@ -109,6 +139,8 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .topbar {
@@ -127,18 +159,32 @@
   gap: var(--s2);
 }
 
+/* The scrolling half. Capped at the viewport, centred, and it — not the page —
+   is what moves when there is more content than fits. */
 .content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--s6);
-  min-width: 0;
-  max-width: 1160px;
+}
+.content-inner {
+  max-width: 1080px;
+  margin-inline: auto;
   width: 100%;
 }
 
 @media (max-width: 860px) {
+  /* On a phone the rail is a header strip, and the PAGE scrolls again — a
+     three-region rail eating vertical space is the wrong trade on 640px. */
   .console {
     grid-template-columns: 1fr;
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
   }
   .side {
+    display: flex;
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
@@ -146,6 +192,12 @@
     padding: var(--s3) var(--s4);
     border-right: none;
     border-bottom: 1px solid var(--line);
+    overflow: visible;
+  }
+  .side-nav {
+    flex-direction: row;
+    overflow: visible;
+    padding: 0;
   }
   .brand {
     padding: 0 var(--s3) 0 0;
@@ -154,12 +206,17 @@
     display: none;
   }
   .side-foot {
-    margin-top: 0;
-    padding-top: 0;
+    padding: 0;
     border-top: none;
     flex-direction: row;
     align-items: center;
     margin-left: auto;
+  }
+  .main {
+    overflow: visible;
+  }
+  .content {
+    overflow: visible;
   }
   .topbar,
   .content {
@@ -191,9 +248,13 @@
   font-weight: 650;
   letter-spacing: 0.02em;
 }
+/* The two spans were inline, so a name and a job title rendered on one run-on
+   line. They are a column: who, then what they are here. */
 .who-text {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
-  line-height: 1.25;
+  line-height: 1.3;
 }
 .who-name {
   font-size: var(--t-small);
@@ -380,51 +441,158 @@
   margin-top: 3px;
 }
 
-/* ---------- tables ---------- */
+/* ============================================================================
+   Tables.
+   ============================================================================
+   Same shape as teamfarm-web's standings ladder, and the reason is the defect
+   it fixes here: "Élèves" and "Comptes" were right-aligned headers sitting over
+   columns as wide as the WORD, so two-character figures floated far from the
+   label they belonged to and the eye could not connect them.
+
+   The standings table solves it by inverting the default — every column is
+   right-aligned and sized to its content EXCEPT the name, which absorbs all
+   remaining width. Numbers then sit in narrow columns directly under their
+   headers, and the label a reader scans for is the one thing that can breathe.
+   ============================================================================ */
 .table-wrap {
   overflow-x: auto;
+  border-radius: var(--radius);
 }
 table.data {
   width: 100%;
   border-collapse: collapse;
   font-size: var(--t-body);
-  font-variant-numeric: tabular-nums;
+  /* Below this the numeric columns start colliding; the wrap scrolls instead. */
+  min-width: 560px;
 }
 table.data th {
-  text-align: left;
-  font-size: var(--t-micro);
+  /* NOT sticky, deliberately. `.table-wrap` sets `overflow-x: auto`, which per
+     spec forces `overflow-y` to `auto` too, making the wrapper its own
+     scrollport — one whose height always equals its content, so it never
+     scrolls and a sticky header inside it never moves. teamfarm-web hits the
+     same wall and pays for a whole surrogate-header mechanism to get around it.
+     These tables are a fleet list and a class roster; the honest answer at this
+     size is a header that does not pretend. */
+  background: var(--surface-2);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
   color: var(--ink-3);
-  font-weight: 650;
-  padding: var(--s2) var(--s3);
+  text-align: right;
+  padding: 9px var(--s3);
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
 }
 table.data td {
   padding: 10px var(--s3);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
   border-bottom: 1px solid var(--line-soft);
+  color: var(--ink-2);
+  white-space: nowrap;
 }
 table.data tbody tr:last-child td {
   border-bottom: none;
 }
-table.data tbody tr:hover {
+table.data tbody tr:hover td {
   background: var(--surface-2);
 }
 table.data tr.is-clickable {
   cursor: pointer;
 }
-td.num,
-th.num {
-  text-align: right;
+table.data tr.is-clickable:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
 }
+
+/* The one column that is prose. It takes the slack so every number stays in a
+   narrow column under its own header. */
+table.data th.c-name,
+table.data td.c-name {
+  text-align: left;
+  width: 100%;
+  white-space: normal;
+}
+table.data td.c-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-weight: 600;
+}
+/* Secondary columns that are words rather than figures. */
+table.data th.c-text,
+table.data td.c-text {
+  text-align: left;
+}
+
+.row-mark {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-size: var(--t-micro);
+  font-weight: 700;
+  color: var(--ink-2);
+  letter-spacing: 0.02em;
+}
+/* A column, for the same reason `.who-text` is one: two inline spans put a
+   name and its identifier on one run-on line. */
+.row-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+
 .cell-strong {
   font-weight: 600;
   color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .cell-sub {
   font-size: var(--t-small);
+  font-weight: 400;
   color: var(--ink-3);
+}
+
+/* A key for the abbreviated numeric headers, ABOVE the table — the columns need
+   explaining before they are read, not after scrolling past every row. */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 var(--s3);
+  padding: 0;
+}
+.legend-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  cursor: help;
+}
+.legend dt {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--primary-soft-ink);
+}
+.legend dd {
+  margin: 0;
+  font-size: var(--t-small);
+  color: var(--ink-2);
 }
 
 .pill {
@@ -586,9 +754,13 @@ th.num {
   font-weight: 650;
   color: var(--ink-2);
 }
-.field input,
-.field select,
-.field textarea {
+/* Direct children only. `.field input` (0,1,1) outranks `.phone-input` (0,1,0),
+   so it was painting a bordered, rounded, backgrounded box INSIDE the phone
+   frame — a second control drawn within the first. Composite fields bring their
+   own skin; this rule dresses the plain ones. */
+.field > input,
+.field > select,
+.field > textarea {
   padding: 9px 11px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
@@ -598,28 +770,28 @@ th.num {
   font-size: var(--t-body);
   transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
-.field input:focus,
-.field select:focus,
-.field textarea:focus {
+.field > input:focus,
+.field > select:focus,
+.field > textarea:focus {
   outline: none;
   border-color: var(--primary);
   box-shadow: var(--ring);
 }
-.field input:disabled,
-.field select:disabled {
+.field > input:disabled,
+.field > select:disabled {
   background: var(--surface-2);
   color: var(--ink-3);
   cursor: not-allowed;
 }
-.field input::placeholder {
+.field > input::placeholder {
   color: var(--ink-3);
 }
 .field .hint {
   font-size: var(--t-small);
   color: var(--ink-3);
 }
-.field.is-invalid input,
-.field.is-invalid select {
+.field.is-invalid > input,
+.field.is-invalid > select {
   border-color: var(--danger);
 }
 .field .field-error {
@@ -698,6 +870,238 @@ th.num {
 }
 .choice:focus-within {
   box-shadow: var(--ring);
+}
+
+/* ============================================================================
+   Phone field.
+   ============================================================================
+   The dial code is a sibling of the input, not text inside it — see the note in
+   components/ui/PhoneInput.vue. The frame is styled to look like one control so
+   that the seam is invisible to the user and absolute to the caret. */
+.phone {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+/* Focus lives on the FRAME, so the ring wraps the dial code too and the field
+   reads as one control rather than a prefix next to a box. */
+.phone:focus-within {
+  border-color: var(--primary);
+  box-shadow: var(--ring);
+}
+.phone.is-invalid {
+  border-color: var(--danger);
+}
+.phone-dial {
+  display: flex;
+  align-items: center;
+  padding: 0 10px 0 11px;
+  background: var(--surface-2);
+  border-right: 1px solid var(--line);
+  color: var(--ink-2);
+  font-size: var(--t-body);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  flex: none;
+}
+.phone-input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 11px;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-body);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+/* Both spellings: the ring belongs to the FRAME, and an outline on the inner
+   input draws a second rounded rect inside the first — which is what it did. */
+.phone-input:focus,
+.phone-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.phone-input::placeholder {
+  color: var(--ink-3);
+  letter-spacing: normal;
+}
+.phone-ok {
+  display: flex;
+  align-items: center;
+  padding-right: 11px;
+  color: var(--ok);
+  font-weight: 700;
+  flex: none;
+}
+.phone.is-disabled {
+  opacity: 0.55;
+}
+
+/* ============================================================================
+   Progress and blocking work.
+   ============================================================================ */
+
+/* A 2px indeterminate bar across the top of the app. Ambient: it says "heard
+   you" without taking layout, a click, or the operator's attention. */
+.topprogress {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 2px;
+  z-index: 90;
+  background: var(--primary-soft);
+  overflow: hidden;
+}
+.topprogress-run {
+  height: 100%;
+  width: 38%;
+  border-radius: 0 2px 2px 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--primary) 28%,
+    var(--primary) 72%,
+    transparent
+  );
+  animation: run 1.15s cubic-bezier(0.5, 0, 0.4, 1) infinite;
+}
+@keyframes run {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(365%);
+  }
+}
+.topbar-enter-active,
+.topbar-leave-active {
+  transition: opacity 0.2s ease;
+}
+.topbar-enter-from,
+.topbar-leave-to {
+  opacity: 0;
+}
+
+/* The blocking overlay. Takes the pointer so a second click on a slow link
+   cannot become a second attempt at the same write. */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: var(--s5);
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: blur(6px) saturate(120%);
+  -webkit-backdrop-filter: blur(6px) saturate(120%);
+}
+.scrim-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s3);
+  text-align: center;
+  padding: var(--s6) var(--s6) var(--s5);
+  min-width: 260px;
+  max-width: 380px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+.scrim-title {
+  font-size: var(--t-h3);
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+.scrim-detail {
+  font-size: var(--t-body);
+  color: var(--ink-3);
+  line-height: 1.5;
+}
+
+/* Two concentric arcs at different speeds and opposite directions. Reads as a
+   mechanism doing work rather than a graphic looping — which is the whole
+   difference between "still going" and "possibly frozen". */
+.orbit {
+  position: relative;
+  width: 46px;
+  height: 46px;
+  flex: none;
+}
+.orbit-ring,
+.orbit-arc {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid transparent;
+}
+.orbit-ring {
+  border-color: var(--line);
+}
+.orbit-arc {
+  border-top-color: var(--primary);
+  border-right-color: var(--primary);
+  animation: orbit 0.85s cubic-bezier(0.45, 0, 0.35, 1) infinite;
+}
+.orbit::after {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-bottom-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  animation: orbit 1.5s linear infinite reverse;
+}
+@keyframes orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.scrim-enter-active,
+.scrim-leave-active {
+  transition: opacity 0.18s ease;
+}
+.scrim-enter-from,
+.scrim-leave-to {
+  opacity: 0;
+}
+
+/* Reduced motion still needs to say "working". The arcs stop turning and the
+   whole indicator breathes instead — movement without spin. */
+@media (prefers-reduced-motion: reduce) {
+  .orbit-arc,
+  .orbit::after,
+  .topprogress-run {
+    animation: none !important;
+  }
+  .topprogress-run {
+    width: 100%;
+    opacity: 0.7;
+  }
+  .orbit {
+    opacity: 0.8;
+  }
+}
+
+/* A button mid-request. The label stays put and the spinner takes the icon
+   slot, so the button does not resize under the cursor that just clicked it. */
+.btn .btn-spin {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  opacity: 0.75;
+  animation: orbit 0.7s linear infinite;
 }
 
 /* ---------- messages ---------- */
@@ -831,96 +1235,170 @@ th.num {
 /* ============================================================================
    Login.
    ============================================================================
-   A split panel: the product on the left, the form on the right. This screen is
-   the one a buyer sees before anything else, and often the only one they see in
-   a demo — so it carries the positioning rather than being a bare card floating
-   in grey. It collapses to the form alone under 900px, because on a phone the
-   pitch is not what the user came for. */
+   NOT the two-column split — the marketing panel on the left, the form on the
+   right. That layout is on Cloudflare, Vercel, Linear, Stripe and roughly every
+   B2B product shipped since 2019; a buyer has seen it forty times this year and
+   it says nothing about what they are signing into.
+
+   This screen is instead the document the product exists to produce. A ruled
+   ledger ground, one sheet floating on it, the sheet laid out like an official
+   bulletin: a header band with a rule under it, a row of administrative fields,
+   the body, and a signature foot. Beside it sits a real fragment of a bulletin
+   — moyenne, rang, mention — set in the same figures the printed one uses.
+
+   The pitch is therefore the artefact rather than a paragraph about it. It is
+   also honest: this IS what comes out the other end, typeset the way it prints.
+   And because it is furniture rather than a slideshow, it does not wear out on
+   a director who signs in every morning.
+   ============================================================================ */
 .login {
+  position: relative;
   min-height: 100%;
   display: grid;
-  grid-template-columns: 1.05fr 1fr;
+  place-items: center;
+  padding: var(--s6) var(--s5);
+  overflow: hidden;
 }
 
-.login-pitch {
-  background: var(--primary);
-  color: var(--primary-ink);
-  padding: var(--s7) clamp(var(--s6), 6vw, 72px);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: var(--s5);
+/* Ruled paper, drawn rather than loaded — the register this replaces. Two
+   gradients and no asset, so it costs nothing on a metered connection. */
+.login::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    repeating-linear-gradient(
+      to bottom,
+      var(--line-soft) 0 1px,
+      transparent 1px 30px
+    ),
+    linear-gradient(
+      120deg,
+      color-mix(in srgb, var(--primary) 7%, transparent),
+      transparent 55%
+    );
+  opacity: 0.75;
+  pointer-events: none;
 }
-.login-brand {
+/* The margin rule of a school register — one red-ink line down the left. */
+.login::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 clamp(24px, 8vw, 120px);
+  width: 1px;
+  background: color-mix(in srgb, var(--danger) 30%, transparent);
+  pointer-events: none;
+}
+
+.login-frame {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 400px) minmax(0, 300px);
+  align-items: start;
+  gap: var(--s6);
+  width: 100%;
+  max-width: 760px;
+}
+
+/* ── the sheet ── */
+.sheet {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.sheet-head {
+  padding: var(--s5) var(--s5) var(--s3);
+  border-bottom: 2px solid var(--ink);
+}
+.sheet-mark {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: var(--t-lead);
-  font-weight: 650;
-  letter-spacing: -0.02em;
+  gap: 9px;
 }
-.login-brand-mark {
+.sheet-mark-badge {
   display: grid;
   place-items: center;
   width: 30px;
   height: 30px;
-  border-radius: var(--radius-sm);
-  background: var(--primary-ink);
-  color: var(--primary);
-  font-weight: 700;
-}
-.login-headline {
-  font-size: clamp(26px, 3.2vw, var(--t-display));
-  font-weight: 660;
-  letter-spacing: -0.028em;
-  line-height: 1.16;
-  max-width: 18ch;
-}
-.login-lede {
-  font-size: var(--t-lead);
-  line-height: 1.55;
-  max-width: 46ch;
-  opacity: 0.86;
-}
-.login-points {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  font-size: var(--t-body);
-}
-.login-points li {
-  display: flex;
-  gap: 10px;
-  align-items: baseline;
-  opacity: 0.9;
-}
-.login-points li::before {
-  content: "—";
-  opacity: 0.6;
   flex: none;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  color: var(--primary-ink);
+  font-size: var(--t-body);
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
-.login-foot {
-  font-size: var(--t-small);
-  opacity: 0.65;
-  margin-top: auto;
+.sheet-wordmark {
+  font-size: var(--t-h3);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.sheet-kicker {
+  margin-top: var(--s3);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--ink-3);
 }
 
-.login-panel {
+/* The administrative row every Congolese official document opens with. Here it
+   carries the two facts a user actually needs before signing in: which server
+   they reached, and whether it answered. */
+.sheet-meta {
   display: grid;
-  place-items: center;
-  padding: var(--s6) var(--s5);
-  background: var(--bg);
+  grid-template-columns: 1fr 1fr;
+  gap: 2px var(--s4);
+  padding: var(--s3) var(--s5);
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--surface-2);
 }
-.login-card {
-  width: 100%;
-  max-width: 372px;
+.sheet-meta-label {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+  font-weight: 650;
 }
+.sheet-meta-value {
+  font-size: var(--t-small);
+  color: var(--ink-2);
+  font-weight: 550;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sheet-body {
+  padding: var(--s5);
+}
+.sheet-foot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s3) var(--s5) var(--s4);
+  border-top: 1px solid var(--line-soft);
+}
+/* The signature line of the printed document, kept as a quiet visual rhyme. */
+.sheet-sign {
+  border-top: 1px solid var(--line-strong);
+  padding-top: 3px;
+  min-width: 118px;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+  text-align: center;
+}
+
 .login-title {
   font-size: var(--t-h2);
   font-weight: 650;
+  letter-spacing: -0.02em;
   margin-bottom: 3px;
 }
 .login-sub {
@@ -935,25 +1413,124 @@ th.num {
   align-items: center;
   flex-wrap: wrap;
 }
-.login-meta {
-  margin-top: var(--s5);
+
+/* ── the proof column: an actual bulletin fragment ── */
+.proof {
   padding-top: var(--s4);
-  border-top: 1px solid var(--line);
-  font-size: var(--t-small);
-  color: var(--ink-3);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s3);
+}
+.proof-lede {
+  font-size: var(--t-h3);
+  font-weight: 620;
+  letter-spacing: -0.018em;
+  line-height: 1.3;
+  color: var(--ink);
+  margin-bottom: var(--s2);
+  text-wrap: balance;
+}
+.proof-sub {
+  font-size: var(--t-body);
+  line-height: 1.55;
+  color: var(--ink-2);
+  margin-bottom: var(--s4);
 }
 
-@media (max-width: 900px) {
-  .login {
-    grid-template-columns: 1fr;
+.proof-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: var(--s3);
+  box-shadow: var(--shadow-xs);
+}
+.proof-card-head {
+  font-family: var(--mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+  border-bottom: 1px solid var(--ink);
+  padding-bottom: 5px;
+  margin-bottom: var(--s2);
+}
+.proof-figures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--s2);
+  margin-bottom: var(--s3);
+}
+.proof-fig-value {
+  font-size: var(--t-h3);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  line-height: 1.1;
+}
+.proof-fig-label {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ink-3);
+  font-weight: 650;
+  margin-top: 2px;
+}
+.proof-lines {
+  font-size: var(--t-small);
+  font-variant-numeric: tabular-nums;
+}
+.proof-line {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding: 3px 0;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--ink-2);
+}
+.proof-line:last-child {
+  border-bottom: none;
+}
+.proof-line b {
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.proof-points {
+  list-style: none;
+  margin: var(--s4) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  font-size: var(--t-small);
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+.proof-points li {
+  display: flex;
+  gap: 9px;
+  align-items: baseline;
+}
+.proof-points li::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--primary);
+  transform: translateY(-2px);
+}
+
+@media (max-width: 820px) {
+  .login-frame {
+    grid-template-columns: minmax(0, 400px);
+    justify-content: center;
+    max-width: 400px;
   }
-  /* The pitch is the half that goes. On a phone in a school corridor the user
-     is signing in, not evaluating the product. */
-  .login-pitch {
+  /* The proof column goes, not the sheet. On a phone in a school corridor the
+     user is signing in, not evaluating the product. */
+  .proof {
+    display: none;
+  }
+  .login::after {
     display: none;
   }
 }

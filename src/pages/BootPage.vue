@@ -11,8 +11,8 @@
 
 <template>
   <div class="boot">
-    <div class="boot-mark" aria-hidden="true">É</div>
-    <div class="boot-name">École</div>
+    <div class="boot-mark" aria-hidden="true">T</div>
+    <div class="boot-name">TeYa</div>
     <div class="spinner" role="status" aria-label="Chargement" />
   </div>
 </template>

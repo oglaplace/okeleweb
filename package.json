@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "École web — console d'administration pour complexes scolaires (Congo-Brazzaville).",
+  "description": "TeYa web — console d'administration pour complexes scolaires (Congo-Brazzaville).",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",

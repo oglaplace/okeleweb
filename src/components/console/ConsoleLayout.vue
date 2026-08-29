@@ -24,21 +24,25 @@ async function logout() {
   <div class="console">
     <aside class="side">
       <div class="brand">
-        <span class="brand-mark" aria-hidden="true">É</span>
+        <span class="brand-mark" aria-hidden="true">T</span>
         <span class="brand-text">
-          <span class="brand-name">École</span>
+          <span class="brand-name">TeYa</span>
           <span class="brand-sub">Console</span>
         </span>
       </div>
 
-      <div class="nav-group">Établissement</div>
-      <RouterLink to="/console" class="nav-item" active-class="active" exact-active-class="active">
-        Tableau de bord
-      </RouterLink>
-      <RouterLink to="/console/structure" class="nav-item" active-class="active">
-        Structure
-      </RouterLink>
+      <!-- The only scrolling region of the rail. -->
+      <nav class="side-nav">
+        <div class="nav-group">Établissement</div>
+        <RouterLink to="/console" class="nav-item" active-class="active" exact-active-class="active">
+          Tableau de bord
+        </RouterLink>
+        <RouterLink to="/console/structure" class="nav-item" active-class="active">
+          Structure
+        </RouterLink>
+      </nav>
 
+      <!-- Pinned: sign-out must stay reachable while a long list scrolls. -->
       <div class="side-foot">
         <div class="who">
           <span class="avatar" aria-hidden="true">{{ auth.initials }}</span>
@@ -72,7 +76,9 @@ async function logout() {
       </div>
 
       <main class="content">
-        <RouterView />
+        <div class="content-inner">
+          <RouterView />
+        </div>
       </main>
     </div>
   </div>

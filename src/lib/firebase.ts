@@ -8,7 +8,7 @@
 //   configured (VITE_FIREBASE_API_KEY set) -> real Firebase phone auth
 //   otherwise                              -> mock (OTP code "123456")
 //
-// Unlike teamfarm-web there are NO baked-in project keys: École is a
+// Unlike teamfarm-web there are NO baked-in project keys: TeYa is a
 // multi-tenant product that may point at different Firebase projects per
 // deployment, so config is env-only and a missing key degrades to mock rather
 // than silently authenticating against someone else's project.
