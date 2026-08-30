@@ -3,8 +3,6 @@ import { computed, ref } from "vue";
 import { RouterLink, type RouteLocationRaw } from "vue-router";
 import * as api from "../../lib/api";
 import { ACTIONS, GROUPS, type ActionSpec } from "../../lib/actions";
-import { KIND_FR } from "../structure/kinds";
-import { useOrgStore } from "../../stores/org";
 import Icon from "../ui/Icon.vue";
 
 /**
@@ -14,25 +12,24 @@ import Icon from "../ui/Icon.vue";
  * below the fold. A toolbar is the right shape for this: the operator came here
  * to look at a class and occasionally to act on it, not to read a catalogue.
  *
- * INHERITED ACTIONS are the interesting part. A course offering belongs to the
- * NIVEAU and a period to the SCHOOL — that is the data model and it is correct,
- * because every 6e class shares one programme. But an operator standing on 6e B
- * who wants to add a subject does not care where the row lives, and sending
- * them off to find 6e in the tree is the kind of errand that makes people give
- * up on software.
+ * ONLY WHAT APPLIES HERE. An earlier version also offered the nearest
+ * ancestor's actions — "programmer une matière" on a class, writing to its
+ * niveau — on the reasoning that the operator should not have to go and find
+ * the niveau. In use it was noise: standing on a classroom you were offered
+ * "créer une période" and "grille tarifaire", neither of which has anything to
+ * do with a classroom, and the one-line "sur niveau « Sixième »" underneath was
+ * not enough to make that read as anything but a mistake.
  *
- * So the bar also offers the actions of the nearest ancestor that accepts them,
- * and names that ancestor on the item and again in the dialog. Contextual, and
- * still honest about what is being changed — the alternative, quietly writing
- * to the niveau while the screen says "6e B", would be a lie.
+ * A menu that offers eleven things to do to a class, three of which are not
+ * about the class, is worse than one that offers eight. The tree is one click
+ * away and it is the right place to act on the niveau.
  */
 const props = defineProps<{ unit: api.OrgUnit }>();
 const emit = defineEmits<{
-  run: [{ spec: ActionSpec; target: api.OrgUnit | api.TreeUnit }];
+  run: [{ spec: ActionSpec; target: api.OrgUnit }];
   structure: [action: "add" | "rename" | "close" | "reopen"];
 }>();
 
-const org = useOrgStore();
 const open = ref<string | null>(null);
 
 /** A classe is the last rung of the tree; nothing nests under it. */
@@ -40,9 +37,6 @@ const canHoldChildren = computed(() => props.unit.kind !== "CLASSE");
 
 interface Item {
   spec: ActionSpec;
-  target: api.OrgUnit | api.TreeUnit;
-  /** True when the action belongs to an ancestor rather than to this node. */
-  inherited: boolean;
   to: RouteLocationRaw | null;
   blocked: string | null;
 }
@@ -59,33 +53,24 @@ function routeFor(spec: ActionSpec, targetId: string): RouteLocationRaw | null {
   return { name: spec.route, query: { scope: targetId } };
 }
 
-const items = computed<Item[]>(() => {
-  const out: Item[] = [];
-  const chain = org.ancestors(props.unit.id); // root-first, includes self
-  const ancestorsNearestFirst = [...chain.slice(0, -1)].reverse();
-
-  for (const spec of ACTIONS) {
-    // The explorer IS the tree beside this bar; offering it here is a link to
-    // where you already are.
-    if (spec.id === "explorer") continue;
-    if (!spec.scope?.length) continue; // complex-wide: belongs in the rail
-
-    const direct = spec.scope.includes(props.unit.kind);
-    const target = direct
-      ? props.unit
-      : ancestorsNearestFirst.find((a) => spec.scope!.includes(a.kind));
-    if (!target) continue;
-
-    out.push({
-      spec,
-      target,
-      inherited: !direct,
-      to: routeFor(spec, target.id),
-      blocked: spec.planned ?? null,
-    });
-  }
-  return out;
-});
+const items = computed<Item[]>(() =>
+  ACTIONS.filter(
+    (spec) =>
+      // The explorer IS the tree beside this bar; offering it here is a link
+      // to where you already are.
+      spec.id !== "explorer" &&
+      // Complex-wide actions belong to the établissement, not to any node in
+      // it — the rail is where those live.
+      spec.scope?.includes(props.unit.kind),
+  ).map((spec) => ({
+    spec,
+    // An action that opens in place has no destination: it is a dialog over
+    // this page, and navigating away from the node to act on it is exactly
+    // what "in place" means not doing.
+    to: spec.inline ? null : routeFor(spec, props.unit.id),
+    blocked: spec.planned ?? null,
+  })),
+);
 
 const groups = computed(() =>
   GROUPS.map((g) => ({ ...g, items: items.value.filter((i) => i.spec.group === g.id) })).filter(
@@ -100,7 +85,7 @@ function toggle(id: string) {
 function choose(item: Item) {
   open.value = null;
   if (item.blocked) return;
-  if (!item.to) emit("run", { spec: item.spec, target: item.target });
+  if (!item.to) emit("run", { spec: item.spec, target: props.unit });
 }
 
 function structure(action: "add" | "rename" | "close" | "reopen") {
@@ -155,12 +140,7 @@ function structure(action: "add" | "rename" | "close" | "reopen") {
             <Icon :name="item.spec.icon" :size="15" />
             <span class="actionbar-item-text">
               <span>{{ item.spec.label }}</span>
-              <!-- Named, always: an action that writes to the niveau must not
-                   look like one that writes to the class. -->
-              <span v-if="item.inherited" class="actionbar-on">
-                sur {{ KIND_FR[item.target.kind].toLowerCase() }} « {{ item.target.name }} »
-              </span>
-              <span v-else-if="item.blocked" class="actionbar-on">{{ item.blocked }}</span>
+              <span v-if="item.blocked" class="actionbar-on">{{ item.blocked }}</span>
             </span>
           </component>
         </div>

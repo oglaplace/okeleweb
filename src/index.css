@@ -33,7 +33,10 @@
   --surface-3: #e2e0d9;
   --ink: #15171c;
   --ink-2: #494e5c;
-  --ink-3: #767c8d;
+  /* 4.88:1 on --surface. It was #767c8d and measured 4.18 — under AA for
+     anything below 18px, which is exactly what it is used for: hints, paths,
+     the second line in a table cell. */
+  --ink-3: #6b7183;
   --line: #dcdad3;
   --line-soft: #eae8e2;
   --line-strong: #c6c4bb;
@@ -81,6 +84,17 @@
   --s6: 30px;
   --s7: 44px;
 
+  /* ── control height ──
+     ONE number for every interactive box: inputs, selects, buttons, the search
+     fields, the file picker. They sit beside each other constantly — a select
+     next to a button next to a date — and each was previously sized by its own
+     padding plus whatever line-height the browser gave its content, so a row of
+     three controls was a row of three heights. Height is set explicitly and
+     padding is horizontal only, which is the only way `<select>` and `<input>`
+     agree across engines. */
+  --control-h: 38px;
+  --control-h-sm: 30px;
+
   /* ── type scale ── */
   --t-micro: 11px;
   --t-small: 12.5px;
@@ -96,6 +110,9 @@
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
   color-scheme: light;
+  /* Checkboxes, radios and range thumbs are drawn by the browser; this is the
+     one line that keeps them from being the only unbranded blue on screen. */
+  accent-color: var(--primary);
 }
 
 /* The dark palette, defined once and applied from two selectors: the system

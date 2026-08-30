@@ -201,6 +201,21 @@ export interface ScaffoldPreview {
   subjects: number;
 }
 
+/**
+ * One row an upgrade would create. `key` is what gets ticked and sent back.
+ *
+ * A path rather than an id (`unit:COL/C1/5E`), because the server computes the
+ * plan in a transaction it rolls back — every id it saw is gone by the time the
+ * operator decides.
+ */
+export interface PlanItem {
+  key: string;
+  kind: "UNIT" | "SUBJECT" | "SERIE" | "PERIOD" | "OFFERING" | "FISCAL_YEAR";
+  label: string;
+  detail: string;
+  module: BlueprintModule | null;
+}
+
 export interface ScaffoldReport extends ScaffoldPreview {
   periods: number;
   offerings: number;
@@ -360,10 +375,23 @@ export const orgUnits = {
       `/org-units/scaffold/preview?modules=${encodeURIComponent(modules.join(","))}`,
     ),
 
-  scaffold: (modules: BlueprintModule[]) =>
+  /**
+   * What an upgrade WOULD add, itemised.
+   *
+   * Computed server-side by running the scaffold in a rolled-back transaction,
+   * so the list cannot drift from what applying it actually does. No modules
+   * means "whatever is installed" — the upgrade case.
+   */
+  planScaffold: (modules?: BlueprintModule[]) =>
+    request<{ modules: BlueprintModule[]; items: PlanItem[] }>(
+      `/org-units/scaffold/plan${modules?.length ? `?modules=${encodeURIComponent(modules.join(","))}` : ""}`,
+    ),
+
+  /** `only` are plan keys. Omitted, everything missing is created. */
+  scaffold: (modules: BlueprintModule[], only?: string[]) =>
     request<ScaffoldReport>("/org-units/scaffold", {
       method: "POST",
-      body: JSON.stringify({ modules }),
+      body: JSON.stringify({ modules, ...(only ? { only } : {}) }),
     }),
 };
 
@@ -500,11 +528,23 @@ export const people = {
 
 // ─── enrolment ───────────────────────────────────────────────────────────────
 
+export interface GuardianRow {
+  relationship: string;
+  isPrimary: boolean;
+  isPayer: boolean;
+  guardian: { firstName: string; lastName: string; phone: string | null; email: string | null };
+}
+
 export interface RosterRow {
   id: string;
   studentId: string;
   isRepeating: boolean;
-  student: { matricule: string; person: { firstName: string; lastName: string } };
+  student: {
+    matricule: string;
+    person: { firstName: string; lastName: string };
+    /** The primary tuteur only — the number a titulaire actually dials. */
+    guardians: GuardianRow[];
+  };
   serie: { code: string; name: string } | null;
 }
 
@@ -520,6 +560,22 @@ export const enrollment = {
       phone?: string | null;
       address?: string | null;
     };
+    /**
+     * The tuteurs, created with the pupil.
+     *
+     * The first is the contact and the payer unless said otherwise, and an
+     * adult already known by that phone number is reused rather than copied —
+     * both decided server-side, so a second client cannot get it wrong.
+     */
+    guardians?: {
+      firstName: string;
+      lastName: string;
+      relationship: string;
+      phone?: string | null;
+      email?: string | null;
+      isPrimary?: boolean;
+      isPayer?: boolean;
+    }[];
     academicYearId: string;
     classeId: string;
     serieId?: string | null;

@@ -243,12 +243,19 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: var(--s6);
 }
+/* The padding lives HERE, not on the scroller, so a toolbar can sit flush
+   against the column edges while the work keeps its margins. */
 .content-inner {
   max-width: 1080px;
   margin-inline: auto;
   width: 100%;
+  padding: var(--s6);
+}
+/* Empty until a screen teleports into it, and then it must take no space of
+   its own beyond what it holds. */
+.content-toolbar:empty {
+  display: none;
 }
 
 @media (max-width: 860px) {
@@ -307,10 +314,12 @@
   .content {
     overflow: visible;
   }
-  .topbar,
-  .content {
+  .topbar {
     padding-left: var(--s4);
     padding-right: var(--s4);
+  }
+  .content-inner {
+    padding: var(--s4);
   }
 }
 
@@ -797,7 +806,11 @@ table.data td.c-text {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  padding: 8px 15px;
+  /* The same box as an input, so a button beside a select lines up without
+     anyone nudging a padding value. min-height rather than height: a button
+     that wraps onto two lines must still contain its label. */
+  min-height: var(--control-h);
+  padding: 0 15px;
   border-radius: var(--radius);
   border: 1px solid var(--line-strong);
   background: var(--surface);
@@ -864,13 +877,26 @@ table.data td.c-text {
   box-shadow: var(--ring);
 }
 
+/*
+ * Disabled is a STATE, not a dimmer.
+ *
+ * `opacity: 0.45` on a primary button leaves white text on pale blue — the same
+ * class of bug as the hover one: a rule that changes the background without
+ * saying anything about the foreground. Setting both, once, makes every
+ * disabled button look identical whatever variant it started as, which is also
+ * the honest signal: it is not a primary action right now.
+ */
 .btn:disabled {
-  opacity: 0.45;
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--ink-3);
+  box-shadow: none;
   cursor: not-allowed;
 }
 
 .btn.sm {
-  padding: 5px 11px;
+  min-height: var(--control-h-sm);
+  padding: 0 11px;
   font-size: var(--t-small);
   border-radius: var(--radius-sm);
 }
@@ -881,8 +907,9 @@ table.data td.c-text {
 /* Icon-only: square, and it MUST carry an aria-label at the call site. */
 .btn.icon {
   padding: 0;
-  width: 32px;
-  height: 32px;
+  width: var(--control-h);
+  height: var(--control-h);
+  min-height: 0;
   flex: none;
 }
 
@@ -905,7 +932,8 @@ table.data td.c-text {
 .field > input,
 .field > select,
 .field > textarea {
-  padding: 9px 11px;
+  height: var(--control-h);
+  padding: 0 11px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   background: var(--surface);
@@ -913,6 +941,48 @@ table.data td.c-text {
   font: inherit;
   font-size: var(--t-body);
   transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+/* A checkbox is not a text box: it must keep its intrinsic size. */
+.field > input[type="checkbox"],
+.field > input[type="radio"] {
+  height: auto;
+  width: auto;
+  padding: 0;
+}
+/* Multi-line by definition, so it takes padding instead of a fixed height —
+   but starts at exactly two control heights so a form of one-liners and one
+   textarea still reads as a grid. */
+.field > textarea {
+  height: auto;
+  min-height: calc(var(--control-h) * 2);
+  padding: 9px 11px;
+  line-height: 1.5;
+  resize: vertical;
+}
+/* Native file inputs size themselves from their button. Same box as the rest,
+   with the button restyled to match .btn rather than the OS. */
+.field > input[type="file"] {
+  padding: 0 11px 0 0;
+  line-height: calc(var(--control-h) - 2px);
+  color: var(--ink-2);
+  font-size: var(--t-small);
+}
+.field > input[type="file"]::file-selector-button {
+  height: calc(var(--control-h) - 2px);
+  margin-right: var(--s3);
+  padding: 0 14px;
+  border: none;
+  border-right: 1px solid var(--line);
+  border-radius: calc(var(--radius) - 1px) 0 0 calc(var(--radius) - 1px);
+  background: var(--surface-2);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-small);
+  font-weight: 550;
+  cursor: pointer;
+}
+.field > input[type="file"]::file-selector-button:hover {
+  background: var(--surface-3);
 }
 .field > input:focus,
 .field > select:focus,
@@ -944,9 +1014,18 @@ table.data td.c-text {
   font-weight: 550;
 }
 
+/*
+ * 180px, not 220px.
+ *
+ * A three-field row — nom, prénom, sexe — has to fit across a dialog, and at
+ * 220px it did not: two fields wrapped onto the first line and the third sat
+ * alone at half width underneath, which reads as a mistake rather than a
+ * layout. 180px is still wide enough for a date or a phone number, and the
+ * tracks stretch to fill whatever is left over.
+ */
 .field-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 0 var(--s3);
 }
 
@@ -2049,16 +2128,31 @@ table.data td.c-text {
 }
 
 /* Back, next to where-you-are: the same question asked twice. */
-.crumb-back {
-  display: grid;
+/*
+ * Back and home are the same control size, deliberately.
+ *
+ * They sit side by side and do the same KIND of thing — leave here — so two
+ * different sizes read as an accident. The house was 14px of inline SVG on a
+ * text baseline while the button was a 28px box, which put them on two
+ * different optical lines and made the whole bar look tilted.
+ */
+.crumb-back,
+.crumbs-link.is-home,
+.crumbs-here.is-home {
+  display: inline-grid;
   place-items: center;
   width: 28px;
   height: 28px;
   flex: none;
-  border: 1px solid var(--line);
   border-radius: var(--radius-sm);
+}
+.crumb-back {
+  border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink-2);
+}
+.crumbs-link.is-home:hover {
+  background: var(--surface-2);
 }
 .crumb-back:hover {
   background: var(--surface-2);
@@ -2080,6 +2174,10 @@ table.data td.c-text {
 .crumbs {
   display: flex;
   align-items: center;
+  /* The scroller is as tall as its tallest child, so it has to be told to
+     centre inside the bar or a 28px house drops the row by two pixels. */
+  align-self: center;
+  min-height: 28px;
   flex-wrap: nowrap;
   gap: 6px;
   font-size: var(--t-small);
@@ -2097,6 +2195,9 @@ table.data td.c-text {
   align-items: center;
   gap: 5px;
   flex: none;
+  /* The trail is one line of controls of different heights; this is what puts
+     their centres on the same axis rather than their baselines. */
+  align-self: center;
 }
 /* The root is a house, not a word: it is on every screen and its name is
    already in the rail. */
@@ -2641,7 +2742,7 @@ table.data td.c-text {
 
   body { background: #fff; }
   .console { display: block; }
-  .content { padding: 0; }
+  .content-inner { padding: 0; }
   .bulletin-run { gap: 0; display: block; }
 
   .bulletin {
@@ -2678,18 +2779,27 @@ table.data td.c-text {
    roster you have scrolled. */
 .actionbar {
   position: sticky;
-  top: calc(var(--s6) * -1);
+  top: 0;
   z-index: 30;
   display: flex;
   align-items: center;
   gap: 4px;
   flex-wrap: wrap;
-  margin: calc(var(--s6) * -1) calc(var(--s6) * -1) var(--s4);
-  padding: var(--s2) var(--s6);
+  /* Flush with the column: no margin, and 4px of inset only so a hovered
+     button's background does not collide with the pane divider. The work below
+     keeps its own margins — a toolbar inset like a card reads as a card. */
+  padding: var(--s2) var(--s1);
   border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  /*
+   * Opaque, not translucent.
+   *
+   * It was `color-mix(surface 92%, transparent)` over a blur, which looks
+   * pleasant while nothing is scrolling under it and lets the roster ghost
+   * through the labels while something is. A toolbar's whole job is to stay
+   * readable over whatever passes beneath — and an opaque strip is also a
+   * contrast you can measure, which a composite of two layers is not.
+   */
+  background: var(--surface);
 }
 .actionbar-menu {
   position: relative;
@@ -2807,24 +2917,28 @@ table.data td.c-text {
   line-height: 1.35;
 }
 
-/* ── an action, run in place ── */
-.scrim-card.action-dialog {
+/* ── dialogs: one shell, every overlay ── */
+.scrim-card.dialog {
   align-items: stretch;
   text-align: left;
   gap: 0;
   width: 100%;
-  max-width: 620px;
+  max-width: 520px;
   padding: var(--s4) var(--s5) var(--s5);
-  max-height: min(86vh, 760px);
+  max-height: min(88vh, 820px);
   overflow-y: auto;
 }
-.action-dialog-head {
+/* Forms with two columns of fields need the room; a confirmation does not. */
+.scrim-card.dialog.is-wide {
+  max-width: 680px;
+}
+.dialog-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--s3);
 }
-.action-dialog-title {
+.dialog-title {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2834,7 +2948,7 @@ table.data td.c-text {
   color: var(--ink);
 }
 /* The node, stated rather than asked — this is what "in place" means. */
-.action-dialog-scope {
+.dialog-scope {
   display: flex;
   align-items: center;
   gap: var(--s2);
@@ -2843,11 +2957,86 @@ table.data td.c-text {
   padding-bottom: var(--s3);
   border-bottom: 1px solid var(--line-soft);
 }
+.dialog-body {
+  margin-top: var(--s2);
+}
+.dialog-text {
+  margin: 0;
+  font-size: var(--t-body);
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+.dialog-actions {
+  justify-content: flex-end;
+  margin-top: var(--s4);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--line-soft);
+}
+.dialog-body > .field:last-child,
+.dialog-body .fieldset:last-of-type {
+  margin-bottom: 0;
+}
+
 .action-form .field-row {
   margin-bottom: var(--s2);
 }
-.action-form .form-actions {
+/*
+ * The submit button stays on screen.
+ *
+ * A dialog holding a pupil, two tuteurs and an enrolment is taller than the
+ * card, so the card scrolls — and the primary action was below the fold at the
+ * moment the form opened. Sticking the row to the bottom of the card puts it
+ * where a footer would be, without giving up the single scrolling region.
+ */
+.action-form .form-actions,
+.enroll-form .form-actions,
+.dialog .dialog-actions {
   justify-content: flex-end;
+  margin-top: var(--s4);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--line-soft);
+}
+.dialog .form-actions,
+.dialog .dialog-actions {
+  position: sticky;
+  bottom: calc(var(--s5) * -1);
+  margin-bottom: calc(var(--s5) * -1);
+  padding-bottom: var(--s5);
+  background: var(--surface);
+}
+
+/* ── enrolment: the pupil, then the people who answer the phone ── */
+.guardian {
+  padding: var(--s3) var(--s3) 0;
+  margin-bottom: var(--s3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.guardian:last-of-type {
+  margin-bottom: var(--s3);
+}
+/* Keeps a button on the same baseline as the inputs beside it: the label slot
+   above it is empty, so without this it floats to the top of the row. */
+.field-actions {
+  justify-content: flex-end;
+  padding-bottom: var(--s4);
+}
+/* An answered question, shown where the control would be. Same height as the
+   inputs beside it so the row does not step. */
+.field-static {
+  display: flex;
+  align-items: center;
+  height: var(--control-h);
+  padding: 0 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: var(--t-body);
 }
 
 /* ── the second column, when it is asking rather than navigating ── */
@@ -2926,7 +3115,85 @@ table.data td.c-text {
      content pane, so a sticky toolbar would sit over the roster. */
   .actionbar {
     position: static;
-    margin: calc(var(--s4) * -1) calc(var(--s4) * -1) var(--s4);
-    padding: var(--s2) var(--s4);
   }
+}
+
+
+/* ── the upgrade plan: what is missing, and what to do about it ── */
+.plan-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--line-soft);
+}
+/* No scroller of its own: the dialog card already scrolls, and a list that
+   scrolls inside a card that scrolls hides its own end from the operator who
+   is being asked to read it. */
+.plan-list {
+  margin: var(--s2) calc(var(--s2) * -1) 0;
+  padding: 0 var(--s2);
+}
+.plan-group {
+  margin-bottom: var(--s3);
+}
+.plan-group-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  padding: 6px 0;
+  border: none;
+  background: none;
+  color: var(--ink-3);
+  font-size: var(--t-micro);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  text-align: left;
+}
+.plan-group-head:hover {
+  color: var(--ink);
+}
+.plan-count {
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: var(--t-micro);
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+.plan-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--s2);
+  padding: 6px var(--s2);
+  border-radius: var(--radius-sm);
+  font-size: var(--t-small);
+  cursor: pointer;
+}
+.plan-row:hover {
+  background: var(--surface-2);
+}
+.plan-label {
+  color: var(--ink);
+  font-weight: 550;
+}
+.plan-detail {
+  color: var(--ink-3);
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  text-align: right;
+}
+
+/* A second line inside a table cell — a phone under a name, without a second
+   column that would be empty on half the rows. */
+.cell-sub {
+  display: block;
+  color: var(--ink-3);
+  font-size: var(--t-micro);
+  font-variant-numeric: tabular-nums;
 }

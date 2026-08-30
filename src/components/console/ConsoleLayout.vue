@@ -176,6 +176,15 @@ async function logout() {
         <ScopePane v-else-if="pane === 'scope' && actionSpec" :spec="actionSpec" />
 
         <main class="content">
+          <!--
+            Where a screen puts a toolbar that belongs to the whole column.
+            OUTSIDE `.content-inner`, so it escapes both the column padding and
+            the 1080px reading width: an action bar inset by 30px on each side
+            reads as a card, and a card is not what a toolbar is. The node page
+            fills it by teleport — see NodePage.
+          -->
+          <div id="node-toolbar" class="content-toolbar" />
+
           <div class="content-inner">
             <RouterView />
           </div>

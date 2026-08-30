@@ -88,12 +88,12 @@ function back() {
           :to="part.to"
           :title="part.label"
         >
-          <Icon v-if="part.home" name="home" :size="14" />
+          <Icon v-if="part.home" name="home" :size="16" />
           <span v-else>{{ part.label }}</span>
         </RouterLink>
 
-        <span v-else class="crumbs-here">
-          <Icon v-if="part.home" name="home" :size="14" />
+        <span v-else class="crumbs-here" :class="{ 'is-home': part.home }">
+          <Icon v-if="part.home" name="home" :size="16" />
           <template v-else>{{ part.label }}</template>
         </span>
       </template>

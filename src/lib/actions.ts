@@ -77,6 +77,15 @@ export interface ActionSpec {
   fields?: ActionField[];
   /** A screen of its own, for actions that are not forms. */
   route?: string;
+  /**
+   * Opens as a dialog over the current view when the node is already known.
+   *
+   * Named rather than boolean because the dialog needs to know WHICH form to
+   * mount — these are the actions rich enough to have their own component
+   * rather than a list of declared fields. The route stays: reached from the
+   * rail, with nothing selected, the screen is still the right answer.
+   */
+  inline?: "enroll";
   /** Declared but not yet wired; the reason is shown in place of the action. */
   planned?: string;
   submit?: (scopeId: string | null, v: Record<string, string>) => Promise<unknown>;
@@ -175,6 +184,7 @@ export const ACTIONS: ActionSpec[] = [
     // classe in and the picker opens already answered.
     scope: ["CLASSE"],
     route: "enroll",
+    inline: "enroll",
   },
   {
     id: "import-students",

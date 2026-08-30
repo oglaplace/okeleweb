@@ -188,23 +188,25 @@ function toggle(id: string) {
 }
 
 /**
- * Opens the root and its immediate children on first load.
+ * Opens NOTHING. The tree arrives closed and the operator opens what they came
+ * for.
  *
- * Fully collapsed would show one row and teach nothing; fully expanded is what
- * this replaces. The schools of a complex are the level a director thinks in,
- * so that is where it opens.
+ * It seeded the root and its schools before, on the reasoning that one row
+ * teaches nothing. In practice a complex with three schools opened to a dozen
+ * rows, and the operator's first act was still to close the two they did not
+ * want. Closed is the honest default: the structure screen is where you go
+ * looking for one branch, not to read the whole tree.
+ *
+ * Pick mode is the exception, below — a pane that hides the thing it is asking
+ * you to choose is asking you to go and find it.
  */
 watch(
   () => props.units,
   (units) => {
     if (seeded.value || !units.length) return;
-    const roots = units.filter((u) => u.parentId === null);
-    const next = new Set(roots.map((r) => r.id));
-    for (const u of units) if (u.parentId && next.has(u.parentId)) next.add(u.id);
+    const next = new Set<string>();
 
-    // Picking is different: a pane that opens with every classe hidden four
-    // levels down is a pane that asks the operator to go looking for the thing
-    // it just asked them to choose. So reveal what can be chosen.
+    // Picking is different: reveal what can be chosen.
     if (picking.value) {
       const byId = new Map(units.map((u) => [u.id, u]));
       for (const u of units) {

@@ -8,6 +8,8 @@ import { useOrgStore } from "../../stores/org";
 import ActionDialog from "../../components/actions/ActionDialog.vue";
 import NodeActionBar from "../../components/console/NodeActionBar.vue";
 import NodeMenuDialogs from "../../components/console/NodeMenuDialogs.vue";
+import EnrollForm from "../../components/enrollment/EnrollForm.vue";
+import DialogShell from "../../components/ui/DialogShell.vue";
 
 /**
  * One unit: what it is, what it holds, and everything that can be done to it.
@@ -65,18 +67,37 @@ watch(id, load, { immediate: true });
 // ── acting in place ─────────────────────────────────────────────────────────
 /** A structural operation on this node: add a child, rename, close, reopen. */
 const menuAction = ref<"add" | "rename" | "close" | "reopen" | null>(null);
-/** A registry action and the unit it writes to — not always this one. */
+/** A registry action, run over this page. */
 const runSpec = ref<ActionSpec | null>(null);
-const runTarget = ref<api.OrgUnit | api.TreeUnit | null>(null);
 
-function onRun(payload: { spec: ActionSpec; target: api.OrgUnit | api.TreeUnit }) {
+/**
+ * The action rich enough to have its own form, opened in place.
+ *
+ * Enrolling is done WHILE looking at a class list. Leaving for a page, filling
+ * it in, and coming back to a roster that has to be reloaded to show the pupil
+ * you just added is three steps where one will do — so the form opens over the
+ * class, and closing it refreshes what is underneath.
+ */
+const inlineForm = ref<"enroll" | null>(null);
+
+function onRun(payload: { spec: ActionSpec }) {
+  if (payload.spec.inline) {
+    inlineForm.value = payload.spec.inline;
+    return;
+  }
   runSpec.value = payload.spec;
-  runTarget.value = payload.target;
 }
 
 function onRunDone() {
   notice.value = `${runSpec.value?.label} — effectué.`;
   void load();
+}
+
+/** The overlay closed after a save: show what changed, not a stale list. */
+async function onInlineDone(name: string) {
+  inlineForm.value = null;
+  notice.value = `${name} inscrit(e).`;
+  await load();
 }
 
 async function onStructureDone(changed: boolean) {
@@ -102,9 +123,15 @@ const treeUnit = computed(() => org.byId(id.value));
     <div v-else-if="error" class="form-error">{{ error }}</div>
 
     <template v-else-if="unit">
-      <!-- Above everything: what can be done here. The trail that says where
-           "here" is lives in the topbar and is not repeated. -->
-      <NodeActionBar :unit="unit" @run="onRun" @structure="(a) => (menuAction = a)" />
+      <!--
+        The toolbar belongs to the whole work column, not to this page's reading
+        width, so it is teleported into the strip the layout renders above the
+        padded content. The trail that says where "here" is lives in the topbar
+        and is not repeated.
+      -->
+      <Teleport to="#node-toolbar">
+        <NodeActionBar :unit="unit" @run="onRun" @structure="(a) => (menuAction = a)" />
+      </Teleport>
 
       <div class="page-head">
         <div>
@@ -145,20 +172,19 @@ const treeUnit = computed(() => org.byId(id.value));
       <div v-if="roster" class="card is-grid">
         <div class="card-head">
           Effectif
-          <RouterLink class="btn sm" :to="{ name: 'enroll', query: { scope: unit.id } }">
+          <button class="btn sm" type="button" @click="inlineForm = 'enroll'">
             Inscrire un élève
-          </RouterLink>
+          </button>
         </div>
         <div v-if="!roster.length" class="empty">
           <div class="empty-title">Aucun élève inscrit</div>
           <div>Cette classe existe mais personne n'y est encore inscrit.</div>
           <div class="empty-actions">
-            <!-- Scoped: the enrolment form opens with this class already
-                 chosen, instead of asking again for the one you are standing
-                 in. -->
-            <RouterLink class="btn primary" :to="{ name: 'enroll', query: { scope: unit.id } }">
+            <!-- Over the class, not away from it: the form opens with this
+                 class already chosen and the roster refreshes underneath. -->
+            <button class="btn primary" type="button" @click="inlineForm = 'enroll'">
               Inscrire un élève
-            </RouterLink>
+            </button>
             <RouterLink class="btn" :to="{ name: 'import', query: { scope: unit.id } }">
               Importer une liste
             </RouterLink>
@@ -170,7 +196,9 @@ const treeUnit = computed(() => org.byId(id.value));
               <tr>
                 <th class="c-name">Élève</th>
                 <th class="c-text">Matricule</th>
-                <th class="c-text">Série</th>
+                <!-- The number a titulaire dials, on the screen where they
+                     realise they need it. -->
+                <th class="c-text">Tuteur</th>
                 <th class="c-text">Statut</th>
               </tr>
             </thead>
@@ -180,7 +208,13 @@ const treeUnit = computed(() => org.byId(id.value));
                   {{ r.student.person.lastName.toUpperCase() }} {{ r.student.person.firstName }}
                 </td>
                 <td class="c-text">{{ r.student.matricule }}</td>
-                <td class="c-text">{{ r.serie?.code ?? "—" }}</td>
+                <td class="c-text">
+                  <template v-if="r.student.guardians?.[0]">
+                    {{ r.student.guardians[0].guardian.lastName }}
+                    <span class="cell-sub">{{ r.student.guardians[0].guardian.phone ?? "—" }}</span>
+                  </template>
+                  <span v-else class="cell-sub">Aucun tuteur</span>
+                </td>
                 <td class="c-text">
                   <span v-if="r.isRepeating" class="pill warn">Redoublant</span>
                   <span v-else class="pill ok">Inscrit</span>
@@ -227,12 +261,28 @@ const treeUnit = computed(() => org.byId(id.value));
       />
 
       <ActionDialog
-        v-if="runSpec && runTarget"
+        v-if="runSpec"
         :spec="runSpec"
-        :unit="runTarget"
-        @close="((runSpec = null), (runTarget = null))"
+        :unit="unit"
+        @close="runSpec = null"
         @done="onRunDone"
       />
+
+      <DialogShell
+        v-if="inlineForm === 'enroll'"
+        title="Inscrire un élève"
+        :subtitle="`${KIND_FR[unit.kind]} · ${unit.name}`"
+        detail="L'élève, ses tuteurs et son inscription sont créés ensemble."
+        icon="userPlus"
+        wide
+        @close="inlineForm = null"
+      >
+        <EnrollForm :fixed-classe="unit.id" @enrolled="onInlineDone">
+          <template #cancel>
+            <button class="btn ghost" type="button" @click="inlineForm = null">Annuler</button>
+          </template>
+        </EnrollForm>
+      </DialogShell>
     </template>
   </div>
 </template>

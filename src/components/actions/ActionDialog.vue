@@ -4,7 +4,7 @@ import * as api from "../../lib/api";
 import type { ActionSpec } from "../../lib/actions";
 import { KIND_FR } from "../structure/kinds";
 import ActionForm from "./ActionForm.vue";
-import Icon from "../ui/Icon.vue";
+import DialogShell from "../ui/DialogShell.vue";
 
 /**
  * An action, run where it was triggered.
@@ -22,9 +22,7 @@ import Icon from "../ui/Icon.vue";
 const props = defineProps<{ spec: ActionSpec; unit: api.OrgUnit | api.TreeUnit }>();
 const emit = defineEmits<{ close: []; done: [] }>();
 
-const subtitle = computed(
-  () => `${KIND_FR[props.unit.kind]} · ${props.unit.name}`,
-);
+const subtitle = computed(() => `${KIND_FR[props.unit.kind]} · ${props.unit.name}`);
 
 function onDone() {
   emit("done");
@@ -33,31 +31,21 @@ function onDone() {
 </script>
 
 <template>
-  <div class="scrim" @click.self="emit('close')">
-    <div class="scrim-card action-dialog">
-      <div class="action-dialog-head">
-        <div class="action-dialog-title">
-          <Icon :name="spec.icon" :size="17" />
-          <span>{{ spec.label }}</span>
-        </div>
-        <button class="btn sm ghost" type="button" @click="emit('close')">Fermer</button>
-      </div>
-
-      <!-- The node is stated, not asked: this is what makes it "in place". -->
-      <div class="action-dialog-scope">
-        <span class="kind-tag">{{ subtitle }}</span>
-        <span class="hint">{{ spec.summary }}</span>
-      </div>
-
-      <div v-if="spec.planned" class="hint" style="margin-top: var(--s3)">
-        <strong>Pas encore disponible.</strong> {{ spec.planned }}
-      </div>
-
-      <ActionForm v-else :spec="spec" :scope-id="unit.id" @done="onDone">
-        <template #cancel>
-          <button class="btn ghost" type="button" @click="emit('close')">Annuler</button>
-        </template>
-      </ActionForm>
+  <DialogShell
+    :title="spec.label"
+    :subtitle="subtitle"
+    :detail="spec.summary"
+    :icon="spec.icon"
+    @close="emit('close')"
+  >
+    <div v-if="spec.planned" class="hint">
+      <strong>Pas encore disponible.</strong> {{ spec.planned }}
     </div>
-  </div>
+
+    <ActionForm v-else :spec="spec" :scope-id="unit.id" @done="onDone">
+      <template #cancel>
+        <button class="btn ghost" type="button" @click="emit('close')">Annuler</button>
+      </template>
+    </ActionForm>
+  </DialogShell>
 </template>

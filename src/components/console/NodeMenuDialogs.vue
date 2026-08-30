@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import * as api from "../../lib/api";
 import { useBusyStore } from "../../stores/busy";
 import { KIND_FR } from "../structure/kinds";
+import DialogShell from "../ui/DialogShell.vue";
 
 /**
  * The dialogs behind the tree's ⋯ menu.
@@ -113,71 +114,65 @@ async function submit() {
 </script>
 
 <template>
-  <div v-if="unit && action" class="scrim" @click.self="emit('done', false)">
-    <div class="scrim-card" style="align-items: stretch; text-align: left; max-width: 460px">
-      <div class="login-title" style="font-size: var(--t-h3)">{{ title }}</div>
+  <DialogShell v-if="unit && action" :title="title" @close="emit('done', false)">
+    <div v-if="error" class="form-error">{{ error }}</div>
 
-      <div v-if="error" class="form-error" style="margin: var(--s3) 0 0">{{ error }}</div>
-
-      <template v-if="action === 'add'">
-        <div v-if="!allowedKinds.length" class="hint" style="margin-top: var(--s3)">
-          Rien ne peut être créé ici — une classe est le dernier échelon de l'arbre.
-        </div>
-        <div v-else style="margin-top: var(--s3)">
-          <div class="field">
-            <label for="n-kind">Type</label>
-            <select id="n-kind" v-model="form.kind">
-              <option v-for="k in allowedKinds" :key="k" :value="k">{{ KIND_FR[k] }}</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="n-name">Nom</label>
-            <input id="n-name" v-model="form.name" autocomplete="off" />
-          </div>
-          <div class="field" style="margin-bottom: 0">
-            <label for="n-code">Code</label>
-            <input id="n-code" v-model="form.code" autocomplete="off" maxlength="8" />
-          </div>
-        </div>
-      </template>
-
-      <template v-else-if="action === 'rename'">
-        <div style="margin-top: var(--s3)">
-          <div class="field">
-            <label for="r-name">Nom</label>
-            <input id="r-name" v-model="form.name" autocomplete="off" />
-          </div>
-          <div class="field" style="margin-bottom: 0">
-            <label for="r-code">Code</label>
-            <input id="r-code" v-model="form.code" autocomplete="off" maxlength="8" />
-            <span class="hint">Apparaît sur les documents imprimés.</span>
-          </div>
-        </div>
-      </template>
-
-      <p v-else-if="action === 'close'" class="scrim-detail" style="text-align: left">
-        L'unité est <strong>fermée, pas supprimée</strong> : les bulletins déjà édités
-        continuent de la référencer, et vous pourrez la rouvrir. Ses enfants et ses
-        inscriptions actives doivent d'abord être déplacés.
-      </p>
-
-      <p v-else class="scrim-detail" style="text-align: left">
-        L'unité redeviendra active et réapparaîtra dans les listes.
-      </p>
-
-      <div class="form-actions" style="margin-top: var(--s4); justify-content: flex-end">
-        <button class="btn ghost" type="button" @click="emit('done', false)">Annuler</button>
-        <button
-          class="btn"
-          :class="action === 'close' ? 'danger' : 'primary'"
-          type="button"
-          :disabled="!canSubmit"
-          @click="submit"
-        >
-          <span v-if="working" class="btn-spin" aria-hidden="true" />
-          {{ action === "close" ? "Fermer" : action === "reopen" ? "Rouvrir" : "Enregistrer" }}
-        </button>
+    <template v-if="action === 'add'">
+      <div v-if="!allowedKinds.length" class="hint">
+        Rien ne peut être créé ici — une classe est le dernier échelon de l'arbre.
       </div>
+      <template v-else>
+        <div class="field">
+          <label for="n-kind">Type</label>
+          <select id="n-kind" v-model="form.kind">
+            <option v-for="k in allowedKinds" :key="k" :value="k">{{ KIND_FR[k] }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="n-name">Nom</label>
+          <input id="n-name" v-model="form.name" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="n-code">Code</label>
+          <input id="n-code" v-model="form.code" autocomplete="off" maxlength="8" />
+        </div>
+      </template>
+    </template>
+
+    <template v-else-if="action === 'rename'">
+      <div class="field">
+        <label for="r-name">Nom</label>
+        <input id="r-name" v-model="form.name" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="r-code">Code</label>
+        <input id="r-code" v-model="form.code" autocomplete="off" maxlength="8" />
+        <span class="hint">Apparaît sur les documents imprimés.</span>
+      </div>
+    </template>
+
+    <p v-else-if="action === 'close'" class="dialog-text">
+      L'unité est <strong>fermée, pas supprimée</strong> : les bulletins déjà édités
+      continuent de la référencer, et vous pourrez la rouvrir. Ses enfants et ses
+      inscriptions actives doivent d'abord être déplacés.
+    </p>
+
+    <p v-else class="dialog-text">
+      L'unité redeviendra active et réapparaîtra dans les listes.
+    </p>
+
+    <div class="form-actions dialog-actions">
+      <button class="btn ghost" type="button" @click="emit('done', false)">Annuler</button>
+      <button
+        class="btn"
+        :class="action === 'close' ? 'danger' : 'primary'"
+        type="button"
+        :disabled="!canSubmit"
+        @click="submit"
+      >
+        <span v-if="working" class="btn-spin" aria-hidden="true" />
+        {{ action === "close" ? "Fermer" : action === "reopen" ? "Rouvrir" : "Enregistrer" }}
+      </button>
     </div>
-  </div>
+  </DialogShell>
 </template>

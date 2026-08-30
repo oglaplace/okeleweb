@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import * as api from "../../lib/api";
 import { useBusyStore } from "../../stores/busy";
 import ModulePicker from "../../components/structure/ModulePicker.vue";
+import UpgradeDialog from "../../components/structure/UpgradeDialog.vue";
 import Icon from "../../components/ui/Icon.vue";
 import { KIND_FR } from "../../components/structure/kinds";
 
@@ -133,39 +134,29 @@ watch(
 );
 
 /**
- * Re-applies what is already installed, to add what did not exist yet.
+ * Adds what is missing — after showing the operator what that is.
  *
  * Needed because the module picker DISABLES installed modules — correctly, to
  * stop an operator ticking a cycle they already have and being told "0 créées,
  * 8 déjà présentes". But that also blocks the one case where re-running is
  * exactly right: a complex created before the official subjects, the course
- * offerings or the exercice comptable existed. It has the cycles and is missing
- * everything added since.
+ * offerings or the exercice comptable existed.
  *
- * The scaffold is idempotent on `(parentId, code)`, so this adds the gaps and
- * touches nothing else.
+ * It used to apply the lot on one click. The scaffold is idempotent so nothing
+ * was ever damaged, but "add everything missing" bundles three missing classes
+ * with two hundred course offerings, and those are not the same decision. The
+ * dialog asks; this only reports what came of it.
  */
 const upgrading = ref(false);
-async function upgrade() {
-  const installed = state.value?.installedModules ?? [];
-  if (!installed.length) return;
-  upgrading.value = true;
-  try {
-    const report = await busy.run(() => api.orgUnits.scaffold(installed), {
-      title: "Mise à niveau de la structure",
-      detail: "Ajout des matières officielles, des programmations et de l'exercice comptable.",
-    });
-    notice.value =
-      report.orgUnits + report.subjects + report.offerings + report.fiscalYears === 0
-        ? "Rien à ajouter : l'établissement est déjà à jour."
-        : `${report.subjects} matière(s), ${report.offerings} programmation(s), ` +
-          `${report.orgUnits} unité(s) et ${report.fiscalYears} exercice(s) ajoutés.`;
-    await reload();
-  } catch (e) {
-    error.value = e instanceof api.ApiError ? e.message : "Mise à niveau impossible.";
-  } finally {
-    upgrading.value = false;
-  }
+
+function onUpgraded(report: api.ScaffoldReport) {
+  upgrading.value = false;
+  notice.value =
+    report.orgUnits + report.subjects + report.offerings + report.fiscalYears === 0
+      ? "Rien à ajouter : l'établissement est déjà à jour."
+      : `${report.subjects} matière(s), ${report.offerings} programmation(s), ` +
+        `${report.orgUnits} unité(s) et ${report.fiscalYears} exercice(s) ajoutés.`;
+  void reload();
 }
 
 async function install() {
@@ -203,12 +194,10 @@ async function install() {
           v-if="(state?.installedModules?.length ?? 0) > 0"
           class="btn"
           type="button"
-          title="Ajoute ce qui n'existait pas encore quand l'établissement a été créé — matières officielles, programmations, exercice comptable. Rien n'est remplacé."
-          :disabled="upgrading"
-          @click="upgrade"
+          title="Montre ce qui manque par rapport à la structure officielle des cycles installés, et vous laisse choisir."
+          @click="upgrading = true"
         >
-          <span v-if="upgrading" class="btn-spin" aria-hidden="true" />
-          <Icon v-else name="check" /> Mettre à niveau
+          <Icon name="check" /> Mettre à niveau
         </button>
         <button class="btn" type="button" @click="building = !building">
           <Icon name="layers" /> Structure type
@@ -218,6 +207,8 @@ async function install() {
         </button>
       </div>
     </div>
+
+    <UpgradeDialog v-if="upgrading" @close="upgrading = false" @applied="onUpgraded" />
 
     <div v-if="notice" class="form-ok">{{ notice }}</div>
     <div v-if="error" class="form-error">{{ error }}</div>

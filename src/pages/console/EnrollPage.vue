@@ -1,116 +1,17 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed } from "vue";
 import { useRoute } from "vue-router";
-import * as api from "../../lib/api";
-import { useBusyStore } from "../../stores/busy";
-import { useOrgStore } from "../../stores/org";
+import EnrollForm from "../../components/enrollment/EnrollForm.vue";
 
 /**
- * Enrol one pupil.
+ * Enrol a pupil, as a screen.
  *
- * The API creates the Person, the Student and the Enrolment in one call and
- * allocates the matricule, so this form has no "create pupil then enrol" step —
- * a pupil enrolled nowhere is a row nobody can act on.
+ * The form itself lives in components/enrollment, because the same one opens
+ * as a dialog over a class — see NodePage. This page is what the rail links to,
+ * where no class has been chosen yet.
  */
-const busy = useBusyStore();
-const org = useOrgStore();
 const route = useRoute();
-
-const classes = ref<{ id: string; name: string; path: string }[]>([]);
-const years = ref<api.AcademicYear[]>([]);
-const loading = ref(true);
-const error = ref<string | null>(null);
-const notice = ref<string | null>(null);
-const working = ref(false);
-
-const form = ref({
-  firstName: "",
-  lastName: "",
-  gender: "",
-  birthDate: "",
-  birthPlace: "",
-  classeId: "",
-  academicYearId: "",
-  isRepeating: false,
-});
-
-/**
- * Every classe in the complex, with the path that disambiguates it.
- *
- * ONE request, shared. This walked the tree breadth-first with a request per
- * node — up to 400 sequential round trips on a metered connection, and any one
- * of them failing left the picker silently empty and the page reading "aucune
- * classe" on a school that has several. The tree now lives in a store the whole
- * console reads; the path is derived from it.
- */
-async function loadClasses() {
-  await org.load();
-  classes.value = org
-    .ofKind(["CLASSE"])
-    .filter((u) => !u.validTo)
-    .map((u) => ({ id: u.id, name: u.name, path: org.pathOf(u.id) }));
-}
-
-onMounted(async () => {
-  try {
-    const [y] = await Promise.all([api.academics.years(), loadClasses()]);
-    years.value = y;
-    form.value.academicYearId = y.find((x) => x.isCurrent)?.id ?? y[0]?.id ?? "";
-
-    // Arrived from a class — from its page, its ⋯ menu or its empty roster.
-    // The answer travelled with the click; asking for it again would waste it.
-    const scope = typeof route.query.scope === "string" ? route.query.scope : null;
-    if (scope && classes.value.some((c) => c.id === scope)) form.value.classeId = scope;
-  } catch (e) {
-    error.value = e instanceof api.ApiError ? e.message : "Chargement impossible.";
-  } finally {
-    loading.value = false;
-  }
-});
-
-const canSubmit = computed(
-  () =>
-    form.value.firstName.trim().length >= 2 &&
-    form.value.lastName.trim().length >= 2 &&
-    form.value.classeId !== "" &&
-    form.value.academicYearId !== "" &&
-    !working.value,
-);
-
-async function submit() {
-  if (!canSubmit.value) return;
-  working.value = true;
-  error.value = null;
-  try {
-    await busy.run(
-      () =>
-        api.enrollment.enroll({
-          person: {
-            firstName: form.value.firstName.trim(),
-            lastName: form.value.lastName.trim(),
-            ...(form.value.gender ? { gender: form.value.gender } : {}),
-            ...(form.value.birthDate ? { birthDate: form.value.birthDate } : {}),
-            ...(form.value.birthPlace ? { birthPlace: form.value.birthPlace.trim() } : {}),
-          },
-          academicYearId: form.value.academicYearId,
-          classeId: form.value.classeId,
-          isRepeating: form.value.isRepeating,
-        }),
-      { title: "Inscription", detail: "Création de l'élève et de son inscription." },
-    );
-    notice.value = `${form.value.firstName} ${form.value.lastName} inscrit(e).`;
-    // The classe and year stay: a secretary enrols a whole list in one sitting.
-    form.value.firstName = "";
-    form.value.lastName = "";
-    form.value.birthDate = "";
-    form.value.birthPlace = "";
-    form.value.isRepeating = false;
-  } catch (e) {
-    error.value = e instanceof api.ApiError ? e.message : "Inscription impossible.";
-  } finally {
-    working.value = false;
-  }
-}
+const scope = computed(() => (typeof route.query.scope === "string" ? route.query.scope : null));
 </script>
 
 <template>
@@ -119,110 +20,16 @@ async function submit() {
       <div>
         <h1 class="page-title">Inscrire un élève</h1>
         <div class="page-sub">
-          L'élève, sa fiche et son inscription sont créés ensemble. Le matricule est
-          attribué automatiquement.
+          L'élève, ses tuteurs et son inscription sont créés ensemble. Le matricule
+          est attribué automatiquement.
         </div>
       </div>
     </div>
 
-    <div v-if="notice" class="form-ok">{{ notice }}</div>
-    <div v-if="error" class="form-error">{{ error }}</div>
-
-    <div v-if="loading" class="card"><div class="card-body stack">
-      <div class="skeleton" style="width: 40%" /><div class="skeleton" style="width: 65%" />
-    </div></div>
-
-    <!-- Two different dead ends, said apart. Both used to render as "aucune
-         classe", which sent a director to build a class they already had. -->
-    <div v-else-if="!years.length" class="card">
-      <div class="empty">
-        <div class="empty-title">Aucune année scolaire</div>
-        <div>
-          Une inscription se rattache à une année. Ouvrez-en une — tout le reste
-          y est déjà prêt.
-        </div>
-        <div class="empty-actions">
-          <RouterLink class="btn primary" :to="{ name: 'action', params: { id: 'create-year' } }">
-            Ouvrir une année scolaire
-          </RouterLink>
-        </div>
-      </div>
-    </div>
-
-    <div v-else-if="!classes.length" class="card">
-      <div class="empty">
-        <div class="empty-title">Aucune classe</div>
-        <div>Un élève s'inscrit dans une classe. Créez-en une d'abord.</div>
-        <div class="empty-actions">
-          <RouterLink class="btn primary" :to="{ name: 'structure' }">Structure</RouterLink>
-        </div>
-      </div>
-    </div>
-
-    <form v-else class="card" @submit.prevent="submit">
+    <div class="card">
       <div class="card-body">
-        <fieldset class="fieldset">
-          <legend>Élève</legend>
-          <div class="field-row">
-            <div class="field">
-              <label for="ln">Nom</label>
-              <input id="ln" v-model="form.lastName" autocomplete="off" />
-            </div>
-            <div class="field">
-              <label for="fn">Prénom</label>
-              <input id="fn" v-model="form.firstName" autocomplete="off" />
-            </div>
-            <div class="field">
-              <label for="g">Sexe</label>
-              <select id="g" v-model="form.gender">
-                <option value="">—</option>
-                <option value="M">Masculin</option>
-                <option value="F">Féminin</option>
-              </select>
-            </div>
-          </div>
-          <div class="field-row">
-            <div class="field">
-              <label for="bd">Date de naissance</label>
-              <input id="bd" v-model="form.birthDate" type="date" />
-            </div>
-            <div class="field">
-              <label for="bp">Lieu de naissance</label>
-              <input id="bp" v-model="form.birthPlace" autocomplete="off" />
-            </div>
-          </div>
-        </fieldset>
-
-        <fieldset class="fieldset" style="margin-bottom: 0">
-          <legend>Inscription</legend>
-          <div class="field-row">
-            <div class="field">
-              <label for="cl">Classe</label>
-              <select id="cl" v-model="form.classeId">
-                <option value="">—</option>
-                <option v-for="c in classes" :key="c.id" :value="c.id">
-                  {{ c.path }} / {{ c.name }}
-                </option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="yr">Année scolaire</label>
-              <select id="yr" v-model="form.academicYearId">
-                <option v-for="y in years" :key="y.id" :value="y.id">{{ y.label }}</option>
-              </select>
-            </div>
-          </div>
-          <label class="toggle">
-            <input v-model="form.isRepeating" type="checkbox" /> Redoublant(e)
-          </label>
-        </fieldset>
+        <EnrollForm :fixed-classe="scope" />
       </div>
-      <div class="card-foot">
-        <button class="btn primary" type="submit" :disabled="!canSubmit">
-          <span v-if="working" class="btn-spin" aria-hidden="true" />
-          {{ working ? "Inscription…" : "Inscrire" }}
-        </button>
-      </div>
-    </form>
+    </div>
   </div>
 </template>
