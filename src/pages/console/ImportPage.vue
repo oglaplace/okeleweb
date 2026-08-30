@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useRoute } from "vue-router";
 import * as api from "../../lib/api";
 import { parseCsv } from "../../lib/csv";
 import { useBusyStore } from "../../stores/busy";
+import { useOrgStore } from "../../stores/org";
 
 /**
  * A term's worth of people, from a spreadsheet.
@@ -18,6 +20,8 @@ import { useBusyStore } from "../../stores/busy";
  * somebody has to diff by hand against a class list.
  */
 const busy = useBusyStore();
+const org = useOrgStore();
+const route = useRoute();
 
 const mode = ref<"students" | "staff">("students");
 const fileName = ref<string | null>(null);
@@ -39,22 +43,18 @@ onMounted(async () => {
     years.value = y;
     academicYearId.value = y.find((x) => x.isCurrent)?.id ?? y[0]?.id ?? "";
 
-    // One request, same as the enrolment page — see the note there.
-    const units = await api.orgUnits.tree();
-    const byId = new Map(units.map((u) => [u.id, u]));
-    classes.value = units
-      .filter((u) => u.kind === "CLASSE" && !u.validTo)
-      .map((u) => {
-        const parts: string[] = [u.name];
-        let cursor = u.parentId;
-        for (let i = 0; cursor && i < 12; i++) {
-          const parent = byId.get(cursor);
-          if (!parent) break;
-          parts.unshift(parent.name);
-          cursor = parent.parentId;
-        }
-        return { id: u.id, label: parts.join(" / ") };
-      });
+    // The tree the whole console shares — one request per session, not one
+    // per screen that happens to need a list of classes.
+    await org.load();
+    classes.value = org
+      .ofKind(["CLASSE"])
+      .filter((u) => !u.validTo)
+      .map((u) => ({ id: u.id, label: [org.pathOf(u.id), u.name].filter(Boolean).join(" / ") }));
+
+    // Arrived from a class: that class is the destination. Asking again for
+    // the one the operator just clicked is how a shortcut stops being one.
+    const scope = typeof route.query.scope === "string" ? route.query.scope : null;
+    if (scope && classes.value.some((c) => c.id === scope)) classeId.value = scope;
   } catch {
     // The picker is empty; the empty state below explains it.
   }

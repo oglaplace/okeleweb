@@ -1,58 +1,102 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import { useRoute } from "vue-router";
-import { byId, GROUPS } from "../../lib/actions";
-import { useAuthStore } from "../../stores/auth";
+import { computed, onMounted } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { trailFor } from "../../lib/trail";
+import { useNavStore } from "../../stores/nav";
+import { useOrgStore } from "../../stores/org";
+import Icon from "../ui/Icon.vue";
 
 /**
- * Where you are in the console, always.
+ * The one trail in the console, and the way back out.
  *
- * Derived from the route rather than pushed by each page: a trail that a screen
- * has to remember to set is a trail that is wrong on the screen that forgot.
- * The établissement is always the root, because everything in this console
- * happens inside one.
+ * Complete by construction: the action that got you here, then the structure
+ * from the root down to the unit the action is aimed at — see lib/trail.ts.
+ * Every segment is a link, so the trail is not only a label but the fastest
+ * route up.
+ *
+ * The back control sits with it rather than in the page, because "where am I"
+ * and "how do I leave" are the same question asked twice.
  */
 const route = useRoute();
-const auth = useAuthStore();
+const router = useRouter();
+const nav = useNavStore();
+const org = useOrgStore();
 
-const trail = computed(() => {
-  const parts: { label: string; to?: { name: string } }[] = [
-    { label: auth.profile?.complexName ?? "Établissement", to: { name: "dashboard" } },
-  ];
+// The ancestry comes from the shared tree; until it lands the trail is just
+// its action segment, which is correct — merely shorter.
+onMounted(() => void org.load());
 
-  if (route.name === "action") {
-    const spec = byId(route.params.id as string);
-    if (spec) {
-      parts.push({ label: GROUPS.find((g) => g.id === spec.group)?.label ?? "Actions" });
-      parts.push({ label: spec.label });
-    }
-    return parts;
+const trail = computed(() => trailFor(route, { ancestors: (id) => org.ancestors(id) }));
+
+/**
+ * One level up, for when there is no history to go back through.
+ *
+ * The nearest crumb that is actually a destination, not simply the one before:
+ * a group heading ("Programme") names a section of the rail and is not a page,
+ * so stopping at it would leave the control pointing at nothing. Worst case
+ * this walks all the way to the house, which is always somewhere.
+ */
+const parent = computed(() => {
+  for (let i = trail.value.length - 2; i >= 0; i--) {
+    if (trail.value[i]?.to) return trail.value[i]!.to!;
   }
-
-  const NAMED: Record<string, string[]> = {
-    dashboard: [],
-    structure: ["Établissement", "Structure"],
-    unit: ["Établissement", "Structure"],
-    enroll: ["Scolarité", "Inscrire un élève"],
-    import: ["Scolarité", "Importer"],
-    staff: ["Personnel"],
-    classe: ["Scolarité", "Classe"],
-    marks: ["Notes & bulletins", "Saisie des notes"],
-    bulletins: ["Notes & bulletins", "Bulletins"],
-  };
-  for (const label of NAMED[String(route.name)] ?? []) parts.push({ label });
-  return parts;
+  return null;
 });
+
+const canBack = computed(() => nav.canGoBack || parent.value !== null);
+
+const backTitle = computed(() => {
+  if (nav.canGoBack) return "Retour";
+  for (let i = trail.value.length - 2; i >= 0; i--) {
+    if (trail.value[i]?.to) return `Remonter vers ${trail.value[i]!.label}`;
+  }
+  return "Retour au tableau de bord";
+});
+
+function back() {
+  if (nav.canGoBack) {
+    router.back();
+    return;
+  }
+  // Deep link, or the first screen of the session: there is nothing behind us,
+  // so "back" means one level up the trail we are showing.
+  void router.push(parent.value ?? { name: "dashboard" });
+}
 </script>
 
 <template>
-  <nav class="crumbs" aria-label="Fil d'Ariane">
-    <template v-for="(part, i) in trail" :key="i">
-      <span v-if="i > 0" class="crumbs-sep" aria-hidden="true">›</span>
-      <RouterLink v-if="part.to && i < trail.length - 1" class="crumbs-link" :to="part.to">
-        {{ part.label }}
-      </RouterLink>
-      <span v-else class="crumbs-here">{{ part.label }}</span>
-    </template>
-  </nav>
+  <div class="crumbbar">
+    <button
+      v-if="canBack"
+      class="crumb-back"
+      type="button"
+      :title="backTitle"
+      :aria-label="backTitle"
+      @click="back"
+    >
+      <Icon name="arrowLeft" :size="15" />
+    </button>
+
+    <nav class="crumbs" aria-label="Fil d'Ariane">
+      <template v-for="(part, i) in trail" :key="i">
+        <span v-if="i > 0" class="crumbs-sep" aria-hidden="true">›</span>
+
+        <RouterLink
+          v-if="part.to && i < trail.length - 1"
+          class="crumbs-link"
+          :class="{ 'is-home': part.home }"
+          :to="part.to"
+          :title="part.label"
+        >
+          <Icon v-if="part.home" name="home" :size="14" />
+          <span v-else>{{ part.label }}</span>
+        </RouterLink>
+
+        <span v-else class="crumbs-here">
+          <Icon v-if="part.home" name="home" :size="14" />
+          <template v-else>{{ part.label }}</template>
+        </span>
+      </template>
+    </nav>
+  </div>
 </template>

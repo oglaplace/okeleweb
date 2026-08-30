@@ -170,7 +170,10 @@ export const ACTIONS: ActionSpec[] = [
     group: "scolarite",
     icon: "userPlus",
     summary: "Fiche élève, matricule et inscription, en une fois.",
-    scope: null,
+    // Scoped AND routed: the screen is its own (a pupil is more than a couple
+    // of fields), but it targets a classe, so reaching it from one carries that
+    // classe in and the picker opens already answered.
+    scope: ["CLASSE"],
     route: "enroll",
   },
   {
@@ -179,7 +182,7 @@ export const ACTIONS: ActionSpec[] = [
     group: "scolarite",
     icon: "upload",
     summary: "Depuis un fichier CSV exporté d'Excel. Vérifié avant enregistrement.",
-    scope: null,
+    scope: ["CLASSE"],
     route: "import",
   },
   {
@@ -450,6 +453,22 @@ export const ACTIONS: ActionSpec[] = [
     planned: "Nécessite un sélecteur de facture, qui dépend de l'écran Impayés.",
   },
 ];
+
+/**
+ * Screens that are about ONE unit, and therefore carry it as a route param.
+ *
+ * This set has to be shared, because getting it wrong crashes the console: a
+ * `RouterLink` to `{ name: "classe" }` with no `id` throws "Missing required
+ * param", and vue-router turns that into an unhandled navigation error that
+ * takes the whole layout down. It did exactly that on the structure screen —
+ * the rail offered "Voir une classe" as a live link the moment a complex had
+ * any class, and every route without an `:id` of its own blew up. (It survived
+ * on `/console/unit/:id` only by accident: vue-router inherits params from the
+ * current location, so the link silently pointed at whatever unit was open.)
+ *
+ * So: never link to one of these without an id. Ask for the unit first.
+ */
+export const ROUTE_NEEDS_UNIT = new Set(["classe", "marks", "bulletins"]);
 
 export const byId = (id: string) => ACTIONS.find((a) => a.id === id);
 export const inGroup = (group: ActionGroup) => ACTIONS.filter((a) => a.group === group);

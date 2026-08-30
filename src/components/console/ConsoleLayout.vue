@@ -9,8 +9,11 @@ import ActionRail from "../structure/ActionRail.vue";
 import Breadcrumb from "./Breadcrumb.vue";
 import HintPanel from "./HintPanel.vue";
 import OrgPane from "./OrgPane.vue";
+import ScopePane from "./ScopePane.vue";
 import Inbox from "./Inbox.vue";
 import Icon from "../ui/Icon.vue";
+import { byId } from "../../lib/actions";
+import { scopeOf } from "../../lib/trail";
 
 const auth = useAuthStore();
 const dep = useDeploymentStore();
@@ -34,19 +37,42 @@ function toggleRail() {
   localStorage.setItem("ec_rail_collapsed", collapsed.value ? "1" : "0");
 }
 
-/** The unit selected in the organisation pane, shared with the content. */
-const selected = ref<string | null>(null);
+/**
+ * Which unit the console is pointed at, read from the URL.
+ *
+ * Derived rather than remembered: arriving by breadcrumb, by back button or by
+ * a pasted link must light up the same row in the tree as clicking it did.
+ */
+const selected = computed(() => scopeOf(route));
+
+/** The action being run, when the route is a generic action page. */
+const actionSpec = computed(() =>
+  String(route.name) === "action" ? byId(String(route.params.id ?? "")) : undefined,
+);
 
 /**
- * The tree is shown only where it is the thing being worked on.
+ * What goes in the second column — and whether there is one.
  *
- * It was permanent, and that was wrong in both directions: on the mark-entry
- * grid it stole 280px from a screen that needs every pixel, and on a form it
- * offered navigation nobody was about to use. Structure and a single unit are
- * the two screens where the tree IS the subject.
+ * Two things belong there and they are the same job: the structure you navigate
+ * by, and the structure you pick a target from. An action that needs a scope
+ * asks for it HERE, in the column, instead of stacking a picker card on top of
+ * its own form.
+ *
+ * Nothing at all on the rest: on the mark-entry grid a permanent tree stole
+ * 280px from a screen that needs every pixel, and on a complex-wide form it
+ * offered navigation nobody was about to use.
  */
 const TREE_ROUTES = new Set(["structure", "unit"]);
-const showTree = computed(() => TREE_ROUTES.has(String(route.name)));
+const pane = computed<"tree" | "scope" | null>(() => {
+  if (TREE_ROUTES.has(String(route.name))) return "tree";
+  const spec = actionSpec.value;
+  // Including the ones with a screen of their own: "voir une classe" from the
+  // rail has to ask WHICH class, and this is where that question is asked. The
+  // action page forwards the moment it is answered, so the pane lives exactly
+  // as long as the question does.
+  if (spec && !spec.planned && (spec.scope?.length ?? 0) > 0) return "scope";
+  return null;
+});
 
 async function logout() {
   await auth.signOut();
@@ -145,8 +171,9 @@ async function logout() {
 
       <!-- Three panes: rail, organisation, work. The tree is present for every
            action rather than living inside one screen. -->
-      <div class="workspace" :class="{ 'no-tree': !showTree }">
-        <OrgPane v-if="showTree" :selected="selected" @select="(u) => (selected = u.id)" />
+      <div class="workspace" :class="{ 'no-tree': !pane }">
+        <OrgPane v-if="pane === 'tree'" :selected="selected" />
+        <ScopePane v-else-if="pane === 'scope' && actionSpec" :spec="actionSpec" />
 
         <main class="content">
           <div class="content-inner">

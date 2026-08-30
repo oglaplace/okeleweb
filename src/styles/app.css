@@ -2040,13 +2040,71 @@ table.data td.c-text {
    ============================================================================
    Derived from the route, so it cannot be wrong on the screen that forgot to
    set it. */
+.crumbbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+  flex: 1;
+}
+
+/* Back, next to where-you-are: the same question asked twice. */
+.crumb-back {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-2);
+}
+.crumb-back:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+.crumb-back:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/*
+ * ONE LINE, always. The trail is exhaustive now — action, then the structure
+ * from the root down to the leaf — so on a deep classe it is longer than the
+ * bar. Wrapping would grow a 54px header to two rows and shove the whole
+ * workspace down; scrolling keeps the chrome the size it claims to be, and the
+ * end of the trail (where you are) is what stays in view.
+ */
 .crumbs {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
   font-size: var(--t-small);
   min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  white-space: nowrap;
+}
+.crumbs::-webkit-scrollbar {
+  display: none;
+}
+.crumbs-link,
+.crumbs-here {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+}
+/* The root is a house, not a word: it is on every screen and its name is
+   already in the rail. */
+.crumbs-link.is-home {
+  color: var(--ink-3);
+}
+.crumbs-link.is-home:hover {
+  color: var(--primary);
 }
 .crumbs-sep {
   color: var(--ink-3);
@@ -2604,5 +2662,271 @@ table.data td.c-text {
   .bulletin, .bl-table, .bl-box, .bl-flag {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+}
+
+
+/* ============================================================================
+   Node action bar — everything doable on one unit, above it.
+   ============================================================================
+   A toolbar, not a wall of tiles. It replaced a card that listed forty actions
+   as targets and pushed the actual contents of the class below the fold; the
+   weighting was backwards, since an operator opens a class to look at it and
+   only sometimes to act on it.
+
+   Sticky, because the actions belong to the node no matter how far down its
+   roster you have scrolled. */
+.actionbar {
+  position: sticky;
+  top: calc(var(--s6) * -1);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin: calc(var(--s6) * -1) calc(var(--s6) * -1) var(--s4);
+  padding: var(--s2) var(--s6);
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.actionbar-menu {
+  position: relative;
+}
+/* Pushes the unit's own operations away from what it contains. */
+.actionbar-end {
+  margin-left: auto;
+}
+.actionbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 11px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink-2);
+  font-size: var(--t-small);
+  font-weight: 550;
+  white-space: nowrap;
+}
+.actionbar-btn:hover,
+.actionbar-btn[aria-expanded="true"] {
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--ink);
+}
+.actionbar-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+.actionbar-btn.is-primary {
+  border-color: var(--primary-line);
+  color: var(--primary);
+}
+.actionbar-btn.is-primary:hover {
+  background: var(--primary-soft);
+  color: var(--primary-soft-ink);
+}
+.actionbar-btn.is-icon {
+  padding: 6px 8px;
+}
+.actionbar-twist {
+  color: var(--ink-3);
+}
+
+.actionbar-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+.actionbar-pop {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 41;
+  min-width: 250px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+}
+.actionbar-pop.is-right {
+  left: auto;
+  right: 0;
+}
+.actionbar-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink-2);
+  font-size: var(--t-small);
+  font-weight: 550;
+  text-align: left;
+  text-decoration: none;
+}
+.actionbar-item .icon {
+  color: var(--ink-3);
+  margin-top: 1px;
+  flex: none;
+}
+.actionbar-item:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+  text-decoration: none;
+}
+.actionbar-item:hover .icon {
+  color: var(--primary);
+}
+.actionbar-item.is-danger {
+  color: var(--danger);
+}
+.actionbar-item.is-blocked {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.actionbar-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+/* Which unit the action actually writes to, whenever that is not this one. */
+.actionbar-on {
+  font-size: var(--t-small);
+  font-weight: 450;
+  color: var(--ink-3);
+  line-height: 1.35;
+}
+
+/* ── an action, run in place ── */
+.scrim-card.action-dialog {
+  align-items: stretch;
+  text-align: left;
+  gap: 0;
+  width: 100%;
+  max-width: 620px;
+  padding: var(--s4) var(--s5) var(--s5);
+  max-height: min(86vh, 760px);
+  overflow-y: auto;
+}
+.action-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+.action-dialog-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--t-h3);
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+/* The node, stated rather than asked — this is what "in place" means. */
+.action-dialog-scope {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  margin: var(--s2) 0 var(--s4);
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--line-soft);
+}
+.action-form .field-row {
+  margin-bottom: var(--s2);
+}
+.action-form .form-actions {
+  justify-content: flex-end;
+}
+
+/* ── the second column, when it is asking rather than navigating ── */
+.orgpane-head {
+  padding: var(--s3) var(--s3) var(--s2);
+  border-bottom: 1px solid var(--line-soft);
+}
+.pane-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--t-small);
+  font-weight: 650;
+  color: var(--ink);
+}
+.pane-title .icon {
+  color: var(--ink-3);
+}
+.pane-sub {
+  margin-top: 2px;
+  font-size: var(--t-small);
+  color: var(--ink-3);
+  line-height: 1.4;
+}
+.pane-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s2);
+  padding: var(--s4) var(--s3);
+  font-size: var(--t-small);
+  color: var(--ink-3);
+  line-height: 1.5;
+}
+
+/* Context, not a target: still visible so a name keeps its meaning, but not
+   offered as an answer to a question it cannot answer. */
+.ex-label.is-dim .ex-name {
+  color: var(--ink-3);
+}
+.ex-menu-sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--line-soft);
+}
+
+/*
+ * The in-page scope picker exists ONLY where the column does not.
+ *
+ * Above 1100px "où appliquer cette action" is the second column, in the same
+ * tree everything else is picked from. Below it there is no room for three
+ * columns and the pane is display:none, so the flat list is all that is left —
+ * and without this it would be a screen with no way to answer its own question.
+ */
+.scope-fallback {
+  display: none;
+}
+/* "à gauche" is only true while there IS a left. */
+.narrow-only {
+  display: none;
+}
+@media (max-width: 1100px) {
+  .scope-fallback {
+    display: block;
+  }
+  .wide-only {
+    display: none;
+  }
+  .narrow-only {
+    display: inline;
+  }
+}
+
+@media (max-width: 860px) {
+  /* The bar stops being sticky on a phone: the page scrolls there, not the
+     content pane, so a sticky toolbar would sit over the roster. */
+  .actionbar {
+    position: static;
+    margin: calc(var(--s4) * -1) calc(var(--s4) * -1) var(--s4);
+    padding: var(--s2) var(--s4);
   }
 }

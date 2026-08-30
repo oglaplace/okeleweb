@@ -134,9 +134,9 @@ watch(yearId, () => void loadYearScoped());
     <div class="page-head">
       <div>
         <h1 class="page-title">{{ classe?.name ?? "Classe" }}</h1>
-        <div class="page-sub">
-          {{ ancestors.map((a) => a.name).join(" · ") }}
-        </div>
+        <!-- The path used to be repeated here; it is in the trail above now,
+             from the root down to this class. -->
+        <div class="page-sub">{{ roster.length }} élève(s) inscrit(s)</div>
       </div>
       <div style="display: flex; gap: 8px; align-items: center">
         <select v-if="years.length" v-model="yearId" class="btn">

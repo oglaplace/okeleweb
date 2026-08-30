@@ -1,164 +1,73 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import * as api from "../../lib/api";
-import { byId, type ActionField, type ActionSpec } from "../../lib/actions";
-import { useBusyStore } from "../../stores/busy";
+import { byId, ROUTE_NEEDS_UNIT, type ActionSpec } from "../../lib/actions";
+import { useOrgStore } from "../../stores/org";
+import { KIND_FR } from "../../components/structure/kinds";
+import ActionForm from "../../components/actions/ActionForm.vue";
 import ScopePicker from "../../components/structure/ScopePicker.vue";
 import Icon from "../../components/ui/Icon.vue";
 
 /**
- * One screen for every declarative action.
+ * One screen for every declarative action reached from the rail.
  *
- * The pattern, made real: pick the OrgUnit the action applies to, then fill the
- * fields it declared. Thirty hand-written pages would have drifted from each
- * other within a month; here, adding an action is a data change in
- * lib/actions.ts and the scope step, the option loading, the validation, the
- * busy overlay and the error handling come for free.
+ * The pattern, made real: the OrgUnit the action applies to, then the fields it
+ * declared. Thirty hand-written pages would have drifted from each other within
+ * a month; here, adding an action is a data change in lib/actions.ts and the
+ * scope step, the option loading, the validation, the busy overlay and the
+ * error handling come for free.
+ *
+ * WHERE the scope question is asked changed: it is the second column now, not a
+ * card stacked above the form — see components/console/ScopePane.vue. This page
+ * only reads the answer, out of the URL, so a reload or a shared link lands on
+ * the same action pointed at the same unit. The in-page picker below survives
+ * for one case only: viewports too narrow for three columns, where the pane is
+ * not rendered at all.
  */
 const route = useRoute();
 const router = useRouter();
-const busy = useBusyStore();
+const org = useOrgStore();
 
 const spec = computed<ActionSpec | undefined>(() => byId(route.params.id as string));
 
-const scopeId = ref<string | null>(null);
-const values = ref<Record<string, string>>({});
-const options = ref<Record<string, { value: string; label: string }[]>>({});
-const working = ref(false);
-const error = ref<string | null>(null);
-const notice = ref<string | null>(null);
-
-/** Fields whose options depend on the chosen scope must reload when it moves. */
-const SCOPE_BOUND = new Set(["periodsOfScope", "offeringsOfScope"]);
-
-function resetDefaults() {
-  const next: Record<string, string> = {};
-  for (const f of spec.value?.fields ?? []) {
-    if (f.default !== undefined) next[f.key] = String(f.default);
-  }
-  values.value = next;
-}
-
-/** Resolves every select's options. Sources are named, not URLs, so a field
- *  declares intent and this decides how to satisfy it. */
-async function loadOptions() {
-  const fields = spec.value?.fields ?? [];
-  const out: Record<string, { value: string; label: string }[]> = {};
-
-  for (const f of fields) {
-    if (!f.source) continue;
-    try {
-      if (f.source === "years") {
-        const rows = await api.academics.years();
-        out[f.key] = rows.map((r) => ({ value: r.id, label: r.label }));
-        // Default to the current year — it is right nine times in ten.
-        const current = rows.find((r) => r.isCurrent);
-        if (current && !values.value[f.key]) values.value[f.key] = current.id;
-      } else if (f.source === "subjects") {
-        out[f.key] = (await api.academics.subjects()).map((r) => ({
-          value: r.id, label: `${r.code} — ${r.name}`,
-        }));
-      } else if (f.source === "assessmentTypes") {
-        out[f.key] = (await api.academics.assessmentTypes()).map((r) => ({
-          value: r.id, label: r.name,
-        }));
-      } else if (f.source === "feeTypes") {
-        out[f.key] = (await api.finance.feeTypes()).map((r) => ({
-          value: r.id, label: r.name,
-        }));
-      } else if (f.source === "series") {
-        // No list endpoint; the tree carries none either. Left empty rather
-        // than faked — the field is optional wherever it appears.
-        out[f.key] = [];
-      } else if (f.source === "periodsOfScope") {
-        const year = values.value.academicYearId;
-        if (!scopeId.value || !year) { out[f.key] = []; continue; }
-        // Périodes hang off a SCHOOL, so a classe has to walk up to find them.
-        const chain = await api.orgUnits.ancestors(scopeId.value);
-        for (const unit of [...chain].reverse()) {
-          const rows = await api.academics.periods(unit.id, year).catch(() => []);
-          if (rows.length) {
-            out[f.key] = rows.map((r) => ({ value: r.id, label: r.label }));
-            break;
-          }
-        }
-        out[f.key] ??= [];
-      } else if (f.source === "offeringsOfScope") {
-        const year = values.value.academicYearId;
-        if (!scopeId.value || !year) { out[f.key] = []; continue; }
-        // Offerings hang off the NIVEAU above the classe.
-        const chain = await api.orgUnits.ancestors(scopeId.value);
-        const niveau = [...chain].reverse().find((u) => u.kind === "NIVEAU");
-        out[f.key] = niveau
-          ? (await api.academics.offerings(niveau.id, year).catch(() => [])).map((r) => ({
-              value: r.id, label: `${r.subject.code} — ${r.subject.name}`,
-            }))
-          : [];
-      }
-    } catch {
-      out[f.key] = [];
-    }
-  }
-  options.value = { ...options.value, ...out };
-}
-
-watch(
-  spec,
-  () => {
-    // Arriving from a node's own page means the scope question is already
-    // answered; asking it again would be ceremony.
-    scopeId.value = (route.query.scope as string) ?? null;
-    error.value = null;
-    notice.value = null;
-    resetDefaults();
-    void loadOptions();
-  },
-  { immediate: true },
-);
-
-// Reloading only the scope-bound sources keeps a scope change cheap.
-watch([scopeId, () => values.value.academicYearId], () => {
-  if ((spec.value?.fields ?? []).some((f) => f.source && SCOPE_BOUND.has(f.source))) {
-    void loadOptions();
-  }
-});
-
-onMounted(() => {
-  // An action with a screen of its own never renders this page.
-  if (spec.value?.route) void router.replace({ name: spec.value.route });
-});
+const scopeId = computed(() => (typeof route.query.scope === "string" ? route.query.scope : null));
+const scopeUnit = computed(() => org.byId(scopeId.value));
 
 const needsScope = computed(() => (spec.value?.scope?.length ?? 0) > 0);
 const scopeSatisfied = computed(() => !needsScope.value || scopeId.value !== null);
 
-const canSubmit = computed(() => {
-  if (!spec.value?.submit || working.value || !scopeSatisfied.value) return false;
-  return (spec.value.fields ?? []).every(
-    (f) => !f.required || (values.value[f.key] ?? "").toString().trim().length > 0,
-  );
-});
-
-async function submit() {
-  if (!canSubmit.value || !spec.value?.submit) return;
-  working.value = true;
-  error.value = null;
-  try {
-    await busy.run(() => spec.value!.submit!(scopeId.value, values.value), {
-      title: spec.value.label,
-      detail: "Enregistrement en cours. Ne fermez pas cette page.",
-    });
-    notice.value = `${spec.value.label} — effectué.`;
-    resetDefaults();
-    await loadOptions();
-  } catch (e) {
-    error.value = e instanceof api.ApiError ? e.message : "Action impossible.";
-  } finally {
-    working.value = false;
-  }
+function setScope(id: string | null) {
+  void router.replace({ query: id ? { ...route.query, scope: id } : {} });
 }
 
-const isCheckbox = (f: ActionField) => f.type === "checkbox";
+onMounted(() => void org.load());
+
+/**
+ * An action with a screen of its own never renders this page — it forwards,
+ * CARRYING the scope. Dropping it here was the bug that made "inscrire un
+ * élève" on a class land on an empty enrolment form.
+ *
+ * A screen that IS about one unit waits for that unit first: the pane on the
+ * left asks, this forwards as soon as it is answered. Forwarding without it
+ * would throw "Missing required param" and take the console down with it.
+ */
+watch(
+  [spec, scopeId],
+  ([s, unit]) => {
+    if (!s?.route) return;
+    if (ROUTE_NEEDS_UNIT.has(s.route)) {
+      if (unit) void router.replace({ name: s.route, params: { id: unit } });
+      return;
+    }
+    void router.replace({ name: s.route, ...(unit ? { query: { scope: unit } } : {}) });
+  },
+  { immediate: true },
+);
+
+/** True while we are waiting for the pane to name the unit to forward to. */
+const awaitingUnit = computed(
+  () => Boolean(spec.value?.route) && ROUTE_NEEDS_UNIT.has(spec.value!.route!) && !scopeId.value,
+);
 </script>
 
 <template>
@@ -181,9 +90,6 @@ const isCheckbox = (f: ActionField) => f.type === "checkbox";
       </div>
     </div>
 
-    <div v-if="notice" class="form-ok">{{ notice }}</div>
-    <div v-if="error" class="form-error">{{ error }}</div>
-
     <!-- Declared, not built. Said plainly rather than shown as a broken form. -->
     <div v-if="spec.planned" class="card">
       <div class="card-body">
@@ -193,77 +99,56 @@ const isCheckbox = (f: ActionField) => f.type === "checkbox";
     </div>
 
     <template v-else>
-      <div v-if="needsScope" class="card" style="margin-bottom: var(--s4)">
-        <div class="card-head">1 · Où appliquer cette action</div>
+      <!-- Below three columns the pane does not exist, so the question has to
+           be asked here or it cannot be asked at all. -->
+      <div v-if="needsScope" class="card scope-fallback" style="margin-bottom: var(--s4)">
+        <div class="card-head">Où appliquer cette action</div>
         <div class="card-body">
-          <ScopePicker v-model="scopeId" :kinds="spec.scope ?? []" />
+          <ScopePicker
+            :model-value="scopeId"
+            :kinds="spec.scope ?? []"
+            @update:model-value="setScope"
+          />
         </div>
       </div>
 
-      <form class="card" @submit.prevent="submit">
+      <div v-if="awaitingUnit" class="card">
+        <div class="card-body">
+          <div class="empty">
+            <div class="empty-title">Quelle classe ?</div>
+            <div style="max-width: 52ch; margin: 0 auto">
+              Choisissez-la dans l'arborescence<span class="wide-only">, à gauche</span>.
+              {{ spec.label }} s'ouvrira directement dessus.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-else class="card">
         <div class="card-head">
-          {{ needsScope ? "2 · " : "" }}Détails
+          <span>{{ spec.label }}</span>
+          <!-- The target, stated where the form is: a submit button whose
+               effect depends on a selection made in another column must say
+               what that selection currently is. -->
+          <span v-if="scopeUnit" class="kind-tag">
+            {{ KIND_FR[scopeUnit.kind] }} · {{ scopeUnit.name }}
+          </span>
         </div>
         <div class="card-body">
-          <div v-if="needsScope && !scopeId" class="hint">
-            Choisissez d'abord l'unité concernée ci-dessus.
+          <div v-if="!scopeSatisfied" class="empty">
+            <div class="empty-title">Choisissez l'unité concernée</div>
+            <div style="max-width: 52ch; margin: 0 auto">
+              Cette action s'applique à :
+              {{ (spec.scope ?? []).map((k) => KIND_FR[k]).join(", ") }}. Sélectionnez-la
+              dans l'arborescence<span class="wide-only">, à gauche</span><span
+                class="narrow-only"
+              > ci-dessus</span>.
+            </div>
           </div>
 
-          <template v-else>
-            <div v-if="!spec.fields?.length" class="hint">
-              Aucun paramètre — cette action s'exécute telle quelle.
-            </div>
-            <div v-else class="field-row">
-              <div v-for="f in spec.fields" :key="f.key" class="field">
-                <label :for="`f-${f.key}`">
-                  {{ f.label }}<span v-if="f.required" aria-hidden="true"> *</span>
-                </label>
-
-                <select
-                  v-if="f.type === 'select'"
-                  :id="`f-${f.key}`"
-                  v-model="values[f.key]"
-                >
-                  <option value="">—</option>
-                  <option
-                    v-for="o in f.options ?? options[f.key] ?? []"
-                    :key="o.value"
-                    :value="o.value"
-                  >{{ o.label }}</option>
-                </select>
-
-                <label v-else-if="isCheckbox(f)" class="toggle">
-                  <input
-                    :id="`f-${f.key}`"
-                    type="checkbox"
-                    :checked="values[f.key] === 'true'"
-                    @change="values[f.key] = ($event.target as HTMLInputElement).checked ? 'true' : 'false'"
-                  />
-                  Oui
-                </label>
-
-                <input
-                  v-else
-                  :id="`f-${f.key}`"
-                  v-model="values[f.key]"
-                  :type="f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'"
-                  :placeholder="f.hint ?? ''"
-                  autocomplete="off"
-                />
-
-                <span v-if="f.hint && f.type !== 'text'" class="hint">{{ f.hint }}</span>
-              </div>
-            </div>
-          </template>
+          <ActionForm v-else :spec="spec" :scope-id="scopeId" />
         </div>
-
-        <div class="card-foot">
-          <button class="btn primary" type="submit" :disabled="!canSubmit">
-            <span v-if="working" class="btn-spin" aria-hidden="true" />
-            {{ working ? "Enregistrement…" : spec.label }}
-          </button>
-        </div>
-      </form>
+      </div>
     </template>
   </div>
 </template>

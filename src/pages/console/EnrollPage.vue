@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useRoute } from "vue-router";
 import * as api from "../../lib/api";
 import { useBusyStore } from "../../stores/busy";
+import { useOrgStore } from "../../stores/org";
 
 /**
  * Enrol one pupil.
@@ -11,6 +13,8 @@ import { useBusyStore } from "../../stores/busy";
  * a pupil enrolled nowhere is a row nobody can act on.
  */
 const busy = useBusyStore();
+const org = useOrgStore();
+const route = useRoute();
 
 const classes = ref<{ id: string; name: string; path: string }[]>([]);
 const years = ref<api.AcademicYear[]>([]);
@@ -33,29 +37,18 @@ const form = ref({
 /**
  * Every classe in the complex, with the path that disambiguates it.
  *
- * ONE request. This walked the tree breadth-first with a request per node — up
- * to 400 sequential round trips on a metered connection, and any one of them
- * failing left the picker silently empty and the page reading "aucune classe"
- * on a school that has several. `GET /org-units/tree` returns the whole thing
- * flat; the path is derived here.
+ * ONE request, shared. This walked the tree breadth-first with a request per
+ * node — up to 400 sequential round trips on a metered connection, and any one
+ * of them failing left the picker silently empty and the page reading "aucune
+ * classe" on a school that has several. The tree now lives in a store the whole
+ * console reads; the path is derived from it.
  */
 async function loadClasses() {
-  const units = await api.orgUnits.tree();
-  const byId = new Map(units.map((u) => [u.id, u]));
-  const pathOf = (u: api.TreeUnit) => {
-    const parts: string[] = [];
-    let cursor = u.parentId;
-    for (let i = 0; cursor && i < 12; i++) {
-      const parent = byId.get(cursor);
-      if (!parent) break;
-      parts.unshift(parent.name);
-      cursor = parent.parentId;
-    }
-    return parts.join(" / ");
-  };
-  classes.value = units
-    .filter((u) => u.kind === "CLASSE" && !u.validTo)
-    .map((u) => ({ id: u.id, name: u.name, path: pathOf(u) }));
+  await org.load();
+  classes.value = org
+    .ofKind(["CLASSE"])
+    .filter((u) => !u.validTo)
+    .map((u) => ({ id: u.id, name: u.name, path: org.pathOf(u.id) }));
 }
 
 onMounted(async () => {
@@ -63,6 +56,11 @@ onMounted(async () => {
     const [y] = await Promise.all([api.academics.years(), loadClasses()]);
     years.value = y;
     form.value.academicYearId = y.find((x) => x.isCurrent)?.id ?? y[0]?.id ?? "";
+
+    // Arrived from a class — from its page, its ⋯ menu or its empty roster.
+    // The answer travelled with the click; asking for it again would waste it.
+    const scope = typeof route.query.scope === "string" ? route.query.scope : null;
+    if (scope && classes.value.some((c) => c.id === scope)) form.value.classeId = scope;
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Chargement impossible.";
   } finally {

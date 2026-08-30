@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import * as api from "../../lib/api";
+import { ACTIONS, type ActionSpec } from "../../lib/actions";
 import { KIND_FR } from "./kinds";
 import Icon from "../ui/Icon.vue";
 
@@ -19,11 +20,24 @@ import Icon from "../ui/Icon.vue";
  * enough that shipping it all would be the wrong trade — not yet, at a few
  * hundred units.
  */
-const props = defineProps<{ units: api.TreeUnit[]; selected: string | null }>();
+const props = defineProps<{
+  units: api.TreeUnit[];
+  selected: string | null;
+  /**
+   * Pick mode: only these kinds may be chosen, everything else is context.
+   *
+   * The same tree serves "navigate the structure" and "choose where this action
+   * applies", because they are the same question and a second, flatter list
+   * would answer it worse — "6e A" means nothing without the school above it.
+   */
+  pickKinds?: api.OrgUnitKind[];
+}>();
 const emit = defineEmits<{
   select: [api.TreeUnit];
   /** The row's ⋯ was used. The parent owns the dialogs — see OrgPane. */
   menu: [{ unit: api.TreeUnit; action: NodeAction }];
+  /** A registry action was chosen on a row: it opens HERE, over the tree. */
+  run: [{ unit: api.TreeUnit; spec: ActionSpec }];
 }>();
 
 /**
@@ -36,6 +50,25 @@ const emit = defineEmits<{
  * corrupted.
  */
 export type NodeAction = "open" | "add" | "rename" | "close" | "reopen";
+
+/**
+ * The domain actions a node offers from the tree itself.
+ *
+ * Only the ones that are FORMS. An action with a screen of its own — the mark
+ * grid, the bulletins — is a destination, and the row's own page is where those
+ * belong; putting them in a context menu would just be a second way to
+ * navigate. What is left is precisely the set that can be done without leaving
+ * the tree, which is the point: choose "programmer une matière" on a niveau and
+ * the form opens over it, already knowing which niveau.
+ */
+function specsFor(unit: api.TreeUnit): ActionSpec[] {
+  return ACTIONS.filter(
+    (a) => !a.planned && !a.route && a.scope?.includes(unit.kind),
+  );
+}
+
+const picking = computed(() => (props.pickKinds?.length ?? 0) > 0);
+const eligible = (u: api.TreeUnit) => !picking.value || props.pickKinds!.includes(u.kind);
 
 const openMenu = ref<string | null>(null);
 
@@ -57,6 +90,11 @@ function menuFor(unit: api.TreeUnit): { id: NodeAction; label: string; danger?: 
 function choose(unit: api.TreeUnit, action: NodeAction) {
   openMenu.value = null;
   emit("menu", { unit, action });
+}
+
+function run(unit: api.TreeUnit, spec: ActionSpec) {
+  openMenu.value = null;
+  emit("run", { unit, spec });
 }
 
 const q = ref("");
@@ -163,6 +201,22 @@ watch(
     const roots = units.filter((u) => u.parentId === null);
     const next = new Set(roots.map((r) => r.id));
     for (const u of units) if (u.parentId && next.has(u.parentId)) next.add(u.id);
+
+    // Picking is different: a pane that opens with every classe hidden four
+    // levels down is a pane that asks the operator to go looking for the thing
+    // it just asked them to choose. So reveal what can be chosen.
+    if (picking.value) {
+      const byId = new Map(units.map((u) => [u.id, u]));
+      for (const u of units) {
+        if (!eligible(u)) continue;
+        let cursor = u.parentId;
+        for (let i = 0; cursor && i < 12; i++) {
+          next.add(cursor);
+          cursor = byId.get(cursor)?.parentId ?? null;
+        }
+      }
+    }
+
     expanded.value = next;
     seeded.value = true;
   },
@@ -234,7 +288,13 @@ const matches = computed(() => (visible.value ? rows.value.length : props.units.
         </button>
         <span v-else class="ex-twist ex-twist-leaf" aria-hidden="true" />
 
-        <button class="ex-label" type="button" :title="KIND_FR[row.unit.kind]" @click="emit('select', row.unit)">
+        <button
+          class="ex-label"
+          :class="{ 'is-dim': !eligible(row.unit) }"
+          type="button"
+          :title="eligible(row.unit) ? KIND_FR[row.unit.kind] : `${KIND_FR[row.unit.kind]} — cette action ne s'y applique pas`"
+          @click="eligible(row.unit) ? emit('select', row.unit) : toggle(row.unit.id)"
+        >
           <!-- Codes are gone: they are for printed documents, and in a 280px
                panel they cost the width the names need. The kind stays as a
                tooltip. -->
@@ -242,6 +302,7 @@ const matches = computed(() => (visible.value ? rows.value.length : props.units.
         </button>
 
         <button
+          v-if="!picking"
           class="ex-menu"
           type="button"
           :aria-label="`Actions sur ${row.unit.name}`"
@@ -251,7 +312,7 @@ const matches = computed(() => (visible.value ? rows.value.length : props.units.
           <Icon name="dots" :size="14" />
         </button>
 
-        <template v-if="openMenu === row.unit.id">
+        <template v-if="openMenu === row.unit.id && !picking">
           <!-- Click-away: a menu that only its own button can close is a menu
                people leave open. -->
           <div class="ex-menu-scrim" @click.stop="openMenu = null" />
@@ -265,6 +326,19 @@ const matches = computed(() => (visible.value ? rows.value.length : props.units.
               role="menuitem"
               @click.stop="choose(row.unit, item.id)"
             >{{ item.label }}</button>
+
+            <template v-if="specsFor(row.unit).length">
+              <div class="ex-menu-sep" role="separator" />
+              <button
+                v-for="spec in specsFor(row.unit)"
+                :key="spec.id"
+                class="ex-menu-item"
+                type="button"
+                role="menuitem"
+                :title="spec.summary"
+                @click.stop="run(row.unit, spec)"
+              >{{ spec.label }}</button>
+            </template>
           </div>
         </template>
       </div>

@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import * as api from "../../lib/api";
+import type { ActionSpec } from "../../lib/actions";
+import { useOrgStore } from "../../stores/org";
 import Explorer from "../structure/Explorer.vue";
+import ActionDialog from "../actions/ActionDialog.vue";
 import NodeMenuDialogs from "./NodeMenuDialogs.vue";
+import PaneShell from "./PaneShell.vue";
 
 /**
  * The organisation tree, as its own column between the rail and the content.
@@ -12,81 +16,26 @@ import NodeMenuDialogs from "./NodeMenuDialogs.vue";
  * tree is the thing you navigate BY, not a screen you visit. Here it is present
  * for every action: pick a classe on the left, act on it on the right.
  *
- * RESIZABLE, with hard limits. A pane the user can drag to 40px is a pane they
- * can destroy, and one they can drag to half the window leaves no room for the
- * work. The bounds are enforced on the drag, not just on the stylesheet, and the
- * width is remembered so the layout survives a reload.
+ * The dialogs are owned HERE rather than by the rows, because the tree is a
+ * pure renderer: a modal attached to a node that the next reload removes would
+ * be left pointing at nothing.
  */
-const MIN = 220;
-const MAX = 460;
-const KEY = "ec_orgpane_w";
-
-const emit = defineEmits<{ select: [api.TreeUnit] }>();
 const props = defineProps<{ selected: string | null }>();
+const emit = defineEmits<{ select: [api.TreeUnit] }>();
 
 const router = useRouter();
-const units = ref<api.TreeUnit[]>([]);
-const loading = ref(true);
+const org = useOrgStore();
 
-const width = ref(clamp(Number(localStorage.getItem(KEY)) || 280));
-function clamp(px: number) {
-  return Math.min(MAX, Math.max(MIN, px));
-}
+onMounted(() => void org.load());
+defineExpose({ reload: () => org.load(true) });
 
-async function load() {
-  loading.value = true;
-  try {
-    units.value = await api.orgUnits.tree();
-  } catch {
-    units.value = [];
-  } finally {
-    loading.value = false;
-  }
-}
-onMounted(load);
-defineExpose({ reload: load });
-
-// ── drag to resize ──────────────────────────────────────────────────────────
-const dragging = ref(false);
-let startX = 0;
-let startW = 0;
-
-function onDown(event: PointerEvent) {
-  dragging.value = true;
-  startX = event.clientX;
-  startW = width.value;
-  (event.target as HTMLElement).setPointerCapture(event.pointerId);
-}
-function onMove(event: PointerEvent) {
-  if (!dragging.value) return;
-  width.value = clamp(startW + (event.clientX - startX));
-}
-function onUp() {
-  if (!dragging.value) return;
-  dragging.value = false;
-  localStorage.setItem(KEY, String(width.value));
-}
-onBeforeUnmount(onUp);
-
-/** Keyboard resize, because a drag handle nobody can tab to is not a control. */
-function onKey(event: KeyboardEvent) {
-  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-  event.preventDefault();
-  width.value = clamp(width.value + (event.key === "ArrowRight" ? 16 : -16));
-  localStorage.setItem(KEY, String(width.value));
-}
-
-const style = computed(() => ({ width: `${width.value}px` }));
-
-/**
- * The node the ⋯ menu is acting on, and which action.
- *
- * Held here rather than in the Explorer: the tree is a pure renderer of rows,
- * and a row must not own a modal — a dialog attached to a node that the next
- * reload removes would be left pointing at nothing.
- */
+/** The node the ⋯ menu is acting on, and which structural operation. */
 const menuUnit = ref<api.TreeUnit | null>(null);
 const menuAction = ref<"add" | "rename" | "close" | "reopen" | null>(null);
+
+/** A registry action chosen on a row — the form opens over the tree. */
+const runUnit = ref<api.TreeUnit | null>(null);
+const runSpec = ref<ActionSpec | null>(null);
 
 function onMenu(payload: { unit: api.TreeUnit; action: string }) {
   if (payload.action === "open") {
@@ -97,10 +46,15 @@ function onMenu(payload: { unit: api.TreeUnit; action: string }) {
   menuAction.value = payload.action as "add" | "rename" | "close" | "reopen";
 }
 
+function onRun(payload: { unit: api.TreeUnit; spec: ActionSpec }) {
+  runUnit.value = payload.unit;
+  runSpec.value = payload.spec;
+}
+
 async function onDialogDone(changed: boolean) {
   menuUnit.value = null;
   menuAction.value = null;
-  if (changed) await load();
+  if (changed) await org.load(true);
 }
 
 function pick(unit: api.TreeUnit) {
@@ -113,35 +67,25 @@ function pick(unit: api.TreeUnit) {
 </script>
 
 <template>
-  <aside class="orgpane" :style="style" aria-label="Organisation">
-    <div class="orgpane-body">
-      <div v-if="loading" class="tnode-hint">Chargement…</div>
-      <Explorer
-        v-else
-        :units="units"
-        :selected="selected"
-        @select="pick"
-        @menu="onMenu"
-      />
-    </div>
+  <PaneShell label="Organisation">
+    <div v-if="org.loading && !org.loaded" class="tnode-hint">Chargement…</div>
+    <Explorer
+      v-else
+      :units="org.units"
+      :selected="props.selected"
+      @select="pick"
+      @menu="onMenu"
+      @run="onRun"
+    />
 
     <NodeMenuDialogs :unit="menuUnit" :action="menuAction" @done="onDialogDone" />
 
-    <div
-      class="orgpane-grip"
-      :class="{ 'is-dragging': dragging }"
-      role="separator"
-      aria-orientation="vertical"
-      :aria-valuenow="width"
-      :aria-valuemin="MIN"
-      :aria-valuemax="MAX"
-      tabindex="0"
-      aria-label="Redimensionner le panneau"
-      @pointerdown="onDown"
-      @pointermove="onMove"
-      @pointerup="onUp"
-      @pointercancel="onUp"
-      @keydown="onKey"
+    <ActionDialog
+      v-if="runSpec && runUnit"
+      :spec="runSpec"
+      :unit="runUnit"
+      @close="((runSpec = null), (runUnit = null))"
+      @done="org.load(true)"
     />
-  </aside>
+  </PaneShell>
 </template>

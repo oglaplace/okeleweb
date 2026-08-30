@@ -1,53 +1,37 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import * as api from "../../lib/api";
+import type * as api from "../../lib/api";
+import { useOrgStore } from "../../stores/org";
 import { KIND_FR } from "./kinds";
 import Icon from "../ui/Icon.vue";
 
 /**
  * "Which part of the établissement does this apply to?"
  *
- * Every action that touches the tree asks this, so it is asked once, here.
  * Filtered by the action's declared target kinds: an action that creates a
  * devoir offers classes and nothing else, because offering a cycle would let
  * the operator build a request the API can only refuse.
+ *
+ * NARROW SCREENS ONLY. On a normal console this question is answered in the
+ * structure column, in the same tree everything else is picked from — see
+ * components/console/ScopePane.vue. Below 1100px there is no room for that
+ * column, and this flat list is what remains: less context, but it fits.
  */
 const props = defineProps<{ kinds: api.OrgUnitKind[]; modelValue: string | null }>();
 const emit = defineEmits<{ "update:modelValue": [string | null] }>();
 
-const units = ref<api.TreeUnit[]>([]);
-const loading = ref(true);
+const org = useOrgStore();
 const q = ref("");
+const loading = computed(() => org.loading && !org.loaded);
 
-onMounted(async () => {
-  try {
-    units.value = await api.orgUnits.tree();
-  } catch {
-    units.value = [];
-  } finally {
-    loading.value = false;
-  }
-});
+onMounted(() => void org.load());
 
 /** Path for each candidate — "6e A" alone is ambiguous across two schools. */
 const candidates = computed(() => {
-  const byId = new Map(units.value.map((u) => [u.id, u]));
-  const pathOf = (u: api.TreeUnit) => {
-    const parts: string[] = [];
-    let cursor = u.parentId;
-    for (let i = 0; cursor && i < 12; i++) {
-      const parent = byId.get(cursor);
-      if (!parent) break;
-      parts.unshift(parent.name);
-      cursor = parent.parentId;
-    }
-    return parts.join(" / ");
-  };
-
   const needle = q.value.trim().toLowerCase();
-  return units.value
-    .filter((u) => props.kinds.includes(u.kind))
-    .map((u) => ({ ...u, path: pathOf(u) }))
+  return org
+    .ofKind(props.kinds)
+    .map((u) => ({ ...u, path: org.pathOf(u.id) }))
     .filter(
       (u) =>
         !needle ||

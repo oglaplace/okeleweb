@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 import * as api from "../../lib/api";
-import { ACTIONS, GROUPS, type ActionSpec } from "../../lib/actions";
+import { ACTIONS, GROUPS, ROUTE_NEEDS_UNIT, type ActionSpec } from "../../lib/actions";
 import Icon from "../ui/Icon.vue";
 
 /**
@@ -71,9 +71,13 @@ const groups = computed(() =>
     actions: ACTIONS.filter((a) => a.group === g.id).map((a) => ({
       spec: a,
       blocked: blockedReason(a),
-      to: a.route
-        ? { name: a.route }
-        : { name: "action", params: { id: a.id } },
+      // Nothing is selected in the rail, so a screen that IS about one unit
+      // cannot be linked to directly — see ROUTE_NEEDS_UNIT. Those go through
+      // the action page, which asks which unit and then forwards.
+      to:
+        a.route && !ROUTE_NEEDS_UNIT.has(a.route)
+          ? { name: a.route }
+          : { name: "action", params: { id: a.id } },
     })),
   })),
 );

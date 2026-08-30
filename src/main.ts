@@ -3,6 +3,7 @@ import { createPinia } from "pinia";
 import App from "./App.vue";
 import router from "./router";
 import { useDeploymentStore } from "./stores/deployment";
+import { useNavStore } from "./stores/nav";
 import { initTheme } from "./lib/theme";
 import "./index.css";
 import "./styles/app.css";
@@ -14,6 +15,10 @@ initTheme();
 const app = createApp(App);
 app.use(createPinia());
 app.use(router);
+
+// The back control reads the router's own history state, so it has to be
+// attached to THIS router instance before the first navigation settles.
+useNavStore().attach(router);
 
 // Discover the deployment BEFORE mounting. Every screen — including login —
 // needs to be able to say "the server is unreachable", and finding that out
