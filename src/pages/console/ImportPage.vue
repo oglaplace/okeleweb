@@ -5,6 +5,7 @@ import * as api from "../../lib/api";
 import { parseCsv } from "../../lib/csv";
 import { useBusyStore } from "../../stores/busy";
 import { useOrgStore } from "../../stores/org";
+import UnitSelect from "../../components/structure/UnitSelect.vue";
 
 /**
  * A term's worth of people, from a spreadsheet.
@@ -173,10 +174,12 @@ const clean = computed(() => report.value !== null && report.value.problems.leng
           <div v-else class="field-row">
             <div class="field">
               <label for="i-cl">Classe par défaut</label>
-              <select id="i-cl" v-model="classeId">
-                <option value="">—</option>
-                <option v-for="c in classes" :key="c.id" :value="c.id">{{ c.label }}</option>
-              </select>
+              <UnitSelect
+                id="i-cl"
+                v-model="classeId"
+                :kinds="['CLASSE']"
+                placeholder="Rechercher une classe…"
+              />
               <span class="hint">
                 Utilisée pour les lignes sans colonne « Classe ».
               </span>

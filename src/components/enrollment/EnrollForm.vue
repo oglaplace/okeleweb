@@ -3,6 +3,8 @@ import { computed, onMounted, ref, watch } from "vue";
 import * as api from "../../lib/api";
 import { useBusyStore } from "../../stores/busy";
 import { useOrgStore } from "../../stores/org";
+import PhoneInput from "../ui/PhoneInput.vue";
+import UnitSelect from "../structure/UnitSelect.vue";
 
 /**
  * Enrol one pupil — the form, wherever it is shown.
@@ -25,7 +27,11 @@ const props = defineProps<{
   /** Clears the whole form after each save; the page keeps the class instead. */
   once?: boolean;
 }>();
-const emit = defineEmits<{ enrolled: [name: string] }>();
+const emit = defineEmits<{
+  /** The pupil, and the class they landed in — the caller decides what to do
+   *  about it: refresh in place, or go and look at the class. */
+  enrolled: [{ name: string; classeId: string }];
+}>();
 
 const busy = useBusyStore();
 const org = useOrgStore();
@@ -60,13 +66,8 @@ const form = ref({
   guardians: [blankGuardian()] as GuardianRow[],
 });
 
-/** Every classe in the complex, with the path that disambiguates it. */
-const classes = computed(() =>
-  org
-    .ofKind(["CLASSE"])
-    .filter((u) => !u.validTo)
-    .map((u) => ({ id: u.id, name: u.name, path: org.pathOf(u.id) })),
-);
+/** Only to tell "no class exists" apart from "none chosen yet". */
+const classes = computed(() => org.ofKind(["CLASSE"]).filter((u) => !u.validTo));
 
 const fixed = computed(() => (props.fixedClasse ? org.byId(props.fixedClasse) : null));
 
@@ -159,7 +160,7 @@ async function submit() {
     form.value.gender = "";
     form.value.isRepeating = false;
     form.value.guardians = [blankGuardian()];
-    emit("enrolled", fullName);
+    emit("enrolled", { name: fullName, classeId: form.value.classeId });
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Inscription impossible.";
   } finally {
@@ -269,7 +270,11 @@ defineExpose({ submit });
         <div class="field-row">
           <div class="field">
             <label :for="`g-ph-${i}`">Téléphone</label>
-            <input :id="`g-ph-${i}`" v-model="g.phone" type="tel" placeholder="+242…" />
+            <!-- Same control as the login. The number is how the school reaches
+                 this family and how the API deduplicates one adult across their
+                 children, so a tuteur typed as "060000001" and one typed as
+                 "+242060000001" must not be able to become two people. -->
+            <PhoneInput :id="`g-ph-${i}`" v-model="g.phone" />
           </div>
           <div class="field">
             <label :for="`g-em-${i}`">Email</label>
@@ -312,12 +317,15 @@ defineExpose({ submit });
         </div>
         <div v-else class="field">
           <label for="e-cl">Classe</label>
-          <select id="e-cl" v-model="form.classeId">
-            <option value="">—</option>
-            <option v-for="c in classes" :key="c.id" :value="c.id">
-              {{ c.path }} / {{ c.name }}
-            </option>
-          </select>
+          <!-- Typed, not scrolled: a complex running three cycles has one
+               option per cohort, and "A" appears five times in a native list
+               with nothing to tell them apart. -->
+          <UnitSelect
+            id="e-cl"
+            v-model="form.classeId"
+            :kinds="['CLASSE']"
+            placeholder="Rechercher une classe…"
+          />
         </div>
         <div class="field">
           <label for="e-yr">Année scolaire</label>

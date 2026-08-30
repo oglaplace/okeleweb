@@ -1157,6 +1157,10 @@ table.data td.c-text {
 .phone {
   display: flex;
   align-items: stretch;
+  /* Same box as every other control — it sits in a row beside them now that
+     enrolment and staff use it, not only on the login screen where it was
+     alone. */
+  height: var(--control-h);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   background: var(--surface);
@@ -1188,7 +1192,7 @@ table.data td.c-text {
 .phone-input {
   flex: 1;
   min-width: 0;
-  padding: 9px 11px;
+  padding: 0 11px;
   border: none;
   background: transparent;
   color: var(--ink);
@@ -2129,12 +2133,13 @@ table.data td.c-text {
 
 /* Back, next to where-you-are: the same question asked twice. */
 /*
- * Back and home are the same control size, deliberately.
+ * Back and home are the same control, at the same weight.
  *
  * They sit side by side and do the same KIND of thing — leave here — so two
  * different sizes read as an accident. The house was 14px of inline SVG on a
- * text baseline while the button was a 28px box, which put them on two
- * different optical lines and made the whole bar look tilted.
+ * text baseline while the button was a 28px box: two different optical lines,
+ * and a house that looked like a decoration beside a control. Same box, and the
+ * glyph fills it rather than floating in the middle of it.
  */
 .crumb-back,
 .crumbs-link.is-home,
@@ -3196,4 +3201,130 @@ table.data td.c-text {
   color: var(--ink-3);
   font-size: var(--t-micro);
   font-variant-numeric: tabular-nums;
+}
+
+
+/* ── unit combobox: a class you find by typing, not by scrolling ── */
+.unitsel {
+  position: relative;
+}
+.unitsel-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  width: 100%;
+  height: var(--control-h);
+  padding: 0 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-body);
+  text-align: left;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.unitsel-trigger:focus-visible,
+.unitsel.is-open .unitsel-trigger {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: var(--ring);
+}
+.unitsel-trigger:disabled {
+  background: var(--surface-2);
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+.unitsel-trigger .icon {
+  color: var(--ink-3);
+  flex: none;
+}
+/* Name and path on one line in the trigger — the control is one row tall and
+   must stay that way — but stacked in the list, where there is room. */
+.unitsel-value {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  min-width: 0;
+}
+.unitsel-empty {
+  color: var(--ink-3);
+}
+.unitsel-name {
+  font-weight: 550;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.unitsel-path {
+  color: var(--ink-3);
+  font-size: var(--t-small);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.unitsel-pop {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  min-width: 260px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.unitsel-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  height: var(--control-h);
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--ink-3);
+}
+.unitsel-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-body);
+}
+.unitsel-search input:focus {
+  outline: none;
+}
+.unitsel-list {
+  max-height: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+}
+.unitsel-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink-2);
+  font-size: var(--t-small);
+  text-align: left;
+}
+.unitsel-item.is-active {
+  background: var(--surface-2);
+}
+.unitsel-item.is-picked {
+  background: var(--primary-soft);
+  color: var(--primary-soft-ink);
+}
+.unitsel-item.is-picked .unitsel-name {
+  color: var(--primary-soft-ink);
 }

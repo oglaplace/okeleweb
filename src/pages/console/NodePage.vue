@@ -94,9 +94,9 @@ function onRunDone() {
 }
 
 /** The overlay closed after a save: show what changed, not a stale list. */
-async function onInlineDone(name: string) {
+async function onInlineDone(result: { name: string }) {
   inlineForm.value = null;
-  notice.value = `${name} inscrit(e).`;
+  notice.value = `${result.name} inscrit(e).`;
   await load();
 }
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import * as api from "../../lib/api";
+import PhoneInput from "../../components/ui/PhoneInput.vue";
 import { useBusyStore } from "../../stores/busy";
 import { KIND_FR } from "../../components/structure/kinds";
 
@@ -166,8 +167,12 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
             <input id="s-ln" v-model="form.lastName" autocomplete="off" /></div>
           <div class="field"><label for="s-fn">Prénom</label>
             <input id="s-fn" v-model="form.firstName" autocomplete="off" /></div>
-          <div class="field"><label for="s-ph">Téléphone</label>
-            <input id="s-ph" v-model="form.phone" autocomplete="off" /></div>
+          <div class="field">
+            <label for="s-ph">Téléphone</label>
+            <!-- One phone control in the whole app: the prefix is furniture,
+                 not something each form re-invents and half of them forget. -->
+            <PhoneInput id="s-ph" v-model="form.phone" />
+          </div>
         </div>
         <div class="field-row">
           <div class="field"><label for="s-ty">Contrat</label>

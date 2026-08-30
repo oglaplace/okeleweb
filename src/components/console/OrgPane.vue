@@ -38,10 +38,8 @@ const runUnit = ref<api.TreeUnit | null>(null);
 const runSpec = ref<ActionSpec | null>(null);
 
 function onMenu(payload: { unit: api.TreeUnit; action: string }) {
-  if (payload.action === "open") {
-    pick(payload.unit);
-    return;
-  }
+  // "Ouvrir" never arrives here: the tree treats it as a selection, so it
+  // clears a running search the same way clicking the row does.
   menuUnit.value = payload.unit;
   menuAction.value = payload.action as "add" | "rename" | "close" | "reopen";
 }

@@ -89,6 +89,11 @@ function menuFor(unit: api.TreeUnit): { id: NodeAction; label: string; danger?: 
 
 function choose(unit: api.TreeUnit, action: NodeAction) {
   openMenu.value = null;
+  // "Ouvrir" is a selection like any other, so it clears a search the same way.
+  if (action === "open") {
+    pick(unit);
+    return;
+  }
   emit("menu", { unit, action });
 }
 
@@ -188,14 +193,13 @@ function toggle(id: string) {
 }
 
 /**
- * Opens NOTHING. The tree arrives closed and the operator opens what they came
- * for.
+ * Opens the root, and stops there.
  *
- * It seeded the root and its schools before, on the reasoning that one row
- * teaches nothing. In practice a complex with three schools opened to a dozen
- * rows, and the operator's first act was still to close the two they did not
- * want. Closed is the honest default: the structure screen is where you go
- * looking for one branch, not to read the whole tree.
+ * Two wrong answers were tried before this one. Seeding the root AND its
+ * schools opened a complex to a dozen rows the operator then had to close;
+ * seeding nothing showed a single line that answers no question at all. One
+ * level is what a director actually needs on arrival — which schools exist —
+ * and every level below that is a decision they came here to make.
  *
  * Pick mode is the exception, below — a pane that hides the thing it is asking
  * you to choose is asking you to go and find it.
@@ -204,7 +208,8 @@ watch(
   () => props.units,
   (units) => {
     if (seeded.value || !units.length) return;
-    const next = new Set<string>();
+    // The roots themselves, so their children show. Nothing deeper.
+    const next = new Set(units.filter((u) => u.parentId === null).map((u) => u.id));
 
     // Picking is different: reveal what can be chosen.
     if (picking.value) {
@@ -225,11 +230,19 @@ watch(
   { immediate: true },
 );
 
-/** Reveals a node's whole ancestry — used when the selection comes from
- *  elsewhere (a search result, a link, the readiness inbox). */
+/**
+ * Reveals the selection's ancestry, however it was arrived at.
+ *
+ * Watches the UNITS too, and runs immediately, because the common case is a
+ * tree that mounts with a selection already set: enrolling from the rail lands
+ * on the class's own page, and the pane is created there for the first time. A
+ * watcher on the selection alone never fires for that — the value did not
+ * change, it started that way — so the operator arrived somewhere the tree
+ * claimed not to know about.
+ */
 watch(
-  () => props.selected,
-  (id) => {
+  [() => props.selected, () => props.units],
+  ([id]) => {
     if (!id) return;
     const byId = new Map(props.units.map((u) => [u.id, u]));
     const next = new Set(expanded.value);
@@ -240,7 +253,37 @@ watch(
     }
     expanded.value = next;
   },
+  { immediate: true },
 );
+
+/**
+ * Choosing a row — and, when it came out of a search, putting the tree back.
+ *
+ * A search result is shown by force-expanding every branch that contains a hit,
+ * so the tree behind the query is not the tree the operator is looking at.
+ * Clearing the box without doing anything else would drop them back into
+ * whatever was open before they searched, with their result nowhere in sight —
+ * they searched precisely because they could not find it by hand.
+ *
+ * So the query goes, the full tree comes back, and the expansion is REPLACED by
+ * exactly the path down to what they picked: one open branch, ending on the
+ * selection. Merging with what was open before would leave the noise they were
+ * escaping.
+ */
+function pick(unit: api.TreeUnit) {
+  if (q.value.trim()) {
+    const byId = new Map(props.units.map((u) => [u.id, u]));
+    const path = new Set<string>();
+    let cursor = byId.get(unit.id)?.parentId ?? null;
+    for (let i = 0; cursor && i < 16; i++) {
+      path.add(cursor);
+      cursor = byId.get(cursor)?.parentId ?? null;
+    }
+    expanded.value = path;
+    q.value = "";
+  }
+  emit("select", unit);
+}
 
 const matches = computed(() => (visible.value ? rows.value.length : props.units.length));
 </script>
@@ -295,7 +338,7 @@ const matches = computed(() => (visible.value ? rows.value.length : props.units.
           :class="{ 'is-dim': !eligible(row.unit) }"
           type="button"
           :title="eligible(row.unit) ? KIND_FR[row.unit.kind] : `${KIND_FR[row.unit.kind]} — cette action ne s'y applique pas`"
-          @click="eligible(row.unit) ? emit('select', row.unit) : toggle(row.unit.id)"
+          @click="eligible(row.unit) ? pick(row.unit) : toggle(row.unit.id)"
         >
           <!-- Codes are gone: they are for printed documents, and in a 280px
                panel they cost the width the names need. The kind stays as a
