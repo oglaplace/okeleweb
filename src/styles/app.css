@@ -3328,3 +3328,221 @@ table.data td.c-text {
 .unitsel-item.is-picked .unitsel-name {
   color: var(--primary-soft-ink);
 }
+
+
+/* ============================================================================
+   The sheet — a class as a spreadsheet.
+   ============================================================================
+   Density is the feature. A titulaire comparing forty pupils needs them on one
+   screen, and every pixel of row padding costs a name. Numbers are tabular so
+   a column of marks lines up on the decimal point, which is the only way a
+   column of numbers can be read down. */
+.sheet {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+.sheet-scroll {
+  overflow: auto;
+  overscroll-behavior: contain;
+  max-height: calc(100vh - 300px);
+}
+.sheet-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  /* Fixed, so the colgroup's widths are the widths — see DataSheet. Auto layout
+     redistributes them, and the frozen columns are positioned from the declared
+     numbers, so the two disagreeing puts a name on top of the cell beside it. */
+  table-layout: fixed;
+  /* max-content so the declared widths are honoured and the sheet OVERFLOWS
+     into its scroller; `width: 100%` made fixed layout shrink every column to
+     fit instead, which is the opposite of a spreadsheet. */
+  width: max-content;
+  min-width: 100%;
+  font-size: var(--t-small);
+}
+
+.sheet-table th,
+.sheet-table td {
+  padding: 5px 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 1px solid var(--line-soft);
+  border-right: 1px solid var(--line-soft);
+  white-space: nowrap;
+  text-align: left;
+}
+.sheet-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: var(--t-micro);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom-color: var(--line);
+}
+/* Grouped headers push the column row down one; both stay stuck. */
+.sheet-groups th {
+  top: 0;
+  text-align: center;
+  background: var(--surface-3);
+  color: var(--ink);
+}
+/*
+ * ONLY when there is a group row above it.
+ *
+ * This was unconditional, which pushed the single header row of every
+ * ungrouped tab down by its own height — and since it is sticky and painted
+ * over the body, it covered the first pupil in the class. A hidden first row is
+ * the kind of bug that gets noticed by the parent whose child is missing from
+ * the list.
+ */
+.sheet-table:has(.sheet-groups) thead tr:last-child th {
+  top: 25px;
+}
+.sheet-corner {
+  background: var(--surface-3);
+}
+.sheet-group {
+  border-left: 2px solid var(--line);
+}
+
+.sheet-table tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--surface-2) 45%, var(--surface));
+}
+.sheet-table tbody tr:hover td {
+  background: var(--surface-2);
+}
+.sheet.is-clickable .sheet-table tbody tr {
+  cursor: pointer;
+}
+.sheet-table tbody tr.is-selected td {
+  background: var(--primary-soft);
+  color: var(--primary-soft-ink);
+}
+.sheet-table td {
+  color: var(--ink);
+}
+
+/* Identity stays put while the rest scrolls sideways — a mark with no name
+   beside it is a number nobody can act on. */
+.sheet-table .is-frozen {
+  position: sticky;
+  z-index: 1;
+  background: var(--surface);
+}
+.sheet-table th.is-frozen {
+  z-index: 3;
+  background: var(--surface-2);
+}
+/* The offset comes from the component, which knows the widths — see
+   DataSheet.frozenLeft. */
+.sheet-table .is-last-frozen {
+  border-right: 1px solid var(--line);
+}
+
+.sheet-table .is-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/* Missing is not zero, and must not read as one. */
+.sheet-table .is-empty {
+  color: var(--ink-3);
+}
+.sheet-table .is-warn {
+  color: var(--danger);
+  font-weight: 650;
+}
+/* The slack column: no border of its own, so the grid ends at the last real
+   column rather than drawing an empty cell across the rest of the width. */
+.sheet-fill {
+  border-right: none !important;
+  background: var(--surface) !important;
+}
+.sheet-table thead .sheet-fill,
+.sheet-table tfoot .sheet-fill {
+  background: var(--surface-2) !important;
+}
+.sheet-blank {
+  padding: var(--s5);
+  text-align: center;
+  color: var(--ink-3);
+}
+
+.sheet-table tfoot td {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: var(--surface-2);
+  border-top: 1px solid var(--line);
+  font-weight: 700;
+  color: var(--ink);
+}
+.sheet-table tfoot td.is-frozen {
+  z-index: 3;
+}
+
+/* ── the tabs, at the foot, where a spreadsheet puts them ── */
+.sheet-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  margin-top: -1px;
+  padding: 0 var(--s2);
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.sheet-tab {
+  padding: 7px 14px;
+  border: 1px solid transparent;
+  border-top: none;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  background: none;
+  color: var(--ink-3);
+  font-size: var(--t-small);
+  font-weight: 600;
+}
+.sheet-tab:hover {
+  color: var(--ink);
+  background: var(--surface);
+}
+.sheet-tab.is-active {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--ink);
+}
+.sheet-tabs-fill {
+  flex: 1;
+}
+.sheet-tabs .btn.sm {
+  align-self: center;
+}
+
+/* Notes the sheet returns about itself — why a column set is empty. */
+.sheet-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-top: var(--s2);
+}
+.sheet-note {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--ink-3);
+  font-size: var(--t-small);
+}
+
+/* A page that is a grid uses the whole column: capping a forty-column sheet at
+   1080px would put half of it behind a scrollbar for no reason. */
+.content-inner.is-fluid {
+  max-width: none;
+}

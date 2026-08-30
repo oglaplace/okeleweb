@@ -45,6 +45,10 @@ function toggleRail() {
  */
 const selected = computed(() => scopeOf(route));
 
+/** Screens whose content is a grid rather than prose. */
+const FLUID_ROUTES = new Set(["unit", "marks", "classe"]);
+const fluid = computed(() => FLUID_ROUTES.has(String(route.name)));
+
 /** The action being run, when the route is a generic action page. */
 const actionSpec = computed(() =>
   String(route.name) === "action" ? byId(String(route.params.id ?? "")) : undefined,
@@ -185,7 +189,12 @@ async function logout() {
           -->
           <div id="node-toolbar" class="content-toolbar" />
 
-          <div class="content-inner">
+          <!--
+            The unit page is a spreadsheet, and a spreadsheet capped at a
+            reading width is half a spreadsheet behind a scrollbar. Reading
+            width is right for prose and forms; it is wrong for a grid.
+          -->
+          <div class="content-inner" :class="{ 'is-fluid': fluid }">
             <RouterView />
           </div>
         </main>

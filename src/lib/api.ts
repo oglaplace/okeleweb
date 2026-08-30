@@ -548,6 +548,74 @@ export interface RosterRow {
   serie: { code: string; name: string } | null;
 }
 
+// ─── sheets ──────────────────────────────────────────────────────────────────
+
+export interface SheetPeriod { id: string; label: string; sequence: number; kind: string }
+export interface SheetSubject { id: string; code: string; name: string; offeringId: string }
+
+export interface StudentSheetRow {
+  enrollmentId: string;
+  studentId: string;
+  matricule: string;
+  lastName: string;
+  firstName: string;
+  gender: string | null;
+  birthDate: string | null;
+  birthPlace: string | null;
+  isRepeating: boolean;
+  serie: string | null;
+  guardianName: string | null;
+  guardianRelationship: string | null;
+  guardianPhone: string | null;
+  guardianEmail: string | null;
+  billedXaf: number;
+  paidXaf: number;
+  balanceXaf: number;
+  invoiceCount: number;
+  lastPaymentOn: string | null;
+  /** periodId → the marks for that période. */
+  grades: Record<
+    string,
+    { average: number | null; rank: number | null; bySubject: Record<string, number | null> }
+  >;
+  sessions: number;
+  present: number;
+  absent: number;
+  late: number;
+  excused: number;
+  attendanceRate: number | null;
+}
+
+export interface StudentSheet {
+  classe: { id: string; name: string; code: string };
+  year: { id: string; label: string };
+  periods: SheetPeriod[];
+  subjects: SheetSubject[];
+  rows: StudentSheetRow[];
+  /** Why a column set is empty, when it is. Shown rather than left to guess. */
+  notes: string[];
+}
+
+export interface StaffSheetRow extends StaffMember {
+  roles: string;
+  units: string;
+  postings: number;
+}
+
+export const sheets = {
+  /** A whole class in one read — see the API's modules/sheets. */
+  classe: (classeId: string, academicYearId: string) =>
+    request<StudentSheet>(
+      `/sheets/classe?classeId=${encodeURIComponent(classeId)}` +
+        `&academicYearId=${encodeURIComponent(academicYearId)}`,
+    ),
+
+  staff: (orgUnitId: string) =>
+    request<{ unit: { id: string; name: string; kind: OrgUnitKind }; rows: StaffSheetRow[] }>(
+      `/sheets/staff?orgUnitId=${encodeURIComponent(orgUnitId)}`,
+    ),
+};
+
 export const enrollment = {
   /** Creates the Person, the Student and the Enrolment in one call. */
   enroll: (body: {

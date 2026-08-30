@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import * as api from "../../lib/api";
 import type { ActionSpec } from "../../lib/actions";
 import { KIND_FR } from "../../components/structure/kinds";
@@ -10,6 +10,11 @@ import NodeActionBar from "../../components/console/NodeActionBar.vue";
 import NodeMenuDialogs from "../../components/console/NodeMenuDialogs.vue";
 import EnrollForm from "../../components/enrollment/EnrollForm.vue";
 import DialogShell from "../../components/ui/DialogShell.vue";
+import DataSheet from "../../components/sheet/DataSheet.vue";
+import SheetTabs from "../../components/sheet/SheetTabs.vue";
+import {
+  childrenTab, flattenStudentRow, staffTabs, studentTabs, type SheetTab,
+} from "../../components/sheet/columns";
 
 /**
  * One unit: what it is, what it holds, and everything that can be done to it.
@@ -23,14 +28,25 @@ import DialogShell from "../../components/ui/DialogShell.vue";
  *
  * Every action that is a form opens HERE, over this page, with this node as its
  * scope. Nothing about "add a subject to 6e" should involve leaving 6e.
+ *
+ * AND THE CONTENT IS A SHEET. A class is forty pupils and, depending on who is
+ * looking, forty columns: identity for the secretary, balances for the économe,
+ * marks for the conseil, absences for the surveillant. Those were four screens
+ * and a manual join; here they are one grid with tabs at the foot, over one set
+ * of rows. See components/sheet — and the API's /sheets/classe, which assembles
+ * all of it in one read.
  */
 const route = useRoute();
+const router = useRouter();
 const org = useOrgStore();
 const id = computed(() => route.params.id as string);
 
 const unit = ref<api.OrgUnit | null>(null);
 const children = ref<api.OrgUnit[]>([]);
-const roster = ref<api.RosterRow[] | null>(null);
+const sheet = ref<api.StudentSheet | null>(null);
+const staff = ref<api.StaffSheetRow[]>([]);
+const years = ref<api.AcademicYear[]>([]);
+const yearId = ref<string | null>(null);
 const loading = ref(true);
 const error = ref<string | null>(null);
 const notice = ref<string | null>(null);
@@ -38,7 +54,8 @@ const notice = ref<string | null>(null);
 async function load() {
   loading.value = true;
   error.value = null;
-  roster.value = null;
+  sheet.value = null;
+  staff.value = [];
   try {
     const [u, kids] = await Promise.all([
       api.orgUnits.get(id.value),
@@ -48,13 +65,14 @@ async function load() {
     unit.value = u;
     children.value = kids;
 
-    // A leaf holds people, not units — so show them without a second click.
     if (u.kind === "CLASSE") {
-      const years = await api.academics.years().catch(() => []);
-      const year = years.find((y) => y.isCurrent) ?? years[0];
-      if (year) {
-        roster.value = await api.enrollment.roster(u.id, year.id).catch(() => []);
-      }
+      years.value = await api.academics.years().catch(() => []);
+      yearId.value =
+        yearId.value ?? (years.value.find((y) => y.isCurrent) ?? years.value[0])?.id ?? null;
+      await loadSheet();
+    } else {
+      // Everything else holds units — and, often, people posted to it.
+      staff.value = await api.sheets.staff(u.id).then((r) => r.rows).catch(() => []);
     }
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Chargement impossible.";
@@ -63,6 +81,15 @@ async function load() {
   }
 }
 watch(id, load, { immediate: true });
+
+/** The sheet alone — a year change must not reload the whole page. */
+async function loadSheet() {
+  if (!unit.value || unit.value.kind !== "CLASSE" || !yearId.value) return;
+  sheet.value = await api.sheets.classe(unit.value.id, yearId.value).catch(() => null);
+}
+watch(yearId, () => {
+  if (!loading.value) void loadSheet();
+});
 
 // ── acting in place ─────────────────────────────────────────────────────────
 /** A structural operation on this node: add a child, rename, close, reopen. */
@@ -112,6 +139,59 @@ async function onStructureDone(changed: boolean) {
 
 /** The tree row for this node, for the dialogs that want a TreeUnit. */
 const treeUnit = computed(() => org.byId(id.value));
+
+// ── the sheet ───────────────────────────────────────────────────────────────
+const tab = ref("general");
+
+const tabs = computed<SheetTab[]>(() => {
+  if (sheet.value) return studentTabs(sheet.value);
+  // A school has children AND staff; both are sheets of the same workbook.
+  return [
+    ...(children.value.length ? [childrenTab()] : []),
+    ...(staff.value.length ? staffTabs() : []),
+  ];
+});
+
+const childRows = computed(() =>
+  children.value.map((c) => ({
+    ...c,
+    kindLabel: KIND_FR[c.kind],
+    state: c.validTo ? "Fermé" : "Actif",
+  })),
+);
+
+/** Flattened once per load, not per render: the grade grid is a nested map. */
+const sheetRows = computed<Record<string, unknown>[]>(() => {
+  if (tab.value === "children") return childRows.value as unknown as Record<string, unknown>[];
+  if (sheet.value) return sheet.value.rows.map(flattenStudentRow);
+  return staff.value as unknown as Record<string, unknown>[];
+});
+
+const activeTab = computed(
+  () => tabs.value.find((t) => t.id === tab.value) ?? tabs.value[0] ?? null,
+);
+
+// A tab set that changed under us (classe → division) must not leave the strip
+// pointing at a tab that no longer exists.
+watch(tabs, (list) => {
+  if (list.length && !list.some((t) => t.id === tab.value)) tab.value = list[0]!.id;
+});
+
+const rowKey = computed(() => (sheet.value && tab.value !== "children" ? "studentId" : "id"));
+
+/** A child row is a destination; a pupil row is not (yet). */
+function onPick(row: Record<string, unknown>) {
+  if (tab.value !== "children") return;
+  void router.push({ name: "unit", params: { id: String(row.id) } });
+}
+
+const XAF = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
+const moneyFmt = (v: number) => XAF.format(v);
+
+/** What the class owes, which is the number an économe opens this page for. */
+const totalDue = computed(() =>
+  (sheet.value?.rows ?? []).reduce((sum, r) => sum + Math.max(0, r.balanceXaf), 0),
+);
 </script>
 
 <template>
@@ -145,20 +225,33 @@ const treeUnit = computed(() => org.byId(id.value));
 
       <div v-if="notice" class="form-ok">{{ notice }}</div>
 
-      <div class="grid-cards" style="margin-bottom: var(--s5)">
-        <div class="stat">
+      <div class="grid-cards" style="margin-bottom: var(--s4)">
+        <div v-if="sheet" class="stat">
+          <div class="stat-label">Effectif</div>
+          <div class="stat-value">{{ sheet.rows.length }}</div>
+          <div class="stat-note">élève(s) inscrit(s)</div>
+        </div>
+        <div v-else class="stat">
           <div class="stat-label">Contient</div>
           <div class="stat-value">{{ children.length }}</div>
           <div class="stat-note">élément(s) direct(s)</div>
         </div>
-        <div v-if="roster" class="stat">
-          <div class="stat-label">Effectif</div>
-          <div class="stat-value">{{ roster.length }}</div>
-          <div class="stat-note">élève(s) inscrit(s)</div>
+        <div v-if="sheet" class="stat">
+          <div class="stat-label">Impayés</div>
+          <div class="stat-value">{{ moneyFmt(totalDue) }}</div>
+          <div class="stat-note">XAF, année en cours</div>
         </div>
         <div v-if="unit.capacity" class="stat">
           <div class="stat-label">Capacité</div>
           <div class="stat-value">{{ unit.capacity }}</div>
+          <div class="stat-note">
+            {{ sheet ? `${unit.capacity - sheet.rows.length} place(s) libre(s)` : "places" }}
+          </div>
+        </div>
+        <div v-if="!sheet && staff.length" class="stat">
+          <div class="stat-label">Personnel</div>
+          <div class="stat-value">{{ staff.length }}</div>
+          <div class="stat-note">affecté(s) ici</div>
         </div>
         <div class="stat">
           <div class="stat-label">État</div>
@@ -168,66 +261,55 @@ const treeUnit = computed(() => org.byId(id.value));
         </div>
       </div>
 
-      <!-- A leaf holds people; everything else holds units. -->
-      <div v-if="roster" class="card is-grid">
-        <div class="card-head">
-          Effectif
-          <button class="btn sm" type="button" @click="inlineForm = 'enroll'">
-            Inscrire un élève
-          </button>
-        </div>
-        <div v-if="!roster.length" class="empty">
-          <div class="empty-title">Aucun élève inscrit</div>
-          <div>Cette classe existe mais personne n'y est encore inscrit.</div>
-          <div class="empty-actions">
-            <!-- Over the class, not away from it: the form opens with this
-                 class already chosen and the roster refreshes underneath. -->
-            <button class="btn primary" type="button" @click="inlineForm = 'enroll'">
+      <!--
+        The sheet. One set of rows, and tabs at the foot for which columns are
+        over them — the shape schools already keep this data in.
+      -->
+      <template v-if="activeTab">
+        <DataSheet
+          :tab="activeTab"
+          :rows="sheetRows"
+          :row-key="rowKey"
+          :clickable="tab === 'children'"
+          @pick="onPick"
+        />
+
+        <SheetTabs v-model="tab" :tabs="tabs">
+          <template #end>
+            <select
+              v-if="sheet && years.length > 1"
+              v-model="yearId"
+              class="btn sm"
+              aria-label="Année scolaire"
+            >
+              <option v-for="y in years" :key="y.id" :value="y.id">{{ y.label }}</option>
+            </select>
+            <button
+              v-if="sheet"
+              class="btn sm"
+              type="button"
+              @click="inlineForm = 'enroll'"
+            >
               Inscrire un élève
             </button>
-            <RouterLink class="btn" :to="{ name: 'import', query: { scope: unit.id } }">
-              Importer une liste
-            </RouterLink>
-          </div>
-        </div>
-        <div v-else class="table-wrap">
-          <table class="data">
-            <thead>
-              <tr>
-                <th class="c-name">Élève</th>
-                <th class="c-text">Matricule</th>
-                <!-- The number a titulaire dials, on the screen where they
-                     realise they need it. -->
-                <th class="c-text">Tuteur</th>
-                <th class="c-text">Statut</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="r in roster" :key="r.id">
-                <td class="c-name">
-                  {{ r.student.person.lastName.toUpperCase() }} {{ r.student.person.firstName }}
-                </td>
-                <td class="c-text">{{ r.student.matricule }}</td>
-                <td class="c-text">
-                  <template v-if="r.student.guardians?.[0]">
-                    {{ r.student.guardians[0].guardian.lastName }}
-                    <span class="cell-sub">{{ r.student.guardians[0].guardian.phone ?? "—" }}</span>
-                  </template>
-                  <span v-else class="cell-sub">Aucun tuteur</span>
-                </td>
-                <td class="c-text">
-                  <span v-if="r.isRepeating" class="pill warn">Redoublant</span>
-                  <span v-else class="pill ok">Inscrit</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+          </template>
+        </SheetTabs>
 
-      <div v-else class="card is-grid">
-        <div class="card-head">Contenu</div>
-        <div v-if="!children.length" class="empty">
+        <div v-if="activeTab.empty" class="hint" style="margin-top: var(--s2)">
+          {{ activeTab.empty }}
+        </div>
+
+        <!-- Why a column set is empty, straight from the API rather than left
+             for the operator to work out from blank cells. -->
+        <div v-if="sheet?.notes.length" class="sheet-notes">
+          <span v-for="(n, i) in sheet.notes" :key="i" class="sheet-note">{{ n }}</span>
+        </div>
+      </template>
+
+      <!-- No sheet applies: nothing is under this node and nobody is posted
+           to it. There is one thing to offer, so offer only that. -->
+      <div v-else class="card">
+        <div class="empty">
           <div class="empty-title">Vide</div>
           <div>Rien sous ce {{ KIND_FR[unit.kind].toLowerCase() }} pour l'instant.</div>
           <div class="empty-actions">
@@ -238,19 +320,6 @@ const treeUnit = computed(() => org.byId(id.value));
               Ajouter un élément
             </button>
           </div>
-        </div>
-        <div v-else class="table-wrap">
-          <table class="data">
-            <thead><tr><th class="c-name">Nom</th><th class="c-text">Type</th></tr></thead>
-            <tbody>
-              <tr v-for="c in children" :key="c.id" class="is-clickable">
-                <td class="c-name">
-                  <RouterLink :to="{ name: 'unit', params: { id: c.id } }">{{ c.name }}</RouterLink>
-                </td>
-                <td class="c-text">{{ KIND_FR[c.kind] }}</td>
-              </tr>
-            </tbody>
-          </table>
         </div>
       </div>
 
