@@ -195,7 +195,7 @@ const totalDue = computed(() =>
 </script>
 
 <template>
-  <div>
+  <div class="nodepage" :class="{ 'has-sheet': !!activeTab }">
     <div v-if="loading" class="card"><div class="card-body stack">
       <div class="skeleton" style="width: 35%" /><div class="skeleton" style="width: 60%" />
     </div></div>
@@ -225,52 +225,69 @@ const totalDue = computed(() =>
 
       <div v-if="notice" class="form-ok">{{ notice }}</div>
 
-      <div class="grid-cards" style="margin-bottom: var(--s4)">
-        <div v-if="sheet" class="stat">
-          <div class="stat-label">Effectif</div>
-          <div class="stat-value">{{ sheet.rows.length }}</div>
-          <div class="stat-note">élève(s) inscrit(s)</div>
+      <!--
+        Four cards became one strip.
+        Each card was 100px of chrome for one number, and the sheet under them
+        is what the page is for — every pixel spent above it is a row nobody
+        can see. The numbers are unchanged; the frame around them is gone.
+      -->
+      <div class="statbar">
+        <div v-if="sheet" class="statbar-item">
+          <span class="statbar-label">Effectif</span>
+          <span class="statbar-value">{{ sheet.rows.length }}</span>
         </div>
-        <div v-else class="stat">
-          <div class="stat-label">Contient</div>
-          <div class="stat-value">{{ children.length }}</div>
-          <div class="stat-note">élément(s) direct(s)</div>
+        <div v-else class="statbar-item">
+          <span class="statbar-label">Contient</span>
+          <span class="statbar-value">{{ children.length }}</span>
         </div>
-        <div v-if="sheet" class="stat">
-          <div class="stat-label">Impayés</div>
-          <div class="stat-value">{{ moneyFmt(totalDue) }}</div>
-          <div class="stat-note">XAF, année en cours</div>
+        <div v-if="sheet" class="statbar-item">
+          <span class="statbar-label">Impayés</span>
+          <span class="statbar-value" :class="{ 'is-warn': totalDue > 0 }">
+            {{ moneyFmt(totalDue) }} XAF
+          </span>
         </div>
-        <div v-if="unit.capacity" class="stat">
-          <div class="stat-label">Capacité</div>
-          <div class="stat-value">{{ unit.capacity }}</div>
-          <div class="stat-note">
-            {{ sheet ? `${unit.capacity - sheet.rows.length} place(s) libre(s)` : "places" }}
-          </div>
+        <div v-if="unit.capacity" class="statbar-item">
+          <span class="statbar-label">Capacité</span>
+          <span class="statbar-value">
+            {{ unit.capacity }}
+            <span v-if="sheet" class="statbar-note">
+              · {{ unit.capacity - sheet.rows.length }} libre(s)
+            </span>
+          </span>
         </div>
-        <div v-if="!sheet && staff.length" class="stat">
-          <div class="stat-label">Personnel</div>
-          <div class="stat-value">{{ staff.length }}</div>
-          <div class="stat-note">affecté(s) ici</div>
+        <div v-if="!sheet && staff.length" class="statbar-item">
+          <span class="statbar-label">Personnel</span>
+          <span class="statbar-value">{{ staff.length }}</span>
         </div>
-        <div class="stat">
-          <div class="stat-label">État</div>
-          <div class="stat-value" style="font-size: var(--t-h3)">
-            {{ unit.validTo ? "Fermé" : "Actif" }}
-          </div>
+        <div class="statbar-item">
+          <span class="statbar-label">État</span>
+          <span class="statbar-value">{{ unit.validTo ? "Fermé" : "Actif" }}</span>
         </div>
+      </div>
+
+      <!-- Why a column set is empty, straight from the API rather than left
+           for the operator to work out from blank cells. Above the grid, not
+           below: below, they pushed the tab strip — the control they are
+           telling you to use — past the bottom of the window. -->
+      <div v-if="sheet?.notes.length" class="sheet-notes">
+        <span v-for="(n, i) in sheet.notes" :key="i" class="sheet-note">{{ n }}</span>
       </div>
 
       <!--
         The sheet. One set of rows, and tabs at the foot for which columns are
         over them — the shape schools already keep this data in.
       -->
+      <div v-if="activeTab?.empty" class="hint" style="margin-bottom: var(--s2)">
+        {{ activeTab.empty }}
+      </div>
+
       <template v-if="activeTab">
         <DataSheet
           :tab="activeTab"
           :rows="sheetRows"
           :row-key="rowKey"
           :clickable="tab === 'children'"
+          :title="unit.name"
           @pick="onPick"
         />
 
@@ -295,15 +312,7 @@ const totalDue = computed(() =>
           </template>
         </SheetTabs>
 
-        <div v-if="activeTab.empty" class="hint" style="margin-top: var(--s2)">
-          {{ activeTab.empty }}
-        </div>
 
-        <!-- Why a column set is empty, straight from the API rather than left
-             for the operator to work out from blank cells. -->
-        <div v-if="sheet?.notes.length" class="sheet-notes">
-          <span v-for="(n, i) in sheet.notes" :key="i" class="sheet-note">{{ n }}</span>
-        </div>
       </template>
 
       <!-- No sheet applies: nothing is under this node and nobody is posted

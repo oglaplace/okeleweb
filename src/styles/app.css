@@ -238,9 +238,19 @@
 
 /* The scrolling half. Capped at the viewport, centred, and it — not the page —
    is what moves when there is more content than fits. */
+/*
+ * A flex column, so a fluid page can be told "the rest of it".
+ *
+ * `min-height: 100%` on the inner column looked equivalent and was not: it
+ * resolves against the SCROLLER, which also holds the node toolbar above it, so
+ * the page came out exactly one toolbar too tall and the sheet's tabs fell off
+ * the bottom of the window. Flex subtracts the siblings for us.
+ */
 .content {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -251,9 +261,15 @@
   margin-inline: auto;
   width: 100%;
   padding: var(--s6);
+  /* Prose grows and the column scrolls; it must not be shrunk to fit by the
+     flex parent above. */
+  flex: none;
 }
 /* Empty until a screen teleports into it, and then it must take no space of
    its own beyond what it holds. */
+.content-toolbar {
+  flex: none;
+}
 .content-toolbar:empty {
   display: none;
 }
@@ -3337,19 +3353,75 @@ table.data td.c-text {
    screen, and every pixel of row padding costs a name. Numbers are tabular so
    a column of marks lines up on the decimal point, which is the only way a
    column of numbers can be read down. */
+/*
+ * The sheet takes what is left of the window, and its rules run to the bottom.
+ *
+ * It used to be as tall as its rows, which left a class of nine pupils sitting
+ * on a slab of empty grey — and a grid that stops mid-pane reads as broken
+ * rather than as short. A spreadsheet's lines run to the edge of the paper
+ * whether anything is written on them or not; that is what tells you where you
+ * may still write. `flex: 1` gets the height, and DataSheet pads the body with
+ * blank rows to fill it.
+ */
 .sheet {
   display: flex;
   flex-direction: column;
+  flex: 1;
   min-height: 0;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius) var(--radius) 0 0;
   background: var(--surface);
   overflow: hidden;
 }
 .sheet-scroll {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  max-height: calc(100vh - 300px);
+}
+
+/* ── the strip above the grid: what is shown, and how to take it away ── */
+.sheet-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 5px var(--s2) 5px var(--s3);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.sheet-bar-fill {
+  flex: 1;
+}
+.sheet-find {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  height: var(--control-h-sm);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-3);
+}
+.sheet-find:focus-within {
+  border-color: var(--primary);
+  box-shadow: var(--ring);
+}
+.sheet-find input {
+  width: 22ch;
+  border: none;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-small);
+}
+.sheet-find input:focus {
+  outline: none;
+}
+.sheet-count {
+  font-size: var(--t-small);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
 }
 .sheet-table {
   border-collapse: separate;
@@ -3388,12 +3460,52 @@ table.data td.c-text {
   letter-spacing: 0.06em;
   border-bottom-color: var(--line);
 }
-/* Grouped headers push the column row down one; both stay stuck. */
+.sheet-table th.is-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.sheet-table th.is-sortable:hover {
+  color: var(--ink);
+  background: var(--surface-3);
+}
+.sheet-table th.is-sorted {
+  color: var(--primary);
+}
+.sheet-caret {
+  font-size: 8px;
+  vertical-align: 1px;
+}
+/*
+ * Grouped headers push the column row down one; both stay stuck.
+ *
+ * The période is the strongest boundary on the marks tab — six subjects for
+ * Trimestre 1 then six more for Trimestre 2, and reading a mark against the
+ * wrong trimestre is a real mistake with real consequences at a conseil. So the
+ * split is drawn three ways: a heavy rule down the whole column block, a tinted
+ * band on alternate périodes, and the group's own name in the accent.
+ */
 .sheet-groups th {
   top: 0;
   text-align: center;
   background: var(--surface-3);
   color: var(--ink);
+  font-size: var(--t-small);
+  letter-spacing: 0.04em;
+}
+.sheet-group {
+  border-left: 2px solid var(--primary-line);
+  color: var(--primary);
+}
+.sheet-group.is-alt,
+.sheet-table .is-alt {
+  background: color-mix(in srgb, var(--primary-soft) 40%, var(--surface));
+}
+.sheet-table th.is-alt {
+  background: color-mix(in srgb, var(--primary-soft) 70%, var(--surface-2));
+}
+/* The block boundary, running the full height of the grid. */
+.sheet-table .is-group-start {
+  border-left: 2px solid var(--primary-line);
 }
 /*
  * ONLY when there is a group row above it.
@@ -3416,6 +3528,9 @@ table.data td.c-text {
 
 .sheet-table tbody tr:nth-child(even) td {
   background: color-mix(in srgb, var(--surface-2) 45%, var(--surface));
+}
+.sheet-table tbody tr:nth-child(even) td.is-alt {
+  background: color-mix(in srgb, var(--primary-soft) 55%, var(--surface));
 }
 .sheet-table tbody tr:hover td {
   background: var(--surface-2);
@@ -3452,6 +3567,22 @@ table.data td.c-text {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+/* Row numbers: a gutter, not data. */
+.sheet-table .is-gutter {
+  color: var(--ink-3);
+  background: var(--surface-2) !important;
+  font-size: var(--t-micro);
+}
+
+/* Ruled, empty, and inert — see DataSheet.measure. */
+.sheet-table tr.is-filler td {
+  height: 27px;
+  pointer-events: none;
+}
+.sheet.is-clickable .sheet-table tr.is-filler {
+  cursor: default;
+}
+
 /* Missing is not zero, and must not read as one. */
 .sheet-table .is-empty {
   color: var(--ink-3);
@@ -3493,8 +3624,11 @@ table.data td.c-text {
 .sheet-tabs {
   display: flex;
   align-items: stretch;
+  flex: none;
   gap: 2px;
-  margin-top: -1px;
+  border: 1px solid var(--line);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
   padding: 0 var(--s2);
   border-top: 1px solid var(--line);
   background: var(--surface-2);
@@ -3529,8 +3663,9 @@ table.data td.c-text {
 .sheet-notes {
   display: flex;
   flex-wrap: wrap;
+  flex: none;
   gap: var(--s2);
-  margin-top: var(--s2);
+  margin-bottom: var(--s2);
 }
 .sheet-note {
   padding: 4px 10px;
@@ -3541,8 +3676,79 @@ table.data td.c-text {
   font-size: var(--t-small);
 }
 
-/* A page that is a grid uses the whole column: capping a forty-column sheet at
-   1080px would put half of it behind a scrollbar for no reason. */
+/*
+ * A page that is a grid uses the whole column, and its whole height.
+ *
+ * Capping a forty-column sheet at 1080px puts half of it behind a scrollbar for
+ * no reason. The flex column is what lets the grid claim the leftover height:
+ * `min-height: 100%` resolves against `.content`, which HAS a definite height —
+ * on an auto-height parent the percentage resolves to `auto` and the sheet
+ * quietly collapses back to the height of its rows, which is exactly what it
+ * did the first time.
+ */
 .content-inner.is-fluid {
   max-width: none;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.content-inner.is-fluid > * {
+  min-height: 0;
+}
+
+
+/* ── the node page, when it is a sheet ── */
+/*
+ * A column that fills the pane, so the grid can take what is left.
+ *
+ * `min-height: 100%` resolves against the scrolling content column, which has a
+ * definite height; without it the flex child has nothing to fill and the sheet
+ * collapses back to the height of its rows.
+ */
+.nodepage.has-sheet {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.nodepage.has-sheet .page-head {
+  flex: none;
+}
+
+/* Four stat cards, compressed into one line of label-value pairs. */
+.statbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2) var(--s5);
+  margin-bottom: var(--s3);
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--line-soft);
+}
+.statbar-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+}
+.statbar-label {
+  font-size: var(--t-micro);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+.statbar-value {
+  font-size: var(--t-lead);
+  font-weight: 650;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.statbar-value.is-warn {
+  color: var(--danger);
+}
+.statbar-note {
+  font-size: var(--t-small);
+  font-weight: 450;
+  color: var(--ink-3);
 }
