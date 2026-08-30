@@ -32,19 +32,21 @@ const assigning = ref<string | null>(null);
 const assignForm = ref({ orgUnitId: "", role: "Enseignant" });
 
 /** Every unit, flattened with its path — an assignment can target any of them. */
+/** Every unit, flattened with its path. One request — see EnrollPage. */
 async function loadUnits() {
-  const found: { id: string; label: string }[] = [];
-  const queue: { id: string | null; path: string[] }[] = [{ id: null, path: [] }];
-  for (let guard = 0; guard < 400 && queue.length; guard++) {
-    const next = queue.shift()!;
-    const children = await api.orgUnits.children(next.id);
-    for (const c of children) {
-      const path = [...next.path, c.name];
-      found.push({ id: c.id, label: `${path.join(" / ")} · ${KIND_FR[c.kind]}` });
-      if (c.kind !== "CLASSE") queue.push({ id: c.id, path });
+  const all = await api.orgUnits.tree();
+  const byId = new Map(all.map((u) => [u.id, u]));
+  units.value = all.map((u) => {
+    const parts: string[] = [u.name];
+    let cursor = u.parentId;
+    for (let i = 0; cursor && i < 12; i++) {
+      const parent = byId.get(cursor);
+      if (!parent) break;
+      parts.unshift(parent.name);
+      cursor = parent.parentId;
     }
-  }
-  units.value = found;
+    return { id: u.id, label: `${parts.join(" / ")} · ${KIND_FR[u.kind]}` };
+  });
 }
 
 async function load() {

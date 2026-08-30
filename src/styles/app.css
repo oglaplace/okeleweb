@@ -1783,6 +1783,7 @@ table.data td.c-text {
 }
 
 .ex-row {
+  position: relative;
   display: flex;
   align-items: stretch;
   gap: 0;
@@ -1882,6 +1883,73 @@ table.data td.c-text {
   white-space: nowrap;
 }
 
+
+/* The row's ⋯ — revealed on hover or focus, so a resting tree is just names. */
+.ex-menu {
+  width: 22px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: none;
+  padding: 0;
+  border-radius: 3px;
+  color: var(--ink-3);
+  opacity: 0;
+}
+.ex-row:hover .ex-menu,
+.ex-menu:focus-visible,
+.ex-row.is-selected .ex-menu {
+  opacity: 1;
+}
+.ex-menu:hover {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+.ex-menu-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+.ex-menu-pop {
+  position: absolute;
+  right: var(--s2);
+  z-index: 41;
+  margin-top: 26px;
+  min-width: 190px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+}
+.ex-menu-item {
+  padding: 7px 10px;
+  border: none;
+  background: none;
+  border-radius: var(--radius-sm);
+  color: var(--ink-2);
+  font-size: var(--t-small);
+  text-align: left;
+}
+.ex-menu-item:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.ex-menu-item.is-danger {
+  color: var(--danger);
+}
+.ex-menu-item.is-danger:hover {
+  background: var(--danger-soft);
+}
+
+/* A closed unit still shows — it is referenced by bulletins already issued. */
+.ex-name.is-closed {
+  color: var(--ink-3);
+  text-decoration: line-through;
+}
 
 /* ── scope picker ── */
 .scope-list {

@@ -31,28 +31,31 @@ const form = ref({
 });
 
 /**
- * Every classe in the complex, with its path.
+ * Every classe in the complex, with the path that disambiguates it.
  *
- * Walked breadth-first from the root rather than asked for directly: the API
- * exposes children-of-a-parent, and "6e A" alone is ambiguous in a complex that
- * runs a collège and a lycée. The path is what disambiguates.
+ * ONE request. This walked the tree breadth-first with a request per node — up
+ * to 400 sequential round trips on a metered connection, and any one of them
+ * failing left the picker silently empty and the page reading "aucune classe"
+ * on a school that has several. `GET /org-units/tree` returns the whole thing
+ * flat; the path is derived here.
  */
 async function loadClasses() {
-  const found: { id: string; name: string; path: string }[] = [];
-  const queue: { id: string | null; path: string[] }[] = [{ id: null, path: [] }];
-  // Bounded by the domain: the deepest legal tree is seven levels.
-  for (let guard = 0; guard < 400 && queue.length; guard++) {
-    const next = queue.shift()!;
-    const children = await api.orgUnits.children(next.id);
-    for (const c of children) {
-      if (c.kind === "CLASSE") {
-        found.push({ id: c.id, name: c.name, path: next.path.join(" / ") });
-      } else {
-        queue.push({ id: c.id, path: [...next.path, c.name] });
-      }
+  const units = await api.orgUnits.tree();
+  const byId = new Map(units.map((u) => [u.id, u]));
+  const pathOf = (u: api.TreeUnit) => {
+    const parts: string[] = [];
+    let cursor = u.parentId;
+    for (let i = 0; cursor && i < 12; i++) {
+      const parent = byId.get(cursor);
+      if (!parent) break;
+      parts.unshift(parent.name);
+      cursor = parent.parentId;
     }
-  }
-  classes.value = found;
+    return parts.join(" / ");
+  };
+  classes.value = units
+    .filter((u) => u.kind === "CLASSE" && !u.validTo)
+    .map((u) => ({ id: u.id, name: u.name, path: pathOf(u) }));
 }
 
 onMounted(async () => {
@@ -130,6 +133,23 @@ async function submit() {
     <div v-if="loading" class="card"><div class="card-body stack">
       <div class="skeleton" style="width: 40%" /><div class="skeleton" style="width: 65%" />
     </div></div>
+
+    <!-- Two different dead ends, said apart. Both used to render as "aucune
+         classe", which sent a director to build a class they already had. -->
+    <div v-else-if="!years.length" class="card">
+      <div class="empty">
+        <div class="empty-title">Aucune année scolaire</div>
+        <div>
+          Une inscription se rattache à une année. Ouvrez-en une — tout le reste
+          y est déjà prêt.
+        </div>
+        <div class="empty-actions">
+          <RouterLink class="btn primary" :to="{ name: 'action', params: { id: 'create-year' } }">
+            Ouvrir une année scolaire
+          </RouterLink>
+        </div>
+      </div>
+    </div>
 
     <div v-else-if="!classes.length" class="card">
       <div class="empty">

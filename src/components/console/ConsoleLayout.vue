@@ -72,8 +72,18 @@ async function logout() {
         that is the whole point of the three-region shell.
       -->
       <nav class="side-nav">
-        <RouterLink to="/console" class="nav-item" active-class="active" exact-active-class="active">
-          <Icon name="home" /> Tableau de bord
+        <!-- The label is a SPAN, not a bare text node: `.rail-collapsed
+             .nav-item span` is what hides it, and a text node matches no
+             selector — so this one item stayed readable while every other
+             label vanished. -->
+        <RouterLink
+          to="/console"
+          class="nav-item"
+          active-class="active"
+          exact-active-class="active"
+          title="Tableau de bord"
+        >
+          <Icon name="home" /><span>Tableau de bord</span>
         </RouterLink>
 
         <!--
@@ -95,7 +105,9 @@ async function logout() {
           :aria-label="collapsed ? 'Déplier le menu' : 'Replier le menu'"
           @click="toggleRail"
         >
-          <Icon :name="collapsed ? 'chevronRight' : 'chevronDown'" :size="14" />
+          <!-- Sideways: the rail moves horizontally, so a vertical chevron
+               was pointing at an axis nothing travels on. -->
+          <Icon :name="collapsed ? 'chevronRight' : 'chevronLeft'" :size="14" />
           <span class="rail-collapse-label">Replier</span>
         </button>
 

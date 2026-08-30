@@ -39,19 +39,22 @@ onMounted(async () => {
     years.value = y;
     academicYearId.value = y.find((x) => x.isCurrent)?.id ?? y[0]?.id ?? "";
 
-    const found: { id: string; label: string }[] = [];
-    const queue: { id: string | null; path: string[] }[] = [{ id: null, path: [] }];
-    for (let guard = 0; guard < 400 && queue.length; guard++) {
-      const next = queue.shift()!;
-      for (const c of await api.orgUnits.children(next.id)) {
-        if (c.kind === "CLASSE") {
-          found.push({ id: c.id, label: [...next.path, c.name].join(" / ") });
-        } else {
-          queue.push({ id: c.id, path: [...next.path, c.name] });
+    // One request, same as the enrolment page — see the note there.
+    const units = await api.orgUnits.tree();
+    const byId = new Map(units.map((u) => [u.id, u]));
+    classes.value = units
+      .filter((u) => u.kind === "CLASSE" && !u.validTo)
+      .map((u) => {
+        const parts: string[] = [u.name];
+        let cursor = u.parentId;
+        for (let i = 0; cursor && i < 12; i++) {
+          const parent = byId.get(cursor);
+          if (!parent) break;
+          parts.unshift(parent.name);
+          cursor = parent.parentId;
         }
-      }
-    }
-    classes.value = found;
+        return { id: u.id, label: parts.join(" / ") };
+      });
   } catch {
     // The picker is empty; the empty state below explains it.
   }

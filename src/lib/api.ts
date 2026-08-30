@@ -318,6 +318,17 @@ export const orgUnits = {
   create: (body: Partial<OrgUnit> & { kind: OrgUnitKind; name: string; code: string }) =>
     request<OrgUnit>("/org-units", { method: "POST", body: JSON.stringify(body) }),
 
+  /** Renames and edits safe attributes. Never the kind or the parent. */
+  update: (
+    id: string,
+    body: { name?: string; code?: string; capacity?: number | null },
+  ) => request<OrgUnit>(`/org-units/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+
+  /** Closes rather than deletes — last year's bulletin still points here. */
+  close: (id: string) => request<OrgUnit>(`/org-units/${id}`, { method: "DELETE" }),
+
+  reopen: (id: string) => request<OrgUnit>(`/org-units/${id}/reopen`, { method: "POST" }),
+
   /**
    * The whole tree, flat and depth-ordered, in ONE request.
    *

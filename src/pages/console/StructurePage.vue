@@ -132,6 +132,42 @@ watch(
   { immediate: true },
 );
 
+/**
+ * Re-applies what is already installed, to add what did not exist yet.
+ *
+ * Needed because the module picker DISABLES installed modules — correctly, to
+ * stop an operator ticking a cycle they already have and being told "0 créées,
+ * 8 déjà présentes". But that also blocks the one case where re-running is
+ * exactly right: a complex created before the official subjects, the course
+ * offerings or the exercice comptable existed. It has the cycles and is missing
+ * everything added since.
+ *
+ * The scaffold is idempotent on `(parentId, code)`, so this adds the gaps and
+ * touches nothing else.
+ */
+const upgrading = ref(false);
+async function upgrade() {
+  const installed = state.value?.installedModules ?? [];
+  if (!installed.length) return;
+  upgrading.value = true;
+  try {
+    const report = await busy.run(() => api.orgUnits.scaffold(installed), {
+      title: "Mise à niveau de la structure",
+      detail: "Ajout des matières officielles, des programmations et de l'exercice comptable.",
+    });
+    notice.value =
+      report.orgUnits + report.subjects + report.offerings + report.fiscalYears === 0
+        ? "Rien à ajouter : l'établissement est déjà à jour."
+        : `${report.subjects} matière(s), ${report.offerings} programmation(s), ` +
+          `${report.orgUnits} unité(s) et ${report.fiscalYears} exercice(s) ajoutés.`;
+    await reload();
+  } catch (e) {
+    error.value = e instanceof api.ApiError ? e.message : "Mise à niveau impossible.";
+  } finally {
+    upgrading.value = false;
+  }
+}
+
 async function install() {
   if (!modules.value.length) return;
   try {
@@ -163,6 +199,17 @@ async function install() {
         </div>
       </div>
       <div class="page-actions">
+        <button
+          v-if="(state?.installedModules?.length ?? 0) > 0"
+          class="btn"
+          type="button"
+          title="Ajoute ce qui n'existait pas encore quand l'établissement a été créé — matières officielles, programmations, exercice comptable. Rien n'est remplacé."
+          :disabled="upgrading"
+          @click="upgrade"
+        >
+          <span v-if="upgrading" class="btn-spin" aria-hidden="true" />
+          <Icon v-else name="check" /> Mettre à niveau
+        </button>
         <button class="btn" type="button" @click="building = !building">
           <Icon name="layers" /> Structure type
         </button>

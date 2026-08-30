@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import * as api from "../../lib/api";
 import Explorer from "../structure/Explorer.vue";
+import NodeMenuDialogs from "./NodeMenuDialogs.vue";
 
 /**
  * The organisation tree, as its own column between the rail and the content.
@@ -77,6 +78,31 @@ function onKey(event: KeyboardEvent) {
 
 const style = computed(() => ({ width: `${width.value}px` }));
 
+/**
+ * The node the ⋯ menu is acting on, and which action.
+ *
+ * Held here rather than in the Explorer: the tree is a pure renderer of rows,
+ * and a row must not own a modal — a dialog attached to a node that the next
+ * reload removes would be left pointing at nothing.
+ */
+const menuUnit = ref<api.TreeUnit | null>(null);
+const menuAction = ref<"add" | "rename" | "close" | "reopen" | null>(null);
+
+function onMenu(payload: { unit: api.TreeUnit; action: string }) {
+  if (payload.action === "open") {
+    pick(payload.unit);
+    return;
+  }
+  menuUnit.value = payload.unit;
+  menuAction.value = payload.action as "add" | "rename" | "close" | "reopen";
+}
+
+async function onDialogDone(changed: boolean) {
+  menuUnit.value = null;
+  menuAction.value = null;
+  if (changed) await load();
+}
+
 function pick(unit: api.TreeUnit) {
   emit("select", unit);
   // EVERY node opens its own view, leaf or not. Selecting without navigating
@@ -95,8 +121,11 @@ function pick(unit: api.TreeUnit) {
         :units="units"
         :selected="selected"
         @select="pick"
+        @menu="onMenu"
       />
     </div>
+
+    <NodeMenuDialogs :unit="menuUnit" :action="menuAction" @done="onDialogDone" />
 
     <div
       class="orgpane-grip"
