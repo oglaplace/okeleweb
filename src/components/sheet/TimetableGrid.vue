@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import * as api from "../../lib/api";
 import { useBusyStore } from "../../stores/busy";
 import DialogShell from "../ui/DialogShell.vue";
-import Icon from "../ui/Icon.vue";
 
 /**
  * The weekly grid — a different animal from the other sheets.
@@ -29,7 +28,8 @@ const props = defineProps<{
   siblings: { id: string; name: string }[];
   readonly?: boolean;
 }>();
-const emit = defineEmits<{ changed: [] }>();
+/** The week after the change, so the page can hold it without refetching. */
+const emit = defineEmits<{ changed: [slots: api.TimetableSlot[]] }>();
 
 const busy = useBusyStore();
 const error = ref<string | null>(null);
@@ -56,26 +56,65 @@ const hhmm = (min: number) =>
 /** Only the hour marks carry a label; the half-hours are ticks. */
 const isHour = (min: number) => min % 60 === 0;
 
+// ── the week we are drawing ─────────────────────────────────────────────────
+/**
+ * A LOCAL copy of the week, seeded from the prop.
+ *
+ * Every write used to end in "reload the class", which blanked the grid and
+ * fetched it again: the whole week disappeared and came back a few hundred
+ * milliseconds later, for a change of one cell. The server now hands back the
+ * rows it wrote, already joined to their subject and teacher, so a placement is
+ * a splice into this array and nothing else on screen moves.
+ */
+const rows = ref<api.TimetableSlot[]>([]);
+watch(() => props.slots, (v) => (rows.value = [...v]), { immediate: true });
+
+/** Just written — briefly lit, so a change of one cell is visible as one cell. */
+const flash = ref<Set<string>>(new Set());
+let flashTimer: ReturnType<typeof setTimeout> | null = null;
+function lit(ids: string[]) {
+  flash.value = new Set(ids);
+  if (flashTimer) clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => (flash.value = new Set()), 1400);
+}
+
+/** Publishes the week upwards and keeps it here. */
+function commit(next: api.TimetableSlot[]) {
+  rows.value = next;
+  emit("changed", next);
+}
+
 // ── the grid ────────────────────────────────────────────────────────────────
 const key = (day: number, min: number) => `${day}:${min}`;
+const cellOf = (slot: api.TimetableSlot) =>
+  key(slot.dayOfWeek, Math.floor(slot.startsAtMin / STEP) * STEP);
 
 const byCell = computed(() => {
   const map = new Map<string, api.TimetableSlot>();
-  for (const slot of props.slots) {
-    map.set(key(slot.dayOfWeek, Math.floor(slot.startsAtMin / STEP) * STEP), slot);
-  }
+  for (const slot of rows.value) map.set(cellOf(slot), slot);
   return map;
 });
 
-/** Half-hours swallowed by a lesson that started earlier. */
-const covered = computed(() => {
-  const set = new Set<string>();
-  for (const slot of props.slots) {
+/**
+ * Every half-hour a lesson occupies, mapped to the cell that DRAWS it.
+ *
+ * One map instead of two: the renderer asks "is this half-hour swallowed by
+ * something above" and the selection asks "which lesson does this half-hour
+ * belong to", and both are the same question. Without it, dragging a rectangle
+ * across a two-hour lesson selected three cells that are not there — three
+ * phantom entries in a count the buttons could not act on.
+ */
+const owner = computed(() => {
+  const map = new Map<string, string>();
+  for (const slot of rows.value) {
     const from = Math.floor(slot.startsAtMin / STEP) * STEP;
-    for (let m = from + STEP; m < slot.endsAtMin; m += STEP) set.add(key(slot.dayOfWeek, m));
+    for (let m = from; m < slot.endsAtMin; m += STEP) map.set(key(slot.dayOfWeek, m), cellOf(slot));
   }
-  return set;
+  return map;
 });
+/** The cell a half-hour is selected AS. */
+const canon = (k: string) => owner.value.get(k) ?? k;
+const covered = (k: string) => owner.value.has(k) && owner.value.get(k) !== k;
 
 const span = (slot: api.TimetableSlot) =>
   Math.max(1, Math.ceil((slot.endsAtMin - slot.startsAtMin) / STEP));
@@ -84,11 +123,14 @@ const span = (slot: api.TimetableSlot) =>
 /**
  * Multi-select, three ways.
  *
- * Shift extends from the last cell — the rectangle a mouse expects. Cmd/Ctrl
- * adds one. And a "Sélection multiple" toggle does the same with plain clicks,
- * because the modifier keys are invisible: an operator who has never been told
- * about them will never discover them, and this is a tool for a secretary, not
- * for a developer.
+ * Shift extends from the last cell — the rectangle a mouse expects — and takes
+ * one away the same way: shift-clicking INSIDE the selection subtracts the
+ * rectangle instead of adding it. That half was missing, which made a slip of
+ * the wrist unrecoverable without starting the selection over. Cmd/Ctrl
+ * toggles one. And a "Sélection multiple" toggle does the same with plain
+ * clicks, because the modifier keys are invisible: an operator who has never
+ * been told about them will never discover them, and this is a tool for a
+ * secretary, not for a developer.
  */
 const selecting = ref(false);
 const selected = ref<Set<string>>(new Set());
@@ -105,7 +147,7 @@ const selectedSlots = computed(() => {
 /** Free cells in the selection — what a mass assignment would fill. */
 const selectedFree = computed(() =>
   [...selected.value]
-    .filter((k) => !byCell.value.has(k) && !covered.value.has(k))
+    .filter((k) => !byCell.value.has(k))
     .map((k) => {
       const [day, min] = k.split(":").map(Number);
       return { day: day!, min: min! };
@@ -117,18 +159,30 @@ function clearSelection() {
   anchor.value = null;
 }
 
+/** Every cell of the rectangle between two corners, as the cells that draw them. */
+function rectangle(from: { day: number; min: number }, to: { day: number; min: number }) {
+  const out: string[] = [];
+  const [d1, d2] = [Math.min(from.day, to.day), Math.max(from.day, to.day)];
+  const [m1, m2] = [Math.min(from.min, to.min), Math.max(from.min, to.min)];
+  for (let d = d1; d <= d2; d++) {
+    for (let m = m1; m <= m2; m += STEP) out.push(canon(key(d, m)));
+  }
+  return out;
+}
+
 function onCell(day: number, min: number, event: MouseEvent) {
   if (props.readonly) return;
-  const k = key(day, min);
+  const k = canon(key(day, min));
   const additive = selecting.value || event.metaKey || event.ctrlKey;
 
   if (event.shiftKey && anchor.value) {
-    // A rectangle, which is what a shift-drag means on a grid.
+    // Add the rectangle, or take it away when the corner clicked was already
+    // in the selection. Same gesture, both directions.
     const next = new Set(selected.value);
-    const [d1, d2] = [Math.min(anchor.value.day, day), Math.max(anchor.value.day, day)];
-    const [m1, m2] = [Math.min(anchor.value.min, min), Math.max(anchor.value.min, min)];
-    for (let d = d1; d <= d2; d++) {
-      for (let m = m1; m <= m2; m += STEP) next.add(key(d, m));
+    const subtract = next.has(k);
+    for (const c of rectangle(anchor.value, { day, min })) {
+      if (subtract) next.delete(c);
+      else next.add(c);
     }
     selected.value = next;
     return;
@@ -143,33 +197,130 @@ function onCell(day: number, min: number, event: MouseEvent) {
     return;
   }
 
-  // A plain click on a free cell is still the fast path: place one lesson.
+  /*
+   * A plain click INSIDE a selection acts on the whole selection.
+   *
+   * Having gone to the trouble of picking twelve cells, the operator's next
+   * click is on one of them — and treating that as "forget all that, place one
+   * lesson here" throws the selection away at precisely the moment it was
+   * about to be used. What was clicked chooses the verb; the selection decides
+   * how far it reaches.
+   */
+  if (selected.value.size > 1 && selected.value.has(k)) {
+    if (byCell.value.has(k)) openEdit(selectedSlots.value);
+    else openDraft(selectedFree.value);
+    return;
+  }
+
   clearSelection();
   anchor.value = { day, min };
-  if (!byCell.value.has(k)) openDraft([{ day, min }]);
+  const slot = byCell.value.get(k);
+  if (slot) openEdit([slot]);
+  else openDraft([{ day, min }]);
 }
+
+// ── what a selection means in hours ─────────────────────────────────────────
+interface Run {
+  day: number;
+  start: number;
+  end: number;
+}
+
+/**
+ * Contiguous cells, per day, collapsed into lessons.
+ *
+ * This is where "no time input" comes from: three half-hours stacked under each
+ * other on Tuesday are not three lessons, they are one lesson of an hour and a
+ * half, and the same band drawn across Tuesday and Friday is that lesson twice.
+ * The selection already SAYS when — asking again for a duration would be asking
+ * the operator to retype what they have just drawn.
+ */
+function runsOf(cells: { day: number; min: number }[]): Run[] {
+  const byDay = new Map<number, number[]>();
+  for (const c of cells) {
+    const list = byDay.get(c.day) ?? [];
+    list.push(c.min);
+    byDay.set(c.day, list);
+  }
+
+  const out: Run[] = [];
+  for (const [day, mins] of byDay) {
+    mins.sort((a, b) => a - b);
+    let start = mins[0]!;
+    let prev = mins[0]!;
+    for (const m of mins.slice(1)) {
+      if (m === prev + STEP) {
+        prev = m;
+        continue;
+      }
+      out.push({ day, start, end: prev + STEP });
+      start = m;
+      prev = m;
+    }
+    out.push({ day, start, end: prev + STEP });
+  }
+  return out.sort((a, b) => a.day - b.day || a.start - b.start);
+}
+
+const DURATIONS = [
+  { steps: 1, label: "30 minutes" },
+  { steps: 2, label: "1 heure" },
+  { steps: 3, label: "1 h 30" },
+  { steps: 4, label: "2 heures" },
+  { steps: 6, label: "3 heures" },
+];
 
 // ── placing lessons ─────────────────────────────────────────────────────────
 const draft = ref<{
-  cells: { day: number; min: number }[];
+  runs: Run[];
+  /**
+   * The selection spans more than one half-hour somewhere, so the hours are
+   * read off it. When every run is a single cell the selection says WHERE but
+   * not HOW LONG, and the duration is the one question left to ask.
+   */
+  inferred: boolean;
   courseOfferingId: string;
   employmentId: string;
-  /** In half-hour steps, so a 90-minute lesson is expressible. */
+  /** In half-hour steps, used only when nothing could be inferred. */
   steps: number;
+  /** Editable start, offered only for a single cell. */
+  start: number;
   room: string;
 } | null>(null);
 
 function openDraft(cells: { day: number; min: number }[]) {
   if (props.readonly || !cells.length) return;
   error.value = null;
+  const runs = runsOf(cells);
   draft.value = {
-    cells,
+    runs,
+    inferred: runs.some((r) => r.end - r.start > STEP),
     courseOfferingId: props.offerings[0]?.id ?? "",
     employmentId: "",
     steps: 2,
+    start: runs[0]!.start,
     room: "",
   };
 }
+
+/** One cell selected: the start may be moved, so only the durations that fit. */
+const durations = computed(() => {
+  const from = draft.value?.start ?? START_MIN;
+  return DURATIONS.filter((d) => from + d.steps * STEP <= END_MIN);
+});
+
+/** The lessons this draft would create — shown, so nothing is a surprise. */
+const draftSlots = computed<Run[]>(() => {
+  const d = draft.value;
+  if (!d) return [];
+  if (d.inferred) return d.runs;
+  const single = d.runs.length === 1;
+  return d.runs.map((r) => {
+    const start = single ? d.start : r.start;
+    return { day: r.day, start, end: Math.min(END_MIN, start + d.steps * STEP) };
+  });
+});
+const describe = (r: Run) => `${DAYS[r.day - 1]} ${hhmm(r.start)}–${hhmm(r.end)}`;
 
 const saving = ref(false);
 async function save() {
@@ -178,26 +329,120 @@ async function save() {
   saving.value = true;
   error.value = null;
   try {
-    await busy.run(() =>
+    const report = await busy.run(() =>
       api.timetable.addSlots(
         props.classeId,
         props.academicYearId,
-        d.cells.map((cell) => ({
+        draftSlots.value.map((r) => ({
           courseOfferingId: d.courseOfferingId,
           ...(d.employmentId ? { employmentId: d.employmentId } : {}),
-          dayOfWeek: cell.day,
-          startsAtMin: cell.min,
-          endsAtMin: cell.min + d.steps * STEP,
+          dayOfWeek: r.day,
+          startsAtMin: r.start,
+          endsAtMin: r.end,
           ...(d.room.trim() ? { room: d.room.trim() } : {}),
         })),
       ),
     );
+    // Spliced in, not refetched: the rest of the week never repaints.
+    commit([...rows.value, ...report.slots]);
+    lit(report.slots.map((s) => s.id));
     draft.value = null;
     clearSelection();
-    emit("changed");
   } catch (e) {
     // The clash messages are the point of the API check; show them verbatim.
+    // Nothing was written — the batch is one transaction — so the grid on
+    // screen is still the truth, and this is the only thing that changed.
     error.value = e instanceof api.ApiError ? e.message : "Créneau impossible.";
+  } finally {
+    saving.value = false;
+  }
+}
+
+// ── editing what is already there ───────────────────────────────────────────
+/** Sentinel for a select over slots that do not agree — "leave it alone". */
+const KEEP = "__keep__";
+
+const edit = ref<{
+  slots: api.TimetableSlot[];
+  courseOfferingId: string;
+  employmentId: string;
+  room: string;
+  roomTouched: boolean;
+  roomMixed: boolean;
+  steps: number;
+  start: number;
+  day: number;
+} | null>(null);
+
+/** The value they all share, or the sentinel when they differ. */
+function common(list: string[]): string {
+  const first = list[0] ?? "";
+  return list.every((v) => v === first) ? first : KEEP;
+}
+
+/**
+ * A lesson already on the grid is a thing to CORRECT, not only to delete.
+ *
+ * The salle and the enseignant are decided in a second pass — often by someone
+ * else, always after the week has been drawn — and until this existed the only
+ * way to record that pass was to remove the créneau and place it again, losing
+ * everything else about it on the way.
+ */
+function openEdit(slots: api.TimetableSlot[]) {
+  if (props.readonly || !slots.length) return;
+  error.value = null;
+  const room = common(slots.map((s) => s.room ?? ""));
+  const first = slots[0]!;
+  edit.value = {
+    slots,
+    courseOfferingId: common(slots.map((s) => s.courseOfferingId)),
+    employmentId: common(slots.map((s) => s.employmentId ?? "")),
+    room: room === KEEP ? "" : room,
+    roomTouched: false,
+    roomMixed: room === KEEP,
+    steps: Math.max(1, Math.round((first.endsAtMin - first.startsAtMin) / STEP)),
+    start: first.startsAtMin,
+    day: first.dayOfWeek,
+  };
+}
+
+const editDurations = computed(() => {
+  const from = edit.value?.start ?? START_MIN;
+  return DURATIONS.filter((d) => from + d.steps * STEP <= END_MIN);
+});
+
+async function applyEdit() {
+  const e = edit.value;
+  if (!e) return;
+  const one = e.slots.length === 1;
+  saving.value = true;
+  error.value = null;
+  try {
+    const report = await busy.run(() =>
+      api.timetable.updateSlots(
+        props.classeId,
+        e.slots.map((s) => s.id),
+        {
+          ...(e.courseOfferingId !== KEEP ? { courseOfferingId: e.courseOfferingId } : {}),
+          // "" is a real answer here — "à affecter" — and null is how it is said.
+          ...(e.employmentId !== KEEP ? { employmentId: e.employmentId || null } : {}),
+          // Untouched over slots that disagree means "leave every one alone".
+          ...(e.roomMixed && !e.roomTouched ? {} : { room: e.room.trim() || null }),
+          // Hours move for ONE lesson. A block shares a teacher and a room,
+          // never a start time.
+          ...(one
+            ? { dayOfWeek: e.day, startsAtMin: e.start, endsAtMin: e.start + e.steps * STEP }
+            : {}),
+        },
+      ),
+    );
+    const updated = new Map(report.slots.map((s) => [s.id, s]));
+    commit(rows.value.map((s) => updated.get(s.id) ?? s));
+    lit([...updated.keys()]);
+    edit.value = null;
+    clearSelection();
+  } catch (err) {
+    error.value = err instanceof api.ApiError ? err.message : "Modification impossible.";
   } finally {
     saving.value = false;
   }
@@ -206,11 +451,18 @@ async function save() {
 async function removeSlots(slots: api.TimetableSlot[]) {
   if (props.readonly || !slots.length) return;
   error.value = null;
+  const ids = new Set(slots.map((s) => s.id));
+  const before = rows.value;
+  // Gone from the grid the moment it is asked for, restored if the server
+  // refuses: a delete that waits for a round trip before showing anything
+  // feels like a click that did not land.
+  commit(rows.value.filter((s) => !ids.has(s.id)));
+  edit.value = null;
+  clearSelection();
   try {
-    await busy.run(() => api.timetable.removeSlots(props.classeId, slots.map((s) => s.id)));
-    clearSelection();
-    emit("changed");
+    await busy.run(() => api.timetable.removeSlots(props.classeId, [...ids]));
   } catch (e) {
+    commit(before);
     error.value = e instanceof api.ApiError ? e.message : "Suppression impossible.";
   }
 }
@@ -229,7 +481,11 @@ async function copy() {
       report.skipped > 0
         ? `${report.copied} créneau(x) copiés, ${report.skipped} ignoré(s) pour cause de conflit.`
         : null;
-    emit("changed");
+    // The one path that still refetches: a copy writes a whole week at once,
+    // and there was nothing on screen for it to disturb.
+    const grid = await api.timetable.forClasse(props.classeId, props.academicYearId);
+    commit(grid.slots);
+    lit(grid.slots.map((s) => s.id));
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Copie impossible.";
   }
@@ -244,13 +500,17 @@ const hue = (code: string) => [...code].reduce((h, c) => (h * 31 + c.charCodeAt(
  * Not the raw cell count: a two-hour lesson occupies four half-hour cells but
  * is one thing to delete, so "12 cases — 2 cours, 6 libres" reads as arithmetic
  * that does not add up. The two numbers the buttons act on are the only two
- * worth showing.
+ * worth showing — and the free cells are counted as the LESSONS they would
+ * become, since that is what the Affecter button is about to create.
  */
 const label = computed(() => {
   if (!selected.value.size) return null;
   const parts: string[] = [];
   if (selectedSlots.value.length) parts.push(`${selectedSlots.value.length} cours`);
-  if (selectedFree.value.length) parts.push(`${selectedFree.value.length} case(s) libre(s)`);
+  const runs = runsOf(selectedFree.value);
+  if (runs.length) {
+    parts.push(runs.length === 1 ? "1 créneau libre" : `${runs.length} créneaux libres`);
+  }
   return parts.join(" · ") || "Rien de sélectionnable";
 });
 </script>
@@ -258,7 +518,7 @@ const label = computed(() => {
 <template>
   <div class="sheet timetable">
     <div class="sheet-bar">
-      <span class="sheet-count">{{ slots.length }} créneau(x)</span>
+      <span class="sheet-count">{{ rows.length }} créneau(x)</span>
 
       <template v-if="!readonly">
         <label class="toggle sheet-toggle">
@@ -275,6 +535,14 @@ const label = computed(() => {
             @click="openDraft(selectedFree)"
           >
             Affecter
+          </button>
+          <button
+            class="btn sm"
+            type="button"
+            :disabled="!selectedSlots.length"
+            @click="openEdit(selectedSlots)"
+          >
+            Modifier
           </button>
           <button
             class="btn sm danger"
@@ -316,14 +584,18 @@ const label = computed(() => {
           <tr v-for="min in ROWS" :key="min" :class="{ 'is-hour': isHour(min) }">
             <th class="tt-hour">{{ isHour(min) ? hhmm(min) : "" }}</th>
             <template v-for="(day, i) in DAYS" :key="i">
-              <template v-if="covered.has(key(i + 1, min))" />
+              <template v-if="covered(key(i + 1, min))" />
 
               <td
                 v-else-if="byCell.get(key(i + 1, min))"
                 class="tt-cell is-taken"
-                :class="{ 'is-selected': selected.has(key(i + 1, min)) }"
+                :class="{
+                  'is-selected': selected.has(key(i + 1, min)),
+                  'is-flash': flash.has(byCell.get(key(i + 1, min))!.id),
+                }"
                 :rowspan="span(byCell.get(key(i + 1, min))!)"
                 :style="{ '--tt-hue': hue(byCell.get(key(i + 1, min))!.subject.code) }"
+                :title="`${byCell.get(key(i + 1, min))!.subject.name} — cliquer pour modifier`"
                 @click="onCell(i + 1, min, $event)"
               >
                 <div class="tt-slot">
@@ -370,11 +642,11 @@ const label = computed(() => {
 
     <DialogShell
       v-if="draft"
-      :title="draft.cells.length > 1 ? `Affecter ${draft.cells.length} créneaux` : 'Ajouter un cours'"
+      :title="draftSlots.length > 1 ? `Affecter ${draftSlots.length} créneaux` : 'Ajouter un cours'"
       :subtitle="
-        draft.cells.length === 1
-          ? `${DAYS[draft.cells[0]!.day - 1]} · ${hhmm(draft.cells[0]!.min)}`
-          : `${draft.cells.length} cases sélectionnées`
+        draftSlots.length === 1
+          ? describe(draftSlots[0]!)
+          : `${draftSlots.length} créneaux · ${draft.inferred ? 'horaires repris de la sélection' : 'même horaire partout'}`
       "
       detail="La matière vient du programme du niveau. Un conflit d'enseignant est refusé."
       icon="calendar"
@@ -392,7 +664,7 @@ const label = computed(() => {
 
       <template v-else>
         <div class="field-row">
-          <div class="field">
+          <div class="field is-wide">
             <label for="tt-sub">Matière</label>
             <select id="tt-sub" v-model="draft.courseOfferingId">
               <option v-for="o in offerings" :key="o.id" :value="o.id">
@@ -400,17 +672,28 @@ const label = computed(() => {
               </option>
             </select>
           </div>
+        </div>
+
+        <!--
+          The hours, ONLY when the selection did not already say them. A block
+          drawn down the grid has a start and a length; asking for them again is
+          asking the operator to retype what they have just drawn.
+        -->
+        <div v-if="!draft.inferred" class="field-row">
+          <div v-if="draft.runs.length === 1" class="field">
+            <label for="tt-start">Début</label>
+            <select id="tt-start" v-model.number="draft.start">
+              <option v-for="m in ROWS" :key="m" :value="m">{{ hhmm(m) }}</option>
+            </select>
+          </div>
           <div class="field">
             <label for="tt-dur">Durée</label>
             <select id="tt-dur" v-model.number="draft.steps">
-              <option :value="1">30 minutes</option>
-              <option :value="2">1 heure</option>
-              <option :value="3">1 h 30</option>
-              <option :value="4">2 heures</option>
-              <option :value="6">3 heures</option>
+              <option v-for="d in durations" :key="d.steps" :value="d.steps">{{ d.label }}</option>
             </select>
           </div>
         </div>
+
         <div class="field-row">
           <div class="field">
             <label for="tt-emp">Enseignant</label>
@@ -424,6 +707,12 @@ const label = computed(() => {
             <input id="tt-room" v-model="draft.room" autocomplete="off" placeholder="Salle 3" />
           </div>
         </div>
+
+        <!-- What will be written, in words: nothing about a block placement
+             should have to be inferred back out of the grid afterwards. -->
+        <div class="tt-plan">
+          <span v-for="(r, i) in draftSlots" :key="i" class="tt-plan-item">{{ describe(r) }}</span>
+        </div>
       </template>
 
       <div class="form-actions dialog-actions">
@@ -435,7 +724,94 @@ const label = computed(() => {
           @click="save"
         >
           <span v-if="saving" class="btn-spin" aria-hidden="true" />
-          {{ draft.cells.length > 1 ? `Placer ${draft.cells.length} cours` : "Ajouter" }}
+          {{ draftSlots.length > 1 ? `Placer ${draftSlots.length} cours` : "Ajouter" }}
+        </button>
+      </div>
+    </DialogShell>
+
+    <!-- Correcting what is already drawn: the salle and the enseignant, over
+         one lesson or over every maths hour of the week at once. -->
+    <DialogShell
+      v-if="edit"
+      :title="edit.slots.length > 1 ? `Modifier ${edit.slots.length} créneaux` : 'Modifier le cours'"
+      :subtitle="
+        edit.slots.length === 1
+          ? `${DAYS[edit.slots[0]!.dayOfWeek - 1]} ${hhmm(edit.slots[0]!.startsAtMin)}–${hhmm(edit.slots[0]!.endsAtMin)}`
+          : `${edit.slots.length} créneaux sélectionnés`
+      "
+      :detail="
+        edit.slots.length > 1
+          ? 'Un champ laissé sur « inchangé » n\'est pas réécrit.'
+          : 'Un conflit de classe ou d\'enseignant est refusé.'
+      "
+      icon="calendar"
+      @close="edit = null"
+    >
+      <div v-if="error" class="form-error">{{ error }}</div>
+
+      <div class="field-row">
+        <div class="field is-wide">
+          <label for="tt-esub">Matière</label>
+          <select id="tt-esub" v-model="edit.courseOfferingId">
+            <option v-if="edit.courseOfferingId === KEEP" :value="KEEP">— inchangé</option>
+            <option v-for="o in offerings" :key="o.id" :value="o.id">
+              {{ o.subject.code }} — {{ o.subject.name }}
+            </option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="tt-eemp">Enseignant</label>
+          <select id="tt-eemp" v-model="edit.employmentId">
+            <option v-if="edit.employmentId === KEEP" :value="KEEP">— inchangé</option>
+            <option value="">— à affecter</option>
+            <option v-for="s in staff" :key="s.id" :value="s.id">{{ s.label }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="tt-eroom">Salle</label>
+          <input
+            id="tt-eroom"
+            v-model="edit.room"
+            autocomplete="off"
+            :placeholder="edit.roomMixed ? 'Plusieurs salles — inchangé' : 'Salle 3'"
+            @input="edit.roomTouched = true"
+          />
+        </div>
+      </div>
+
+      <div v-if="edit.slots.length === 1" class="field-row">
+        <div class="field">
+          <label for="tt-eday">Jour</label>
+          <select id="tt-eday" v-model.number="edit.day">
+            <option v-for="(d, i) in DAYS" :key="i" :value="i + 1">{{ d }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="tt-estart">Début</label>
+          <select id="tt-estart" v-model.number="edit.start">
+            <option v-for="m in ROWS" :key="m" :value="m">{{ hhmm(m) }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="tt-edur">Durée</label>
+          <select id="tt-edur" v-model.number="edit.steps">
+            <option v-for="d in editDurations" :key="d.steps" :value="d.steps">{{ d.label }}</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-actions dialog-actions">
+        <button class="btn sm danger ghost" type="button" @click="removeSlots(edit.slots)">
+          Supprimer
+        </button>
+        <div class="sheet-bar-fill" />
+        <button class="btn ghost" type="button" @click="edit = null">Annuler</button>
+        <button class="btn primary" type="button" :disabled="saving" @click="applyEdit">
+          <span v-if="saving" class="btn-spin" aria-hidden="true" />
+          Enregistrer
         </button>
       </div>
     </DialogShell>

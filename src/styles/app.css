@@ -3572,6 +3572,40 @@ table.data td.c-text {
 .sheet-corner {
   background: var(--surface-3);
 }
+
+/*
+ * The ＋ that belongs to a column block.
+ *
+ * Adding an evaluation is one act for the whole class, so it sits in the
+ * subject's own header rather than on forty pupil cells — and it announces
+ * itself when the subject has nothing yet, then shrinks to a sign once it does.
+ * A tool that only shows its controls on hover is a tool nobody finds.
+ */
+.sheet-group-name {
+  vertical-align: middle;
+}
+.sheet-group-add {
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--primary-line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--primary);
+  font: inherit;
+  font-size: var(--t-micro);
+  font-weight: 700;
+  line-height: 15px;
+  vertical-align: middle;
+  cursor: pointer;
+}
+.sheet-group-add:hover {
+  background: var(--primary);
+  color: var(--primary-ink);
+}
+.sheet-group-add:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
 .sheet-group {
   border-left: 2px solid var(--line);
 }
@@ -3707,6 +3741,43 @@ table.data td.c-text {
 }
 .sheet-tabs .btn.sm {
   align-self: center;
+}
+
+/*
+ * A named dropdown in the tab strip.
+ *
+ * Two bare selects side by side said nothing about which was the période and
+ * which the année — the operator had to open one to find out. The name is part
+ * of the control, not a tooltip on it.
+ */
+.sheet-pick {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  gap: 6px;
+  min-height: var(--control-h-sm);
+  padding: 0 6px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  white-space: nowrap;
+}
+.sheet-pick > span {
+  color: var(--ink-2);
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.sheet-pick select {
+  min-height: 0;
+  height: auto;
+  padding: 2px 2px 2px 0;
+  border: none;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-small);
+  font-weight: 600;
 }
 
 /* Notes the sheet returns about itself — why a column set is empty. */
@@ -3974,6 +4045,44 @@ table.data td.c-text {
 .tt-remove:hover {
   background: var(--danger-soft, var(--surface-2));
   color: var(--danger);
+}
+
+/*
+ * What was just written, lit for a moment.
+ *
+ * The whole grid used to be refetched after every change, so "did that land?"
+ * was answered by the entire week blinking. Now nothing repaints except the
+ * cells that changed — which is invisible unless they say so.
+ */
+@keyframes tt-flash {
+  from { box-shadow: inset 0 0 0 2px var(--primary); }
+  to   { box-shadow: inset 0 0 0 2px transparent; }
+}
+.tt-cell.is-flash {
+  animation: tt-flash 1.4s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tt-cell.is-flash {
+    animation: none;
+  }
+}
+
+/* The lessons a block placement is about to write, in words. */
+.tt-plan {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: var(--s2);
+}
+.tt-plan-item {
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: var(--t-micro);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 

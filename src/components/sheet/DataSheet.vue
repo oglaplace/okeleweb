@@ -31,6 +31,8 @@ const emit = defineEmits<{
   pick: [row: Record<string, unknown>];
   /** A cell that is a control was used — see SheetColumn.action. */
   act: [{ row: Record<string, unknown>; column: SheetColumn }];
+  /** A button in a group's header was used — see SheetGroup.action. */
+  groupAct: [key: string];
 }>();
 
 /** A column plus what the renderer needs to know about its neighbours. */
@@ -320,8 +322,19 @@ defineExpose({ exportCsv });
               :colspan="group.columns.length"
               class="sheet-group"
               :class="{ 'is-alt': i % 2 === 1 }"
+              :title="group.title ?? group.label"
             >
-              {{ group.label }}
+              <span class="sheet-group-name">{{ group.label }}</span>
+              <!-- An action that belongs to the block, not to a row. -->
+              <button
+                v-if="group.action"
+                class="sheet-group-add"
+                type="button"
+                :title="group.action.hint ?? group.action.label"
+                @click.stop="emit('groupAct', group.action.key)"
+              >
+                {{ group.action.label }}
+              </button>
             </th>
             <th class="sheet-fill" />
           </tr>

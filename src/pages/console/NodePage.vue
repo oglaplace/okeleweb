@@ -109,7 +109,6 @@ async function loadSheet() {
   if (!u || !yearId.value) return;
   programme.value = null;
   periods.value = null;
-  grid.value = [];
 
   if (u.kind === "CLASSE") {
     const [s, g] = await Promise.all([
@@ -117,10 +116,15 @@ async function loadSheet() {
       api.timetable.forClasse(u.id, yearId.value).catch(() => null),
     ]);
     sheet.value = s;
+    // Assigned when it lands, never blanked first: emptying it here made the
+    // whole week vanish and redraw on any reload of the page — a change of one
+    // mark repainting the timetable tab.
     grid.value = g?.slots ?? [];
     await loadBuilderOptions();
     return;
   }
+
+  grid.value = [];
 
   if (u.kind === "NIVEAU") {
     programme.value = await api.sheets.niveau(u.id, yearId.value).catch(() => null);
@@ -211,6 +215,18 @@ function openAssessment(subjectId?: string) {
 function onRunDone() {
   notice.value = `${runSpec.value?.label} — effectué.`;
   void loadSheet();
+}
+
+/**
+ * A button in a subject's own column header — see SheetGroup.action.
+ *
+ * The one place an evaluation can be created from where it will appear: the
+ * form opens knowing the classe, the période and the matière, so it asks only
+ * what it cannot know — the type, the intitulé and the barème.
+ */
+function onGroupAct(key: string) {
+  const [kind, id] = key.split(":");
+  if (kind === "assessment") openAssessment(id);
 }
 
 /** The overlay closed after a save: show what changed, not a stale list. */
@@ -372,27 +388,6 @@ function onAct(payload: { row: Record<string, unknown>; column: SheetColumn }) {
     return;
   }
 
-  /**
-   * A subject with no evaluation in this période offers to create the first.
-   *
-   * Triggered from the cell that is empty because of it, prefilled with the
-   * classe, the période and that subject's offering — the three things the
-   * operator answered by clicking there.
-   */
-  if (column.key.startsWith("g:") && sheet.value && unit.value) {
-    const subjectId = column.key.split(":")[2];
-    const spec = byId("create-assessment");
-    if (!spec || !subjectId) return;
-    const offering = offerings.value.find((o) => o.subject.id === subjectId);
-    assessmentPrefill.value = {
-      academicYearId: yearId.value ?? "",
-      ...(periodId.value ? { periodId: periodId.value } : {}),
-      ...(offering ? { courseOfferingId: offering.id } : {}),
-    };
-    runSpec.value = spec;
-    return;
-  }
-
   if (column.key === "coefficient" || column.key.startsWith("coef:")) {
     const spec = byId("set-coefficient");
     if (!spec || !unit.value) return;
@@ -526,6 +521,16 @@ const totalDue = computed(() =>
         {{ activeTab.empty }}
       </div>
 
+      <!-- Said once, above the grid: a column per evaluation, and where the
+           button that adds one is. The affordance is discoverable on its own —
+           this is what makes it obvious rather than merely findable. -->
+      <div v-if="sheet && tab === 'grades' && activeTab?.groups" class="sheet-notes">
+        <span class="sheet-note">
+          Une colonne par évaluation. Le <strong>＋</strong> dans l'en-tête d'une
+          matière en ajoute une à cette matière.
+        </span>
+      </div>
+
       <!--
         The week is not a row sheet. Time down, days across, and an empty cell
         that IS the button — see TimetableGrid. It shares the tab strip because
@@ -551,6 +556,12 @@ const totalDue = computed(() =>
           </RouterLink>
         </div>
 
+        <!--
+          The grid hands back the week it now holds, and this stores it.
+          It used to emit "something changed" and this reloaded the class —
+          which blanked the week, refetched forty pupils and their marks, and
+          redrew every lesson, all to record one créneau.
+        -->
         <TimetableGrid
           :classe-id="unit.id"
           :academic-year-id="yearId"
@@ -558,19 +569,17 @@ const totalDue = computed(() =>
           :offerings="offerings"
           :staff="teachers"
           :siblings="siblings"
-          @changed="loadSheet"
+          @changed="(slots) => (grid = slots)"
         />
 
         <SheetTabs v-model="tab" :tabs="tabs">
           <template #end>
-            <select
-              v-if="years.length > 1"
-              v-model="yearId"
-              class="btn sm"
-              aria-label="Année scolaire"
-            >
-              <option v-for="y in years" :key="y.id" :value="y.id">{{ y.label }}</option>
-            </select>
+            <label v-if="years.length > 1" class="sheet-pick">
+              <span>Année</span>
+              <select v-model="yearId" aria-label="Année scolaire">
+                <option v-for="y in years" :key="y.id" :value="y.id">{{ y.label }}</option>
+              </select>
+            </label>
           </template>
         </SheetTabs>
       </template>
@@ -584,35 +593,37 @@ const totalDue = computed(() =>
           :title="subject ? `${unit.name} — ${subject.subject.code}` : unit.name"
           @pick="onPick"
           @act="onAct"
+          @group-act="onGroupAct"
         />
 
         <SheetTabs v-model="tab" :tabs="tabs">
           <template #end>
-            <!-- The Notes tab is one période at a time; this is which one. -->
-            <select
-              v-if="sheet && tab === 'grades' && sheet.periods.length"
-              v-model="periodId"
-              class="btn sm"
-              aria-label="Période"
-            >
-              <option v-for="p in sheet.periods" :key="p.id" :value="p.id">{{ p.label }}</option>
-            </select>
+            <!--
+              The Notes tab is one période at a time; this is which one. Named,
+              because two bare dropdowns side by side in a strip of buttons say
+              nothing about which is the période and which the année.
+            -->
+            <label v-if="sheet && tab === 'grades' && sheet.periods.length" class="sheet-pick">
+              <span>Période</span>
+              <select v-model="periodId" aria-label="Période">
+                <option v-for="p in sheet.periods" :key="p.id" :value="p.id">{{ p.label }}</option>
+              </select>
+            </label>
             <button
               v-if="sheet && tab === 'grades' && periodId"
               class="btn sm"
               type="button"
+              title="Choisir la matière dans le formulaire — ou utiliser le ＋ de la matière voulue"
               @click="openAssessment()"
             >
-              Ajouter une évaluation
+              Nouvelle évaluation
             </button>
-            <select
-              v-if="sheet && years.length > 1"
-              v-model="yearId"
-              class="btn sm"
-              aria-label="Année scolaire"
-            >
-              <option v-for="y in years" :key="y.id" :value="y.id">{{ y.label }}</option>
-            </select>
+            <label v-if="sheet && years.length > 1" class="sheet-pick">
+              <span>Année</span>
+              <select v-model="yearId" aria-label="Année scolaire">
+                <option v-for="y in years" :key="y.id" :value="y.id">{{ y.label }}</option>
+              </select>
+            </label>
             <button
               v-if="sheet && tab !== 'grades'"
               class="btn sm"

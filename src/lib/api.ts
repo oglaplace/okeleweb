@@ -758,7 +758,14 @@ export const timetable = {
       body: JSON.stringify({ classeId, ids }),
     }),
 
-  /** Many at once: a block selection, assigned in one go. */
+  /**
+   * Many at once: a block selection, assigned in one go.
+   *
+   * Returns the created slots ALREADY HYDRATED — subject, teacher and all — so
+   * the grid can splice them into the week it is displaying. Refetching the
+   * whole timetable made every lesson on screen vanish and redraw, which reads
+   * as a page that lost its data and got it back.
+   */
   addSlots: (
     classeId: string,
     academicYearId: string,
@@ -772,9 +779,33 @@ export const timetable = {
       room?: string | null;
     }[],
   ) =>
-    request<{ created: number }>("/timetable/slots/bulk", {
+    request<{ created: number; slots: TimetableSlot[] }>("/timetable/slots/bulk", {
       method: "POST",
       body: JSON.stringify({ classeId, academicYearId, slots }),
+    }),
+
+  /**
+   * An edit over one slot or over a selection of them.
+   *
+   * Omitting a field leaves it alone; sending `null` clears it. That is what
+   * makes "toutes les heures de maths sont à M. Ngoma" one call that does not
+   * blank the salles nobody asked about.
+   */
+  updateSlots: (
+    classeId: string,
+    ids: string[],
+    patch: {
+      courseOfferingId?: string;
+      employmentId?: string | null;
+      room?: string | null;
+      dayOfWeek?: number;
+      startsAtMin?: number;
+      endsAtMin?: number;
+    },
+  ) =>
+    request<{ updated: number; slots: TimetableSlot[] }>("/timetable/slots/bulk-update", {
+      method: "POST",
+      body: JSON.stringify({ classeId, ids, ...patch }),
     }),
 
   copyWeek: (fromClasseId: string, toClasseId: string, academicYearId: string) =>

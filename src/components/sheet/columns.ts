@@ -35,6 +35,17 @@ export interface SheetColumn {
 export interface SheetGroup {
   label: string;
   columns: SheetColumn[];
+  /** Full name of what the group is about, for the header's tooltip. */
+  title?: string;
+  /**
+   * A button in the group's own header.
+   *
+   * Where an action belongs to a COLUMN BLOCK rather than to a row: adding an
+   * evaluation to Mathématiques is one act for the whole class, and offering it
+   * on every pupil's cell says the opposite — forty identical buttons, each
+   * looking like it would do something to that pupil.
+   */
+  action?: { key: string; label: string; hint?: string };
 }
 
 export interface SheetTab {
@@ -128,6 +139,24 @@ export function studentTabs(
         const evaluations = period.assessments.filter((a) => a.subjectId === subject.id);
         return {
           label: subject.code,
+          title: `${subject.name} — ${period.label}`,
+          /*
+           * The ＋ lives HERE, in the subject's own header.
+           *
+           * It was a cell action on the average column, which the renderer
+           * draws as the value itself when it is always-on: a column of
+           * clickable em-dashes, one per pupil, that nothing on screen said
+           * were buttons — and that appear to be about the pupil in that row
+           * when an evaluation belongs to the whole class. One button, in the
+           * one place that names the subject, is the honest shape.
+           */
+          action: {
+            key: `assessment:${subject.id}`,
+            label: evaluations.length ? "＋" : "＋ évaluation",
+            hint: evaluations.length
+              ? `Ajouter une évaluation en ${subject.name} (${evaluations.length} déjà)`
+              : `Aucune évaluation en ${subject.name} — en créer une`,
+          },
           columns: [
             ...evaluations.map((a) => ({
               key: `e:${a.id}`,
@@ -141,9 +170,9 @@ export function studentTabs(
               label: "Moy.",
               type: "grade" as const,
               width: 7,
-              hint: `Moyenne ${subject.name} sur ${period.label}`,
-              // No evaluation yet: the cell offers to create the first one.
-              ...(evaluations.length ? {} : { action: { label: "+ éval.", when: "always" as const } }),
+              hint: evaluations.length
+                ? `Moyenne ${subject.name} sur ${period.label}`
+                : `Aucune évaluation en ${subject.name} sur ${period.label}`,
             },
           ],
         };
