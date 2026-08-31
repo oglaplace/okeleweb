@@ -201,22 +201,29 @@ watch(assessmentId, () => void loadGrid());
 
 <template>
   <div>
-    <div class="page-head">
-      <div>
-        <h1 class="page-title">Saisie des notes — {{ classeName }}</h1>
-        <div class="page-sub">
-          <span v-if="grid">
+    <!--
+      TWO COMPACT ROWS above the grid, where there were a poster and a card.
+      The heading, its subtitle, the save state and four dropdowns took about a
+      fifth of the window on a laptop, on a screen whose whole job is a column
+      of forty numbers. Nothing is gone; it is one line of chrome instead of
+      three blocks of it.
+    -->
+    <div class="nodebar">
+      <div class="nodebar-id">
+        <h1 class="nodebar-title">Saisie des notes — {{ classeName }}</h1>
+        <span class="nodebar-kind">
+          <template v-if="grid">
             {{ grid.assessment.subject }} · {{ grid.assessment.type }} ·
             sur {{ grid.assessment.maxScore }} · coef {{ grid.assessment.weight }}
-          </span>
-          <span v-else>Choisissez une matière et une évaluation</span>
-        </div>
+          </template>
+          <template v-else>Choisissez une matière et une évaluation</template>
+        </span>
       </div>
-      <div style="display: flex; gap: 8px; align-items: center">
+      <div class="nodebar-stats">
         <span v-if="savedAt" class="pill ok">Enregistré à {{ savedAt }}</span>
         <span v-else-if="dirty" class="pill warn">Non enregistré</span>
         <button
-          class="btn primary"
+          class="btn sm primary"
           type="button"
           :disabled="!grid || saving || locked || !dirty"
           @click="save"
@@ -226,54 +233,76 @@ watch(assessmentId, () => void loadGrid());
       </div>
     </div>
 
-    <!-- selectors -->
-    <div class="card" style="margin-bottom: 16px">
-      <div class="card-body" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
-        <select v-if="years.length" v-model="yearId" class="btn">
+    <div class="markbar">
+      <label v-if="years.length" class="sheet-pick">
+        <span>Année</span>
+        <select v-model="yearId" aria-label="Année scolaire">
           <option v-for="y in years" :key="y.id" :value="y.id">{{ y.label }}</option>
         </select>
-        <select v-if="periods.length" v-model="periodId" class="btn">
+      </label>
+      <label v-if="periods.length" class="sheet-pick">
+        <span>Période</span>
+        <select v-model="periodId" aria-label="Période">
           <option v-for="p in periods" :key="p.id" :value="p.id">{{ p.label }}</option>
         </select>
-        <select v-if="offerings.length" v-model="offeringId" class="btn">
+      </label>
+      <label v-if="offerings.length" class="sheet-pick">
+        <span>Matière</span>
+        <select v-model="offeringId" aria-label="Matière">
           <option v-for="o in offerings" :key="o.id" :value="o.id">{{ o.subject.name }}</option>
         </select>
-        <select v-if="assessments.length" v-model="assessmentId" class="btn">
+      </label>
+      <label v-if="assessments.length" class="sheet-pick">
+        <span>Épreuve</span>
+        <select v-model="assessmentId" aria-label="Épreuve">
           <option v-for="a in assessments" :key="a.id" :value="a.id">
             {{ a.assessmentType.name }}{{ a.title ? ` — ${a.title}` : "" }} (/{{ a.maxScore }})
           </option>
         </select>
-        <button
-          v-if="periodId && offeringId"
-          class="btn"
-          type="button"
-          @click="creating = !creating"
-        >
-          {{ creating ? "Annuler" : "Nouvelle évaluation" }}
-        </button>
-      </div>
+      </label>
+      <button
+        v-if="periodId && offeringId"
+        class="btn sm"
+        type="button"
+        @click="creating = !creating"
+      >
+        {{ creating ? "Annuler" : "Nouvelle évaluation" }}
+      </button>
 
-      <div v-if="creating" class="card-body" style="border-top: 1px solid var(--line-soft)">
-        <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end">
-          <div class="field" style="margin: 0">
-            <label for="atype">Type</label>
-            <select id="atype" v-model="newType" class="btn">
-              <option v-for="t in types" :key="t.id" :value="t.id">{{ t.name }}</option>
-            </select>
-          </div>
-          <div class="field" style="margin: 0">
-            <label for="atitle">Intitulé</label>
-            <input id="atitle" v-model="newTitle" placeholder="Devoir n°1" />
-          </div>
-          <div class="field" style="margin: 0; max-width: 110px">
-            <label for="amax">Barème</label>
-            <input id="amax" v-model.number="newMax" type="number" min="1" />
-          </div>
-          <button class="btn primary" type="button" :disabled="saving" @click="createAssessment">
-            Créer
-          </button>
-        </div>
+      <div class="sheet-bar-fill" />
+      <!--
+        The one thing that stops this screen dead, said where it stops.
+        An épreuve carries a type; with none defined the form below opens with
+        an empty dropdown and no explanation. The readiness engine reports it as
+        blocking for the whole school — this is the same fact, in the place a
+        teacher meets it.
+      -->
+      <span v-if="!types.length" class="pill warn">Aucun type d'évaluation défini</span>
+    </div>
+
+    <div v-if="creating" class="markbar is-form">
+      <div class="field">
+        <label for="atype">Type</label>
+        <select id="atype" v-model="newType">
+          <option v-for="t in types" :key="t.id" :value="t.id">{{ t.name }}</option>
+        </select>
       </div>
+      <div class="field">
+        <label for="atitle">Intitulé</label>
+        <input id="atitle" v-model="newTitle" placeholder="Devoir n°1" />
+      </div>
+      <div class="field is-narrow">
+        <label for="amax">Barème</label>
+        <input id="amax" v-model.number="newMax" type="number" min="1" />
+      </div>
+      <button
+        class="btn sm primary"
+        type="button"
+        :disabled="saving || !newType"
+        @click="createAssessment"
+      >
+        Créer
+      </button>
     </div>
 
     <div v-if="error" class="form-error">{{ error }}</div>

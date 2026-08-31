@@ -26,10 +26,17 @@ const props = defineProps<{
   staff: { id: string; label: string }[];
   /** Other classes of the same niveau — the copy source. */
   siblings: { id: string; name: string }[];
+  /** Whether anyone outside the office can see this week yet. */
+  published: boolean;
+  publishedAt: string | null;
   readonly?: boolean;
 }>();
-/** The week after the change, so the page can hold it without refetching. */
-const emit = defineEmits<{ changed: [slots: api.TimetableSlot[]] }>();
+const emit = defineEmits<{
+  /** The week after the change, so the page can hold it without refetching. */
+  changed: [slots: api.TimetableSlot[]];
+  /** Published or withdrawn — the page owns that flag. */
+  published: [value: boolean];
+}>();
 
 const busy = useBusyStore();
 const error = ref<string | null>(null);
@@ -467,6 +474,44 @@ async function removeSlots(slots: api.TimetableSlot[]) {
   }
 }
 
+// ── publishing ──────────────────────────────────────────────────────────────
+/**
+ * A week is invisible until someone says it is ready.
+ *
+ * The button is here rather than on a settings screen because publishing is
+ * the last step of DRAWING: the person who has just finished moving Thursday
+ * around is the person who knows it is finished. Withdrawing is the same
+ * control, and deliberately not hidden — a school that discovers a clash on
+ * Monday morning needs to take the grid down in one click, not file a request.
+ */
+const publishing = ref(false);
+async function togglePublished() {
+  if (props.readonly) return;
+  publishing.value = true;
+  error.value = null;
+  try {
+    if (props.published) {
+      await busy.run(() => api.timetable.unpublish(props.classeId, props.academicYearId));
+      emit("published", false);
+    } else {
+      await busy.run(() => api.timetable.publish(props.classeId, props.academicYearId));
+      emit("published", true);
+    }
+  } catch (e) {
+    error.value = e instanceof api.ApiError ? e.message : "Publication impossible.";
+  } finally {
+    publishing.value = false;
+  }
+}
+
+const publishedOn = computed(() =>
+  props.publishedAt
+    ? new Date(props.publishedAt).toLocaleDateString("fr-FR", {
+        day: "2-digit", month: "long", year: "numeric",
+      })
+    : null,
+);
+
 // ── copying a week ──────────────────────────────────────────────────────────
 const copying = ref(false);
 const copyFrom = ref("");
@@ -557,6 +602,39 @@ const label = computed(() => {
       </template>
 
       <div class="sheet-bar-fill" />
+
+      <!--
+        What everyone else sees. Said in the toolbar rather than as a banner
+        above the grid: it is a property of the week, it never changes height,
+        and a school checking "is this live?" looks where the controls are.
+      -->
+      <span
+        class="tt-state"
+        :class="published ? 'is-live' : 'is-draft'"
+        :title="
+          published
+            ? `Visible par les enseignants et les familles${publishedOn ? ` depuis le ${publishedOn}` : ''}`
+            : 'Visible uniquement par vous. Les enseignants et les familles ne voient rien.'
+        "
+      >{{ published ? "Publié" : "Brouillon" }}</span>
+
+      <button
+        v-if="!readonly"
+        class="btn sm"
+        :class="published ? 'ghost' : 'primary'"
+        type="button"
+        :disabled="publishing || (!published && !rows.length)"
+        :title="
+          !published && !rows.length
+            ? 'Un emploi du temps vide ne peut pas être publié'
+            : undefined
+        "
+        @click="togglePublished"
+      >
+        <span v-if="publishing" class="btn-spin" aria-hidden="true" />
+        {{ published ? "Dépublier" : "Publier" }}
+      </button>
+
       <button
         v-if="!readonly && siblings.length"
         class="btn sm ghost"

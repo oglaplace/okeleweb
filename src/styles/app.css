@@ -3768,6 +3768,26 @@ table.data td.c-text {
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+/*
+ * A form that is still fetching what it will offer.
+ *
+ * Empty dropdowns and "there are none" look identical, and the second sends an
+ * operator off to create a période that already exists. The fields stay in
+ * place, dimmed, so nothing jumps when the answers arrive.
+ */
+.form-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) 0;
+  color: var(--ink-2);
+  font-size: var(--t-small);
+}
+.field-row.is-loading {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 .sheet-pick select {
   min-height: 0;
   height: auto;
@@ -3785,7 +3805,7 @@ table.data td.c-text {
   display: flex;
   flex-wrap: wrap;
   flex: none;
-  gap: var(--s2);
+  gap: var(--s1) var(--s2);
   margin-bottom: var(--s2);
 }
 .sheet-note {
@@ -3874,6 +3894,96 @@ table.data td.c-text {
   color: var(--ink-3);
 }
 
+/*
+ * ONE LINE of chrome above a sheet.
+ *
+ * The page title, its kind and its four numbers used to be three stacked
+ * blocks — a 21px heading with its subtitle, a stat bar with its own rule, and
+ * a row of note pills — 159px of it, measured, on a page whose entire purpose
+ * is the grid underneath. On a 768px laptop that is a fifth of the window
+ * spent on facts a director reads once, and twenty pupils they cannot see.
+ *
+ * So: name on the left, numbers on the right, one rule under both. Nothing is
+ * removed except the explanation pill nobody needed twice; the heading simply
+ * stops being a poster.
+ */
+.nodebar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  flex: none;
+  gap: var(--s1) var(--s4);
+  margin-bottom: var(--s2);
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--line-soft);
+}
+.nodebar-id {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  min-width: 0;
+}
+.nodebar-title {
+  font-size: var(--t-lead);
+  font-weight: 650;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/*
+ * --ink-2, not --ink-3, which is what the old page subtitle used.
+ *
+ * Measured at 4.42:1 on the light surface — a hair under AA for text this
+ * size, and this line now carries the kind and the code rather than repeating
+ * the title. The weight keeps it subordinate; the contrast no longer has to.
+ */
+.nodebar-kind {
+  color: var(--ink-2);
+  font-size: var(--t-small);
+  font-weight: 450;
+  white-space: nowrap;
+}
+.nodebar-stats {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s4);
+}
+/* The numbers stay legible; they just stop being headlines. */
+.nodebar .statbar-value {
+  font-size: var(--t-body);
+}
+
+/*
+ * The mark screen's selector strip — a card reduced to a rule.
+ *
+ * Four dropdowns inside a card's body is 88px of padding and border for a row
+ * of controls that needs 32; the grid under it is forty names a teacher types
+ * into without looking up.
+ */
+.markbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  margin-bottom: var(--s2);
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--line-soft);
+}
+.markbar.is-form {
+  align-items: flex-end;
+}
+.markbar .field {
+  margin: 0;
+  min-width: 140px;
+}
+.markbar .field.is-narrow {
+  max-width: 110px;
+  min-width: 0;
+}
+
 
 /* ============================================================================
    The timetable — time down, days across.
@@ -3898,6 +4008,31 @@ table.data td.c-text {
 .sheet-count.is-strong {
   color: var(--primary);
   font-weight: 650;
+}
+
+/*
+ * Draft or live — the one fact about a week that is not visible in the week.
+ *
+ * A grid looks identical whether or not anyone else can see it, which is
+ * exactly the sort of state that gets forgotten: the work is done, the school
+ * believes it is done, and the teachers have nothing. So it is stated in the
+ * toolbar, next to the control that changes it.
+ */
+.tt-state {
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+  font-size: var(--t-micro);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.tt-state.is-live {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.tt-state.is-draft {
+  background: var(--warn-soft);
+  color: var(--warn);
 }
 .tt-table {
   width: 100%;

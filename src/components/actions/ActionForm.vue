@@ -32,6 +32,17 @@ const org = useOrgStore();
 
 const values = ref<Record<string, string>>({});
 const options = ref<Record<string, { value: string; label: string }[]>>({});
+/**
+ * The selects are still being filled.
+ *
+ * "Ajouter un devoir" opens with four dropdowns whose contents come from three
+ * chained requests — the years, then the périodes of this classe's cycle, then
+ * the offerings of its niveau — and on a Brazzaville connection that is a
+ * second or more. Until now the form simply rendered empty: identical to
+ * "there are no périodes", which is a real and very different state. An
+ * operator who reads it that way goes off to create one that already exists.
+ */
+const loadingOptions = ref(false);
 const working = ref(false);
 const error = ref<string | null>(null);
 const notice = ref<string | null>(null);
@@ -55,6 +66,16 @@ function resetDefaults() {
  */
 async function loadOptions() {
   const out: Record<string, { value: string; label: string }[]> = {};
+  loadingOptions.value = true;
+  try {
+    await resolveOptions(out);
+  } finally {
+    loadingOptions.value = false;
+  }
+  options.value = { ...options.value, ...out };
+}
+
+async function resolveOptions(out: Record<string, { value: string; label: string }[]>) {
 
   for (const f of props.spec.fields ?? []) {
     if (!f.source) continue;
@@ -109,7 +130,6 @@ async function loadOptions() {
       out[f.key] = [];
     }
   }
-  options.value = { ...options.value, ...out };
 }
 
 watch(
@@ -118,9 +138,18 @@ watch(
     error.value = null;
     notice.value = null;
     resetDefaults();
-    // The ancestor walks above are synchronous over the shared tree, which has
-    // to be there before the scope-bound sources are resolved.
-    await org.load();
+    /*
+     * Raised BEFORE the tree load, not only around the options.
+     *
+     * The first version wrapped `loadOptions` alone, and the harness caught it:
+     * on a slow connection the form still rendered blank for the whole of
+     * `org.load()` — which is the FIRST half of the wait, since the ancestor
+     * walks that find this classe's périodes and offerings cannot start until
+     * the tree is there. Half an indicator is worse than none: it promises a
+     * ready form during the part where it is emptiest.
+     */
+    loadingOptions.value = true;
+    await org.load().catch(() => {});
     await loadOptions();
   },
   { immediate: true },
@@ -134,7 +163,7 @@ watch([() => props.scopeId, () => values.value.academicYearId], () => {
 });
 
 const canSubmit = computed(() => {
-  if (!props.spec.submit || working.value) return false;
+  if (!props.spec.submit || working.value || loadingOptions.value) return false;
   if ((props.spec.scope?.length ?? 0) > 0 && !props.scopeId) return false;
   return (props.spec.fields ?? []).every(
     (f) => !f.required || (values.value[f.key] ?? "").toString().trim().length > 0,
@@ -185,7 +214,14 @@ defineExpose({ submit, canSubmit });
       Aucun paramètre — cette action s'exécute telle quelle.
     </div>
 
-    <div v-else class="field-row">
+    <!-- Named, not a bare spinner: it says which fields are waiting, so an
+         empty dropdown reads as "not yet" rather than as "none exist". -->
+    <div v-else-if="loadingOptions" class="form-loading" role="status">
+      <span class="btn-spin" aria-hidden="true" />
+      Chargement des choix disponibles…
+    </div>
+
+    <div v-if="spec.fields?.length" class="field-row" :class="{ 'is-loading': loadingOptions }">
       <div
         v-for="f in spec.fields"
         :key="f.key"
@@ -200,6 +236,7 @@ defineExpose({ submit, canSubmit });
           v-if="f.type === 'select'"
           :id="`f-${spec.id}-${f.key}`"
           v-model="values[f.key]"
+          :disabled="loadingOptions"
         >
           <option value="">—</option>
           <option
@@ -262,7 +299,7 @@ defineExpose({ submit, canSubmit });
       <slot name="cancel" />
       <button class="btn primary" type="submit" :disabled="!canSubmit">
         <span v-if="working" class="btn-spin" aria-hidden="true" />
-        {{ working ? "Enregistrement…" : spec.label }}
+        {{ working ? "Enregistrement…" : loadingOptions ? "Chargement…" : spec.label }}
       </button>
     </div>
   </form>

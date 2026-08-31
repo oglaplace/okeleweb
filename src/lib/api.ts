@@ -722,13 +722,47 @@ export interface TimetableSlot {
   teacher: string | null;
 }
 
+/**
+ * The week, plus whether anyone outside the office can see it.
+ *
+ * `published` is the state of the WEEK. `isDraft` is about this caller: true
+ * only when they are being shown a week nobody else can see yet, which is what
+ * lets the grid say so instead of looking like a finished timetable.
+ */
+export interface TimetableGrid {
+  classe: { id: string; name: string };
+  published: boolean;
+  publishedAt: string | null;
+  isDraft: boolean;
+  slots: TimetableSlot[];
+}
+
 export const timetable = {
   /** The weekly grid, with everything a cell needs to draw itself. */
   forClasse: (classeId: string, academicYearId: string) =>
-    request<{ classe: { id: string; name: string }; slots: TimetableSlot[] }>(
+    request<TimetableGrid>(
       `/timetable?classeId=${encodeURIComponent(classeId)}` +
         `&academicYearId=${encodeURIComponent(academicYearId)}`,
     ),
+
+  /**
+   * Puts the week on the wall, or takes it back off.
+   *
+   * Until this is called the grid exists only for the people drawing it — see
+   * the API's TimetablePublication. Publishing an empty week is refused there,
+   * not here: a rule the server does not enforce is not a rule.
+   */
+  publish: (classeId: string, academicYearId: string) =>
+    request<{ publishedAt: string }>("/timetable/publish", {
+      method: "POST",
+      body: JSON.stringify({ classeId, academicYearId }),
+    }),
+
+  unpublish: (classeId: string, academicYearId: string) =>
+    request<{ unpublished: number }>("/timetable/unpublish", {
+      method: "POST",
+      body: JSON.stringify({ classeId, academicYearId }),
+    }),
 
   addSlot: (body: {
     classeId: string;

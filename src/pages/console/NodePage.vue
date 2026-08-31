@@ -55,6 +55,11 @@ const subject = ref<api.SubjectSheet | null>(null);
 const periods = ref<api.PeriodSheet | null>(null);
 /** The weekly grid of a CLASSE, and what a builder needs to extend it. */
 const grid = ref<api.TimetableSlot[]>([]);
+/** Whether this week is on the wall or still only ours — see the API. */
+const gridPublished = ref(false);
+const gridPublishedAt = ref<string | null>(null);
+/** True when the API handed us a week nobody else can see — i.e. we may edit it. */
+const gridIsDraft = ref(false);
 const offerings = ref<{ id: string; subject: { id: string; code: string; name: string } }[]>([]);
 const siblings = ref<{ id: string; name: string }[]>([]);
 const teachers = ref<{ id: string; label: string }[]>([]);
@@ -120,6 +125,9 @@ async function loadSheet() {
     // whole week vanish and redraw on any reload of the page — a change of one
     // mark repainting the timetable tab.
     grid.value = g?.slots ?? [];
+    gridPublished.value = g?.published ?? false;
+    gridPublishedAt.value = g?.publishedAt ?? null;
+    gridIsDraft.value = g?.isDraft ?? false;
     await loadBuilderOptions();
     return;
   }
@@ -434,57 +442,61 @@ const totalDue = computed(() =>
         <NodeActionBar :unit="unit" @run="onRun" @structure="(a) => (menuAction = a)" />
       </Teleport>
 
-      <div class="page-head">
-        <div>
-          <h1 class="page-title">{{ unit.name }}</h1>
-          <div class="page-sub">
-            {{ KIND_FR[unit.kind] }} · code {{ unit.code }}
-            <span v-if="unit.validTo"> · fermé</span>
+      <!--
+        ONE LINE: what this node is, and its numbers.
+
+        The heading was 21px with a subtitle under it, then a stat bar with its
+        own rule below that, then a row of note pills — 159px of chrome,
+        measured, above a grid that is the entire reason for the page. On a
+        768px laptop that is twenty pupils nobody can see. Nothing was dropped
+        except an explanation of a button that explains itself; the heading
+        simply stopped being a poster.
+      -->
+      <div class="nodebar">
+        <div class="nodebar-id">
+          <h1 class="nodebar-title">{{ unit.name }}</h1>
+          <span class="nodebar-kind">
+            {{ KIND_FR[unit.kind] }} · {{ unit.code }}
+            <template v-if="unit.validTo"> · fermé</template>
+          </span>
+        </div>
+
+        <div class="nodebar-stats">
+          <div v-if="sheet" class="statbar-item">
+            <span class="statbar-label">Effectif</span>
+            <span class="statbar-value">{{ sheet.rows.length }}</span>
+          </div>
+          <div v-else class="statbar-item">
+            <span class="statbar-label">Contient</span>
+            <span class="statbar-value">{{ children.length }}</span>
+          </div>
+          <div v-if="sheet" class="statbar-item">
+            <span class="statbar-label">Impayés</span>
+            <span class="statbar-value" :class="{ 'is-warn': totalDue > 0 }">
+              {{ moneyFmt(totalDue) }} XAF
+            </span>
+          </div>
+          <div v-if="unit.capacity" class="statbar-item">
+            <span class="statbar-label">Capacité</span>
+            <span class="statbar-value">
+              {{ unit.capacity }}
+              <span v-if="sheet" class="statbar-note">
+                · {{ unit.capacity - sheet.rows.length }} libre(s)
+              </span>
+            </span>
+          </div>
+          <div v-if="!sheet && staff.length" class="statbar-item">
+            <span class="statbar-label">Personnel</span>
+            <span class="statbar-value">{{ staff.length }}</span>
+          </div>
+          <div class="statbar-item">
+            <span class="statbar-label">État</span>
+            <span class="statbar-value">{{ unit.validTo ? "Fermé" : "Actif" }}</span>
           </div>
         </div>
       </div>
 
       <div v-if="notice" class="form-ok">{{ notice }}</div>
-
-      <!--
-        Four cards became one strip.
-        Each card was 100px of chrome for one number, and the sheet under them
-        is what the page is for — every pixel spent above it is a row nobody
-        can see. The numbers are unchanged; the frame around them is gone.
-      -->
-      <div class="statbar">
-        <div v-if="sheet" class="statbar-item">
-          <span class="statbar-label">Effectif</span>
-          <span class="statbar-value">{{ sheet.rows.length }}</span>
-        </div>
-        <div v-else class="statbar-item">
-          <span class="statbar-label">Contient</span>
-          <span class="statbar-value">{{ children.length }}</span>
-        </div>
-        <div v-if="sheet" class="statbar-item">
-          <span class="statbar-label">Impayés</span>
-          <span class="statbar-value" :class="{ 'is-warn': totalDue > 0 }">
-            {{ moneyFmt(totalDue) }} XAF
-          </span>
-        </div>
-        <div v-if="unit.capacity" class="statbar-item">
-          <span class="statbar-label">Capacité</span>
-          <span class="statbar-value">
-            {{ unit.capacity }}
-            <span v-if="sheet" class="statbar-note">
-              · {{ unit.capacity - sheet.rows.length }} libre(s)
-            </span>
-          </span>
-        </div>
-        <div v-if="!sheet && staff.length" class="statbar-item">
-          <span class="statbar-label">Personnel</span>
-          <span class="statbar-value">{{ staff.length }}</span>
-        </div>
-        <div class="statbar-item">
-          <span class="statbar-label">État</span>
-          <span class="statbar-value">{{ unit.validTo ? "Fermé" : "Actif" }}</span>
-        </div>
-      </div>
 
       <!--
         A drill-down says what it is and how to leave.
@@ -521,16 +533,6 @@ const totalDue = computed(() =>
         {{ activeTab.empty }}
       </div>
 
-      <!-- Said once, above the grid: a column per evaluation, and where the
-           button that adds one is. The affordance is discoverable on its own —
-           this is what makes it obvious rather than merely findable. -->
-      <div v-if="sheet && tab === 'grades' && activeTab?.groups" class="sheet-notes">
-        <span class="sheet-note">
-          Une colonne par évaluation. Le <strong>＋</strong> dans l'en-tête d'une
-          matière en ajoute une à cette matière.
-        </span>
-      </div>
-
       <!--
         The week is not a row sheet. Time down, days across, and an empty cell
         that IS the button — see TimetableGrid. It shares the tab strip because
@@ -542,7 +544,21 @@ const totalDue = computed(() =>
         thing worth saying up front is when there is nothing to place.
       -->
       <template v-if="activeTab?.id === 'timetable' && unit.kind === 'CLASSE' && yearId">
-        <div v-if="!offerings.length" class="sheet-notes">
+        <!--
+          A week we were not given rather than a week that is empty.
+          The API sends no slots at all to a caller who cannot draw the grid
+          until someone publishes it — see TimetablePublication — and an empty
+          grid with no explanation reads as "this class has no lessons", which
+          is a different and much more alarming statement.
+        -->
+        <div v-if="!gridPublished && !gridIsDraft" class="sheet-notes">
+          <span class="sheet-note">
+            Emploi du temps non publié — il n'est visible que par les personnes
+            qui le préparent.
+          </span>
+        </div>
+
+        <div v-else-if="!offerings.length" class="sheet-notes">
           <span class="sheet-note">
             Aucune matière programmée sur
             {{ org.byId(unit.parentId)?.name ?? "ce niveau" }} — un créneau porte une
@@ -569,7 +585,19 @@ const totalDue = computed(() =>
           :offerings="offerings"
           :staff="teachers"
           :siblings="siblings"
+          :published="gridPublished"
+          :published-at="gridPublishedAt"
+          :readonly="!gridPublished && !gridIsDraft"
           @changed="(slots) => (grid = slots)"
+          @published="
+            (v) => {
+              gridPublished = v;
+              gridPublishedAt = v ? new Date().toISOString() : null;
+              notice = v
+                ? 'Emploi du temps publié — enseignants et familles le voient.'
+                : 'Emploi du temps retiré — il redevient un brouillon.';
+            }
+          "
         />
 
         <SheetTabs v-model="tab" :tabs="tabs">
