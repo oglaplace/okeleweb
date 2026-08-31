@@ -52,6 +52,14 @@ const router = createRouter({
         { path: "classes/:id", name: "classe", component: () => import("../pages/console/ClassePage.vue") },
         { path: "classes/:id/notes", name: "marks", component: () => import("../pages/console/MarkEntryPage.vue") },
         { path: "classes/:id/bulletins", name: "bulletins", component: () => import("../pages/console/BulletinsPage.vue") },
+        /**
+         * ONE PUPIL'S BULLETIN — reached by clicking their row in the sheet.
+         *
+         * A route rather than a dialog: this is a document, it gets printed and
+         * sent, and a parent who asks for "the link to my child's bulletin"
+         * should get one.
+         */
+        { path: "eleve/:id/bulletin", name: "bulletin", component: () => import("../pages/console/BulletinPage.vue") },
       ],
     },
 

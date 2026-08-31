@@ -3606,6 +3606,78 @@ table.data td.c-text {
   outline: 2px solid var(--primary);
   outline-offset: 1px;
 }
+
+/*
+ * A cell you type in, that still reads as a cell.
+ *
+ * Every editable cell is a real input all the time — not click-to-edit. A
+ * teacher with forty marks on paper types forty numbers without touching the
+ * mouse, and a grid that wants a click before each one is a grid they will
+ * keep out of. So the input is invisible until it is yours: no border, no
+ * background, the sheet's own alignment, and a ring the moment it has focus.
+ */
+.sheet-cell {
+  width: 100%;
+  min-height: 0;
+  height: 19px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.sheet-cell::placeholder {
+  color: var(--ink-3);
+}
+.sheet-cell:hover {
+  background: var(--surface-2);
+  box-shadow: 0 0 0 1px var(--line);
+  border-radius: 2px;
+}
+.sheet-cell:focus {
+  outline: none;
+  background: var(--surface);
+  box-shadow: 0 0 0 2px var(--primary);
+  border-radius: 2px;
+}
+/* A typeable column announces itself before anyone clicks in it. */
+.sheet-table td:has(.sheet-cell) {
+  background: color-mix(in srgb, var(--primary-soft) 22%, var(--surface));
+}
+.sheet-table tbody tr:nth-child(even) td:has(.sheet-cell) {
+  background: color-mix(in srgb, var(--primary-soft) 32%, var(--surface));
+}
+
+/* The control that belongs to a COLUMN — see SheetColumn.headerButton. */
+.sheet-colbtn {
+  margin-left: 5px;
+  padding: 0 4px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: var(--t-micro);
+  line-height: 1;
+  cursor: pointer;
+}
+.sheet-colbtn:hover {
+  background: var(--surface);
+  color: var(--primary);
+}
+
+/* Where the typing got to. Nobody presses save; this is the receipt. */
+.marksave {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: center;
+  color: var(--ink-2);
+  font-size: var(--t-micro);
+  white-space: nowrap;
+}
 .sheet-group {
   border-left: 2px solid var(--line);
 }
@@ -4295,4 +4367,289 @@ table.data td.c-text {
 .unitpick-path {
   color: var(--ink-3);
   font-size: var(--t-micro);
+}
+
+
+/* ============================================================================
+   The bulletin — a document, not a screen.
+   ============================================================================
+   Every other view here is a tool used by someone trained on it. This one is
+   printed, signed and handed to a family, and read by people who have never
+   seen the software. So it is laid out as the paper it becomes: a sheet with
+   margins, the établissement above the pupil, one ruled line per subject, and
+   the three numbers everyone actually reads given room to be read.
+
+   Restraint is the design. No cards, no accent panels, one rule weight, one
+   typeface — because a bulletin that looks like a dashboard looks unofficial,
+   and an unofficial-looking bulletin gets questioned at the school gate. */
+.bulletin-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: var(--s3);
+}
+.bulletin-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex: none;
+}
+
+.bulletin {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: var(--s6, 32px) var(--s6, 32px) var(--s5);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+}
+
+/* ── header ── */
+.bulletin-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--s4);
+  padding-bottom: var(--s3);
+  border-bottom: 2px solid var(--ink);
+}
+.bulletin-complex {
+  font-weight: 700;
+  font-size: var(--t-lead);
+  letter-spacing: 0.01em;
+}
+.bulletin-school,
+.bulletin-dept {
+  color: var(--ink-2);
+  font-size: var(--t-small);
+}
+.bulletin-title {
+  text-align: right;
+}
+.bulletin-title h1 {
+  font-size: var(--t-h2);
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+.bulletin-period {
+  color: var(--ink-2);
+  font-size: var(--t-small);
+}
+.bulletin-issued {
+  color: var(--ink-3);
+  font-size: var(--t-micro);
+  margin-top: 2px;
+}
+/*
+ * PROVISOIRE, said where it cannot be missed.
+ *
+ * The same numbers the council will argue over are worth showing during the
+ * week they are being argued over. A provisional bulletin that does not say so
+ * is a document a parent keeps and quotes back.
+ */
+.bulletin-stamp {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 10px;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius-pill);
+  color: var(--warn);
+  font-size: var(--t-micro);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ── identity ── */
+.bulletin-id {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--s2) var(--s4);
+  padding: var(--s3) 0;
+  border-bottom: 1px solid var(--line);
+}
+.bulletin-id > div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.bulletin-id span {
+  color: var(--ink-3);
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.bulletin-id strong {
+  font-weight: 600;
+  font-size: var(--t-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── the marks ── */
+.bulletin-marks {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: var(--s3);
+  font-size: var(--t-small);
+  font-variant-numeric: tabular-nums;
+}
+.bulletin-marks th,
+.bulletin-marks td {
+  padding: 6px 8px;
+  text-align: right;
+  border-bottom: 1px solid var(--line-soft);
+}
+.bulletin-marks th {
+  color: var(--ink-3);
+  font-size: var(--t-micro);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--line);
+}
+.bulletin-marks .c-subject {
+  text-align: left;
+  width: 34%;
+}
+.bulletin-marks th:not(.c-subject) {
+  white-space: nowrap;
+}
+.bulletin-marks tfoot td {
+  border-top: 1px solid var(--ink);
+  border-bottom: none;
+  font-weight: 700;
+}
+/* Below the pass threshold — the line a conseil stops on. */
+.bulletin-marks .is-weak {
+  color: var(--danger);
+  font-weight: 650;
+}
+.bulletin-marks tr.is-eliminated .c-subject {
+  text-decoration: underline wavy var(--danger);
+}
+.bulletin-flag {
+  margin-left: 4px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--ink-3);
+  font-size: var(--t-micro);
+}
+
+/* ── the result ── */
+.bulletin-result {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--s3);
+  margin-top: var(--s4);
+  padding: var(--s3) 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.bulletin-figure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.bulletin-figure span {
+  color: var(--ink-3);
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.bulletin-figure strong {
+  font-size: var(--t-lead);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.bulletin-figure small {
+  color: var(--ink-3);
+  font-size: var(--t-small);
+  font-weight: 450;
+}
+/* The moyenne is the number the whole page exists for. */
+.bulletin-figure.is-lead strong {
+  font-size: 30px;
+  line-height: 1.1;
+}
+
+/* ── words and signatures ── */
+.bulletin-words {
+  display: grid;
+  gap: var(--s3);
+  margin-top: var(--s3);
+}
+.bulletin-words span {
+  color: var(--ink-3);
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.bulletin-words p {
+  margin-top: 2px;
+  font-size: var(--t-body);
+}
+.bulletin-sign {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--s4);
+  margin-top: var(--s6, 32px);
+}
+.bulletin-sign div {
+  padding-top: 44px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-3);
+  font-size: var(--t-micro);
+  text-align: center;
+}
+
+/*
+ * PAPER.
+ *
+ * The console's chrome — rail, topbar, toolbar, the page's own buttons — is
+ * not part of the document, and a bulletin printed with a navigation sidebar
+ * down the left is not one a school will hand over. Black on white regardless
+ * of the screen theme: printing a dark-mode page wastes a cartridge and comes
+ * out unreadable.
+ */
+@media print {
+  .side,
+  .topbar,
+  #node-toolbar,
+  .bulletin-bar,
+  .busy-bar {
+    display: none !important;
+  }
+  .console,
+  .work,
+  .content {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+  .bulletin {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: #fff;
+    color: #000;
+  }
+  .bulletin-marks th,
+  .bulletin-marks td,
+  .bulletin-id,
+  .bulletin-result,
+  .bulletin-sign div {
+    border-color: #999 !important;
+  }
+  .bulletin-head {
+    border-bottom-color: #000 !important;
+  }
+  @page {
+    margin: 14mm;
+  }
 }

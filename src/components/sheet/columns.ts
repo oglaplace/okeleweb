@@ -15,6 +15,21 @@ export interface SheetColumn {
   key: string;
   label: string;
   /**
+   * The cell is typed into, not read.
+   *
+   * Marks are entered IN the sheet, the way a timetable is drawn in the grid —
+   * the alternative was a separate screen, four dropdowns deep, that a teacher
+   * reaches once per column. `max` is the barème, which is also what the
+   * header shows, so the number typed is the number on the paper.
+   */
+  edit?: { assessmentId: string; max: number };
+  /**
+   * A button in the column's own header — for what belongs to the COLUMN
+   * rather than to any row: editing the evaluation it stands for, or removing
+   * it. See DataSheet, which renders it beside the label.
+   */
+  headerButton?: { key: string; label: string; hint?: string };
+  /**
    * Turns the cell into a control.
    *
    * `when: "empty"` offers it only where there is nothing — a column of
@@ -77,8 +92,8 @@ export const IDENTITY: SheetColumn[] = [
 
 export function studentTabs(
   sheet: api.StudentSheet,
-  /** Which période the Notes tab is showing. */
-  focus: { periodId: string | null } = { periodId: null },
+  /** Which période the Notes tab is showing, and whether marks may be typed. */
+  focus: { periodId: string | null; editable?: boolean } = { periodId: null },
 ): SheetTab[] {
   const tabs: SheetTab[] = [
     {
@@ -160,10 +175,34 @@ export function studentTabs(
           columns: [
             ...evaluations.map((a) => ({
               key: `e:${a.id}`,
-              label: a.label,
+              /*
+               * The barème is IN the label, because the cell is now typed into.
+               * A column headed "Devoir" over a paper marked out of 10 invites
+               * a 16, and the cell has no way to argue.
+               */
+              label: a.max === 20 ? a.label : `${a.label} /${a.max}`,
               type: "grade" as const,
-              width: 8,
-              hint: `${subject.name} — ${a.label}, barème ${a.max}, ramené sur 20`,
+              width: Math.max(8, Math.min(14, a.label.length + 3)),
+              hint:
+                `${subject.name} — ${a.label}, barème ${a.max}` +
+                (a.published
+                  ? " · publiée"
+                  : a.submitted
+                    ? " · remise, en attente du conseil"
+                    : " · saisie ouverte"),
+              // Typeable only while it is the teacher's working copy.
+              ...(focus.editable && !a.submitted && !a.published
+                ? { edit: { assessmentId: a.id, max: a.max } }
+                : {}),
+              headerButton: {
+                key: `assessment:${a.id}`,
+                label: a.published ? "🔒" : a.submitted ? "✓" : "⋯",
+                hint: a.published
+                  ? "Publiée — figée par le conseil"
+                  : a.submitted
+                    ? "Remise — cliquer pour rouvrir ou consulter"
+                    : "Modifier, remettre ou supprimer cette évaluation",
+              },
             })),
             {
               key: `g:${period.id}:${subject.id}`,

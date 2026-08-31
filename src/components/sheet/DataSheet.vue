@@ -33,6 +33,16 @@ const emit = defineEmits<{
   act: [{ row: Record<string, unknown>; column: SheetColumn }];
   /** A button in a group's header was used — see SheetGroup.action. */
   groupAct: [key: string];
+  /** A button in a column's header was used — see SheetColumn.headerButton. */
+  headerAct: [key: string];
+  /**
+   * A cell was typed into. Raw text, parsed by the owner.
+   *
+   * Raw because the sheet has no idea what "abs" means or which barème
+   * applies; it knows how to be a grid. The page that assembled the columns
+   * knows what a mark is.
+   */
+  edit: [{ rowKey: string; column: SheetColumn; raw: string }];
 }>();
 
 /** A column plus what the renderer needs to know about its neighbours. */
@@ -204,6 +214,72 @@ function warns(value: unknown, column: Col): boolean {
   return column.warnAbove !== undefined && typeof value === "number" && value >= column.warnAbove;
 }
 
+// ── typing into the grid ─────────────────────────────────────────────────────
+/**
+ * Marks are entered HERE, in the sheet, the way a timetable is drawn in its
+ * grid rather than through a form describing one.
+ *
+ * Every editable cell is a real input all the time — not click-to-edit. A
+ * teacher with forty marks on a piece of paper types forty numbers and never
+ * touches the mouse, and a grid that needs a click before each one is a grid
+ * they will keep out of. The inputs are styled as cells, so it still reads as
+ * a sheet until you are in one.
+ *
+ * Enter and ↓ move down the column, ↑ moves up, and Tab crosses to the next
+ * column because DOM order already does that. Down-the-column is the important
+ * one: it is the direction a mark list is read from.
+ */
+const editKey = (rowKey: string, column: Col) => `${rowKey}|${column.key}`;
+/** In-flight text, so a half-typed "1" is not read as the mark 1. */
+const drafts = ref<Map<string, string>>(new Map());
+
+function cellText(row: Record<string, unknown>, column: Col): string {
+  const draft = drafts.value.get(editKey(String(row[props.rowKey]), column));
+  if (draft !== undefined) return draft;
+  const value = row[column.key];
+  if (value === null || value === undefined) return "";
+  return String(value);
+}
+
+function onInput(row: Record<string, unknown>, column: Col, event: Event) {
+  const raw = (event.target as HTMLInputElement).value;
+  const next = new Map(drafts.value);
+  next.set(editKey(String(row[props.rowKey]), column), raw);
+  drafts.value = next;
+  emit("edit", { rowKey: String(row[props.rowKey]), column, raw });
+}
+
+/** Once the value has come back through the rows, the draft is noise. */
+watch(
+  () => props.rows,
+  () => {
+    if (drafts.value.size) drafts.value = new Map();
+  },
+);
+
+function moveFocus(from: HTMLInputElement, delta: number) {
+  const inputs = [...(table.value?.querySelectorAll<HTMLInputElement>("input.sheet-cell") ?? [])];
+  const columnInputs = inputs.filter((el) => el.dataset.col === from.dataset.col);
+  const index = columnInputs.indexOf(from);
+  const next = columnInputs[index + delta];
+  if (!next) return;
+  next.focus();
+  next.select();
+}
+
+function onCellKey(event: KeyboardEvent) {
+  const el = event.target as HTMLInputElement;
+  if (event.key === "Enter" || event.key === "ArrowDown") {
+    event.preventDefault();
+    moveFocus(el, 1);
+  } else if (event.key === "ArrowUp") {
+    event.preventDefault();
+    moveFocus(el, -1);
+  } else if (event.key === "Escape") {
+    el.blur();
+  }
+}
+
 // ── fill the height ──────────────────────────────────────────────────────────
 /**
  * Blank rows to the bottom of the pane.
@@ -360,6 +436,14 @@ defineExpose({ exportCsv });
               <span v-if="sort?.key === column.key" class="sheet-caret" aria-hidden="true">
                 {{ sort.dir === 1 ? "▲" : "▼" }}
               </span>
+              <!-- What belongs to the column rather than to a row. -->
+              <button
+                v-if="column.headerButton"
+                class="sheet-colbtn"
+                type="button"
+                :title="column.headerButton.hint ?? column.headerButton.label"
+                @click.stop="emit('headerAct', column.headerButton.key)"
+              >{{ column.headerButton.label }}</button>
             </th>
             <th class="sheet-fill" />
           </tr>
@@ -387,10 +471,26 @@ defineExpose({ exportCsv });
               }"
               :style="{ left: frozenLeft(i) }"
             >
+              <!-- A cell that is typed into. -->
+              <input
+                v-if="column.edit"
+                class="sheet-cell"
+                type="text"
+                inputmode="decimal"
+                autocomplete="off"
+                :data-col="column.key"
+                :value="cellText(row, column)"
+                :aria-label="`${column.label} — ${row.lastName} ${row.firstName}`"
+                @input="onInput(row, column, $event)"
+                @keydown="onCellKey"
+                @focus="($event.target as HTMLInputElement).select()"
+                @click.stop
+              />
+
               <!-- A cell that offers to fill itself, where the column asked
                    for it and the value is missing. -->
               <button
-                v-if="
+                v-else-if="
                   column.action &&
                   (column.action.when === 'always' ||
                     row[column.key] === null ||

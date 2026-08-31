@@ -564,7 +564,26 @@ export interface SheetPeriod {
   sequence: number;
   kind: string;
   /** The evaluations set in this période — one column each. */
-  assessments: { id: string; subjectId: string; label: string; max: number }[];
+  assessments: SheetAssessment[];
+  /** A locked période is read-only everywhere, the sheet included. */
+  locked: boolean;
+}
+
+/**
+ * One evaluation, and where it stands.
+ *
+ * open → submitted → published, and the column is typeable only in the first
+ * state. See the API's marks.service: publication is not a button, it is what
+ * issuing the bulletins does.
+ */
+export interface SheetAssessment {
+  id: string;
+  subjectId: string;
+  courseOfferingId: string;
+  label: string;
+  max: number;
+  submitted: boolean;
+  published: boolean;
 }
 export interface SheetSubject { id: string; code: string; name: string; offeringId: string }
 
@@ -1021,6 +1040,72 @@ export interface MarkEntry {
   isExcused?: boolean;
 }
 
+/**
+ * A bulletin, issued or provisional.
+ *
+ * Same shape either way, and `status` is the difference: PROVISIONAL is the
+ * council's own preview, computed live, and the page says so rather than
+ * presenting it as a document.
+ */
+export interface Bulletin {
+  status: "ISSUED" | "DRAFT" | "PROVISIONAL";
+  version: number | null;
+  issuedAt: string | null;
+  establishment: {
+    complex: string | null;
+    school: string | null;
+    department: string | null;
+    niveau: string | null;
+    classe: string | null;
+    classeId: string;
+  };
+  student: {
+    id: string;
+    matricule: string;
+    firstName: string;
+    lastName: string;
+    birthDate: string | null;
+    birthPlace: string | null;
+    gender: string | null;
+    serie: string | null;
+    isRepeating: boolean;
+  };
+  year: { id: string; label: string };
+  period: {
+    id: string;
+    label: string;
+    kind: string;
+    startsOn: string;
+    endsOn: string;
+    locked: boolean;
+  };
+  /** Every période of the year, so the reader can move between them. */
+  calendar: { id: string; label: string; sequence: number }[];
+  gradingSystem: { name: string; scaleMax: string; passThreshold: string };
+  lines: {
+    subjectCode: string;
+    subjectName: string;
+    coefficient: string;
+    score: string | null;
+    classAvg: string | null;
+    rank: number | null;
+    isCompensated: boolean;
+    isEliminated: boolean;
+    appreciation: string | null;
+  }[];
+  average: string | null;
+  rank: number | null;
+  rankOf: number | null;
+  classAvg: string | null;
+  classMin: string | null;
+  classMax: string | null;
+  mention: string | null;
+  absenceHours: string | null;
+  lateCount: number | null;
+  appreciation: string | null;
+  decision: { kind: string; computedKind: string | null; note: string | null; decidedOn: string | null } | null;
+}
+
 export const grading = {
   /** Conseil de classe preview — computes, writes nothing. */
   preview: (classeId: string, periodId: string) =>
@@ -1060,6 +1145,54 @@ export const grading = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  /** Changes an evaluation that is still open. Omitted fields are left alone. */
+  updateAssessment: (
+    id: string,
+    patch: {
+      title?: string | null;
+      assessmentTypeId?: string;
+      weight?: number | null;
+      maxScore?: number;
+    },
+  ) =>
+    request<Assessment>(`/grading/assessments/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+
+  /**
+   * Removes it. `withMarks` is the caller saying what it destroys.
+   *
+   * A POST rather than a DELETE, like the timetable's: the browser reported a
+   * bare DELETE as unreachable, and this one carries a body anyway.
+   */
+  deleteAssessment: (id: string, withMarks = false) =>
+    request<{ deleted: boolean; marks: number }>(
+      `/grading/assessments/${encodeURIComponent(id)}/delete`,
+      { method: "POST", body: JSON.stringify({ withMarks }) },
+    ),
+
+  /** The teacher declares the column finished — refused while anyone is missing. */
+  submitAssessment: (id: string) =>
+    request<Assessment>(`/grading/assessments/${encodeURIComponent(id)}/submit`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+
+  /** Hands it back to the teacher. Takes grading.issue, not grading.write. */
+  reopenAssessment: (id: string) =>
+    request<Assessment>(`/grading/assessments/${encodeURIComponent(id)}/reopen`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+
+  /** One pupil's bulletin — the frozen one if it exists, else the council's. */
+  bulletin: (studentId: string, periodId?: string | null) =>
+    request<Bulletin>(
+      `/grading/bulletin?studentId=${encodeURIComponent(studentId)}` +
+        (periodId ? `&periodId=${encodeURIComponent(periodId)}` : ""),
+    ),
+
   marks: (assessmentId: string, classeId: string) =>
     request<MarkGrid>(
       `/grading/marks?assessmentId=${encodeURIComponent(assessmentId)}` +

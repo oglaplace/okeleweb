@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import * as api from "../../lib/api";
 import { byId, type ActionSpec } from "../../lib/actions";
 import { KIND_FR } from "../../components/structure/kinds";
+import { useBusyStore } from "../../stores/busy";
 import { useOrgStore } from "../../stores/org";
 import ActionDialog from "../../components/actions/ActionDialog.vue";
 import NodeActionBar from "../../components/console/NodeActionBar.vue";
@@ -41,6 +42,7 @@ import TimetableGrid from "../../components/sheet/TimetableGrid.vue";
 const route = useRoute();
 const router = useRouter();
 const org = useOrgStore();
+const busy = useBusyStore();
 const id = computed(() => route.params.id as string);
 
 const unit = ref<api.OrgUnit | null>(null);
@@ -316,7 +318,10 @@ watch(sheet, (s) => {
 const tabs = computed<SheetTab[]>(() => {
   // A classe: its pupils under four column sets, plus its week.
   if (sheet.value) {
-    return [...studentTabs(sheet.value, { periodId: periodId.value }), TIMETABLE_TAB];
+    return [
+      ...studentTabs(sheet.value, { periodId: periodId.value, editable: canEnterMarks.value }),
+      TIMETABLE_TAB,
+    ];
   }
 
   // A subject opened from the programme replaces the tab strip with its own:
@@ -350,8 +355,32 @@ const sheetRows = computed<Record<string, unknown>[]>(() => {
   if (tab.value === "programme" || tab.value === "coefficients") {
     return (programme.value?.rows ?? []) as unknown as Record<string, unknown>[];
   }
-  if (sheet.value) return sheet.value.rows.map(flattenStudentRow);
+  if (sheet.value) {
+    const rows = sheet.value.rows.map(flattenStudentRow);
+    if (!markOverrides.value.size) return rows;
+    // What was typed wins over what was loaded, until the reload catches up.
+    return rows.map((row) => {
+      const out = { ...row };
+      for (const [key, value] of markOverrides.value) {
+        const [column, studentId] = key.split("|");
+        if (studentId === row.studentId && column) out[column] = value;
+      }
+      return out;
+    });
+  }
   return staff.value as unknown as Record<string, unknown>[];
+});
+
+/**
+ * Whether this période can still be typed into at all.
+ *
+ * A locked période is the council's, not the teacher's — see the API, which
+ * refuses the write regardless. Deciding it here as well is what stops the
+ * grid from offering forty inputs that would each fail.
+ */
+const canEnterMarks = computed(() => {
+  const period = sheet.value?.periods.find((p) => p.id === periodId.value);
+  return !!period && !period.locked;
 });
 
 const activeTab = computed(
@@ -369,10 +398,67 @@ const rowKey = computed(() =>
 );
 
 
-/** A child row is a destination; a pupil row is not (yet). */
+/**
+ * A row is a destination.
+ *
+ * A child unit opens its own page; a PUPIL opens their bulletin, which is the
+ * document every other column on this sheet is an ingredient of. Clicking a
+ * name and being told nothing was the gap — a teacher looking at 8.50 in maths
+ * wants the rest of the picture, and the rest of the picture is a bulletin.
+ */
 function onPick(row: Record<string, unknown>) {
-  if (tab.value !== "children") return;
-  void router.push({ name: "unit", params: { id: String(row.id) } });
+  if (tab.value === "children") {
+    void router.push({ name: "unit", params: { id: String(row.id) } });
+    return;
+  }
+  if (!sheet.value || !row.studentId) return;
+  void flushMarks();
+  void router.push({
+    name: "bulletin",
+    params: { id: String(row.studentId) },
+    query: {
+      ...(periodId.value ? { period: periodId.value } : {}),
+      from: unit.value?.id ?? "",
+    },
+  });
+}
+
+/**
+ * A button in an evaluation's own column header.
+ *
+ * Everything that belongs to the evaluation rather than to a pupil: rename it,
+ * change its barème, hand it over, take it back, remove it.
+ */
+function onHeaderAct(key: string) {
+  const [kind, id] = key.split(":");
+  if (kind !== "assessment" || !id) return;
+  const period = sheet.value?.periods.find((p) => p.id === periodId.value);
+  const found = period?.assessments.find((a) => a.id === id);
+  if (!found) return;
+  void flushMarks();
+  editing.value = { ...found, title: found.label, maxScore: found.max };
+}
+
+/** The evaluation whose editor is open, if any. */
+const editing = ref<(api.SheetAssessment & { title: string; maxScore: number }) | null>(null);
+const editingBusy = ref(false);
+const confirmDelete = ref(false);
+
+async function runOnAssessment(work: () => Promise<unknown>, done: string) {
+  if (!editing.value) return;
+  editingBusy.value = true;
+  markError.value = null;
+  try {
+    await busy.run(work);
+    editing.value = null;
+    confirmDelete.value = false;
+    notice.value = done;
+    await loadSheet();
+  } catch (e) {
+    markError.value = e instanceof api.ApiError ? e.message : "Opération impossible.";
+  } finally {
+    editingBusy.value = false;
+  }
 }
 
 /**
@@ -408,6 +494,106 @@ function onAct(payload: { row: Record<string, unknown>; column: SheetColumn }) {
     runSpec.value = spec;
   }
 }
+
+// ── typing marks into the sheet ─────────────────────────────────────────────
+/**
+ * Marks are entered in the grid, and saved without being asked to.
+ *
+ * The model is the timetable's: the artefact on screen IS the editor. A
+ * teacher with a paper mark list types down a column and never reaches for a
+ * button; the writes are batched per evaluation and go out shortly after the
+ * typing stops, and the strip at the foot says where they got to.
+ *
+ * Overrides are held here rather than pushed into `sheet` so a failed save
+ * cannot leave the grid showing a mark the server refused.
+ */
+const markOverrides = ref<Map<string, number | "abs" | null>>(new Map());
+/** assessmentId → studentId → what to write. */
+const pending = new Map<string, Map<string, api.MarkEntry>>();
+const markState = ref<"idle" | "dirty" | "saving" | "saved">("idle");
+const markSavedAt = ref<string | null>(null);
+const markError = ref<string | null>(null);
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * What the operator typed, as a mark.
+ *
+ * "a" is absent, and that matters more than it looks: absence is not zero, and
+ * a teacher who has to leave the keyboard to tick a box will type 0 instead.
+ * Returns null for text that is not yet a mark — a lone "-" mid-typing — so
+ * nothing is written until it means something.
+ */
+function parseMark(raw: string): { entry: Omit<api.MarkEntry, "studentId">; shown: number | "abs" | null } | null {
+  const text = raw.trim().toLowerCase().replace(",", ".");
+  if (text === "") return { entry: { score: null, isAbsent: false }, shown: null };
+  if (["a", "ab", "abs", "absent"].includes(text)) {
+    return { entry: { score: null, isAbsent: true }, shown: "abs" };
+  }
+  const value = Number(text);
+  if (!Number.isFinite(value) || value < 0) return null;
+  return { entry: { score: value, isAbsent: false }, shown: value };
+}
+
+function onEdit(payload: { rowKey: string; column: SheetColumn; raw: string }) {
+  const { rowKey, column, raw } = payload;
+  if (!column.edit) return;
+  const parsed = parseMark(raw);
+  if (!parsed) return;
+
+  // The barème is refused server-side too; catching it here means the teacher
+  // is told at the cell rather than after the column has been sent.
+  if (typeof parsed.shown === "number" && parsed.shown > column.edit.max) {
+    markError.value = `${parsed.shown} dépasse le barème de ${column.edit.max}.`;
+    return;
+  }
+  markError.value = null;
+
+  markOverrides.value = new Map(markOverrides.value).set(`${column.key}|${rowKey}`, parsed.shown);
+
+  const byStudent = pending.get(column.edit.assessmentId) ?? new Map<string, api.MarkEntry>();
+  byStudent.set(rowKey, { studentId: rowKey, ...parsed.entry });
+  pending.set(column.edit.assessmentId, byStudent);
+
+  markState.value = "dirty";
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => void flushMarks(), 700);
+}
+
+/** Sends everything typed since the last flush, one call per evaluation. */
+async function flushMarks() {
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+  if (!pending.size) return;
+
+  const batch: { assessmentId: string; entries: api.MarkEntry[] }[] = [...pending.entries()].map(
+    ([assessmentId, rows]) => ({ assessmentId, entries: [...rows.values()] }),
+  );
+  pending.clear();
+  markState.value = "saving";
+  try {
+    for (const { assessmentId, entries } of batch) {
+      await api.grading.saveMarks(assessmentId, entries);
+    }
+    markState.value = "saved";
+    markSavedAt.value = new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    // Quietly re-read so the subject averages catch up. Rows keep their keys,
+    // so this repaints cells and nothing else.
+    const u = unit.value;
+    if (u && yearId.value) {
+      const fresh = await api.sheets.classe(u.id, yearId.value).catch(() => null);
+      if (fresh) {
+        sheet.value = fresh;
+        markOverrides.value = new Map();
+      }
+    }
+  } catch (e) {
+    markState.value = "dirty";
+    markError.value = e instanceof api.ApiError ? e.message : "Enregistrement impossible.";
+  }
+}
+
+/** Leaving with marks in flight would lose them. */
+onBeforeUnmount(() => void flushMarks());
+watch(tab, () => void flushMarks());
 
 /** Values the coefficient dialog opens with — see onAct. */
 const coefficientPrefill = ref<Record<string, string>>({});
@@ -497,6 +683,7 @@ const totalDue = computed(() =>
       </div>
 
       <div v-if="notice" class="form-ok">{{ notice }}</div>
+      <div v-if="markError" class="form-error">{{ markError }}</div>
 
       <!--
         A drill-down says what it is and how to leave.
@@ -617,11 +804,13 @@ const totalDue = computed(() =>
           :tab="activeTab"
           :rows="sheetRows"
           :row-key="rowKey"
-          :clickable="tab === 'children'"
+          :clickable="tab === 'children' || (!!sheet && tab !== 'timetable')"
           :title="subject ? `${unit.name} — ${subject.subject.code}` : unit.name"
           @pick="onPick"
           @act="onAct"
           @group-act="onGroupAct"
+          @header-act="onHeaderAct"
+          @edit="onEdit"
         />
 
         <SheetTabs v-model="tab" :tabs="tabs">
@@ -637,6 +826,20 @@ const totalDue = computed(() =>
                 <option v-for="p in sheet.periods" :key="p.id" :value="p.id">{{ p.label }}</option>
               </select>
             </label>
+            <!--
+              Where the typing got to. Nobody presses save: the writes go out
+              shortly after the keystrokes stop, and this is the receipt.
+            -->
+            <span v-if="sheet && tab === 'grades' && markState !== 'idle'" class="marksave">
+              <span v-if="markState === 'saving'" class="btn-spin" aria-hidden="true" />
+              {{
+                markState === "saving"
+                  ? "Enregistrement…"
+                  : markState === "dirty"
+                    ? "Modifications non enregistrées"
+                    : `Enregistré à ${markSavedAt}`
+              }}
+            </span>
             <button
               v-if="sheet && tab === 'grades' && periodId"
               class="btn sm"
@@ -697,6 +900,121 @@ const totalDue = computed(() =>
         @close="((runSpec = null), (coefficientPrefill = {}), (assessmentPrefill = {}))"
         @done="onRunDone"
       />
+
+      <!--
+        One evaluation: its name, its barème, and where it stands.
+
+        Opened from the column's own header, because that is the only place on
+        screen that IS the evaluation. The three buttons are the three states it
+        can move between — and which of them appear is decided by the state it
+        is in, not by permissions the client is guessing at.
+      -->
+      <DialogShell
+        v-if="editing"
+        :title="editing.label"
+        :subtitle="`${unit.name} · ${sheet?.periods.find((p) => p.id === periodId)?.label ?? ''}`"
+        :detail="
+          editing.published
+            ? 'Publiée par le conseil : les bulletins la citent, elle ne bouge plus.'
+            : editing.submitted
+              ? 'Remise. Rouvrez-la pour corriger une note.'
+              : 'Saisie ouverte — les notes se tapent directement dans la feuille.'
+        "
+        icon="fileText"
+        @close="((editing = null), (confirmDelete = false))"
+      >
+        <div v-if="markError" class="form-error">{{ markError }}</div>
+
+        <template v-if="!editing.published && !editing.submitted">
+          <div class="field-row">
+            <div class="field is-wide">
+              <label for="ev-title">Intitulé</label>
+              <input id="ev-title" v-model="editing.title" autocomplete="off" placeholder="Devoir n°1" />
+            </div>
+            <div class="field">
+              <label for="ev-max">Barème</label>
+              <input id="ev-max" v-model.number="editing.maxScore" type="number" min="1" max="100" />
+            </div>
+          </div>
+        </template>
+
+        <div v-else class="statbar" style="margin: 0; border: none; padding: 0">
+          <div class="statbar-item">
+            <span class="statbar-label">Barème</span>
+            <span class="statbar-value">{{ editing.max }}</span>
+          </div>
+          <div class="statbar-item">
+            <span class="statbar-label">État</span>
+            <span class="statbar-value">{{ editing.published ? "Publiée" : "Remise" }}</span>
+          </div>
+        </div>
+
+        <p v-if="confirmDelete" class="dialog-text">
+          Supprimer cette évaluation efface aussi <strong>toutes ses notes</strong>.
+          Cette action ne peut pas être annulée.
+        </p>
+
+        <div class="form-actions dialog-actions">
+          <button
+            v-if="!editing.published"
+            class="btn sm danger ghost"
+            type="button"
+            :disabled="editingBusy"
+            @click="
+              confirmDelete
+                ? runOnAssessment(
+                    () => api.grading.deleteAssessment(editing!.id, true),
+                    'Évaluation supprimée.',
+                  )
+                : (confirmDelete = true)
+            "
+          >
+            {{ confirmDelete ? "Confirmer la suppression" : "Supprimer" }}
+          </button>
+          <div class="sheet-bar-fill" />
+          <button class="btn ghost" type="button" @click="((editing = null), (confirmDelete = false))">
+            Fermer
+          </button>
+          <button
+            v-if="editing.submitted && !editing.published"
+            class="btn"
+            type="button"
+            :disabled="editingBusy"
+            @click="runOnAssessment(() => api.grading.reopenAssessment(editing!.id), 'Évaluation rouverte.')"
+          >
+            Rouvrir la saisie
+          </button>
+          <button
+            v-if="!editing.submitted && !editing.published"
+            class="btn"
+            type="button"
+            :disabled="editingBusy"
+            title="Toutes les notes doivent être saisies, absences comprises."
+            @click="runOnAssessment(() => api.grading.submitAssessment(editing!.id), 'Notes remises.')"
+          >
+            Remettre les notes
+          </button>
+          <button
+            v-if="!editing.submitted && !editing.published"
+            class="btn primary"
+            type="button"
+            :disabled="editingBusy"
+            @click="
+              runOnAssessment(
+                () =>
+                  api.grading.updateAssessment(editing!.id, {
+                    title: editing!.title,
+                    maxScore: editing!.maxScore,
+                  }),
+                'Évaluation modifiée.',
+              )
+            "
+          >
+            <span v-if="editingBusy" class="btn-spin" aria-hidden="true" />
+            Enregistrer
+          </button>
+        </div>
+      </DialogShell>
 
       <DialogShell
         v-if="inlineForm === 'enroll'"
