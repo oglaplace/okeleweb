@@ -193,6 +193,21 @@ function onRun(payload: { spec: ActionSpec }) {
   runSpec.value = payload.spec;
 }
 
+/** Adds an evaluation to this classe and période, from the sheet itself. */
+function openAssessment(subjectId?: string) {
+  const spec = byId("create-assessment");
+  if (!spec) return;
+  const offering = subjectId
+    ? offerings.value.find((o) => o.subject.id === subjectId)
+    : undefined;
+  assessmentPrefill.value = {
+    academicYearId: yearId.value ?? "",
+    ...(periodId.value ? { periodId: periodId.value } : {}),
+    ...(offering ? { courseOfferingId: offering.id } : {}),
+  };
+  runSpec.value = spec;
+}
+
 function onRunDone() {
   notice.value = `${runSpec.value?.label} — effectué.`;
   void loadSheet();
@@ -247,9 +262,38 @@ const subjectId = computed(() =>
 );
 watch(subjectId, () => void loadSheet());
 
+/**
+ * Which période the Notes tab is showing.
+ *
+ * A selector rather than every période side by side: three trimestres × six
+ * subjects × three evaluations is fifty-four columns, and a conseil sits on one
+ * trimestre at a time.
+ */
+const periodId = ref<string | null>(null);
+watch(sheet, (s) => {
+  if (!s?.periods.length) {
+    periodId.value = null;
+    return;
+  }
+  if (s.periods.some((p) => p.id === periodId.value)) return;
+
+  /*
+   * The période with something in it, not simply the last one.
+   *
+   * Opening on the last was the first guess and it opened on an empty grid all
+   * through Trimestre 1 — the trimestre nobody has marked yet is exactly the
+   * one nobody wants to look at. The last période that HAS evaluations is the
+   * one a teacher was working in.
+   */
+  const withMarks = [...s.periods].reverse().find((p) => p.assessments.length);
+  periodId.value = (withMarks ?? s.periods[0]!).id;
+});
+
 const tabs = computed<SheetTab[]>(() => {
   // A classe: its pupils under four column sets, plus its week.
-  if (sheet.value) return [...studentTabs(sheet.value), TIMETABLE_TAB];
+  if (sheet.value) {
+    return [...studentTabs(sheet.value, { periodId: periodId.value }), TIMETABLE_TAB];
+  }
 
   // A subject opened from the programme replaces the tab strip with its own:
   // it is a drill-down, and offering the level's other sheets beside it invites
@@ -328,6 +372,27 @@ function onAct(payload: { row: Record<string, unknown>; column: SheetColumn }) {
     return;
   }
 
+  /**
+   * A subject with no evaluation in this période offers to create the first.
+   *
+   * Triggered from the cell that is empty because of it, prefilled with the
+   * classe, the période and that subject's offering — the three things the
+   * operator answered by clicking there.
+   */
+  if (column.key.startsWith("g:") && sheet.value && unit.value) {
+    const subjectId = column.key.split(":")[2];
+    const spec = byId("create-assessment");
+    if (!spec || !subjectId) return;
+    const offering = offerings.value.find((o) => o.subject.id === subjectId);
+    assessmentPrefill.value = {
+      academicYearId: yearId.value ?? "",
+      ...(periodId.value ? { periodId: periodId.value } : {}),
+      ...(offering ? { courseOfferingId: offering.id } : {}),
+    };
+    runSpec.value = spec;
+    return;
+  }
+
   if (column.key === "coefficient" || column.key.startsWith("coef:")) {
     const spec = byId("set-coefficient");
     if (!spec || !unit.value) return;
@@ -343,6 +408,8 @@ function onAct(payload: { row: Record<string, unknown>; column: SheetColumn }) {
 
 /** Values the coefficient dialog opens with — see onAct. */
 const coefficientPrefill = ref<Record<string, string>>({});
+/** Values the "add an evaluation" dialog opens with. */
+const assessmentPrefill = ref<Record<string, string>>({});
 
 const XAF = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
 const moneyFmt = (v: number) => XAF.format(v);
@@ -521,6 +588,23 @@ const totalDue = computed(() =>
 
         <SheetTabs v-model="tab" :tabs="tabs">
           <template #end>
+            <!-- The Notes tab is one période at a time; this is which one. -->
+            <select
+              v-if="sheet && tab === 'grades' && sheet.periods.length"
+              v-model="periodId"
+              class="btn sm"
+              aria-label="Période"
+            >
+              <option v-for="p in sheet.periods" :key="p.id" :value="p.id">{{ p.label }}</option>
+            </select>
+            <button
+              v-if="sheet && tab === 'grades' && periodId"
+              class="btn sm"
+              type="button"
+              @click="openAssessment()"
+            >
+              Ajouter une évaluation
+            </button>
             <select
               v-if="sheet && years.length > 1"
               v-model="yearId"
@@ -530,7 +614,7 @@ const totalDue = computed(() =>
               <option v-for="y in years" :key="y.id" :value="y.id">{{ y.label }}</option>
             </select>
             <button
-              v-if="sheet"
+              v-if="sheet && tab !== 'grades'"
               class="btn sm"
               type="button"
               @click="inlineForm = 'enroll'"
@@ -570,8 +654,8 @@ const totalDue = computed(() =>
         v-if="runSpec"
         :spec="runSpec"
         :unit="unit"
-        :prefill="coefficientPrefill"
-        @close="((runSpec = null), (coefficientPrefill = {}))"
+        :prefill="{ ...coefficientPrefill, ...assessmentPrefill }"
+        @close="((runSpec = null), (coefficientPrefill = {}), (assessmentPrefill = {}))"
         @done="onRunDone"
       />
 

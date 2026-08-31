@@ -58,7 +58,17 @@ export type OptionSource =
 export interface ActionField {
   key: string;
   label: string;
-  type: "text" | "number" | "date" | "select" | "checkbox";
+  /**
+   * `units` is a multi-select over the org tree.
+   *
+   * It exists because an academic year now names the cycles it covers, and
+   * that is a list rather than a choice — the one shape the declarative form
+   * could not express. The value is a comma-joined list of ids, so the field
+   * stays a string like every other and `submit` splits it.
+   */
+  type: "text" | "number" | "date" | "select" | "checkbox" | "units";
+  /** For `units`: which kinds may be picked. */
+  kinds?: api.OrgUnitKind[];
   required?: boolean;
   hint?: string;
   source?: OptionSource;
@@ -122,6 +132,14 @@ export const ACTIONS: ActionSpec[] = [
       { key: "label", label: "Libellé", type: "text", required: true, hint: "2026-2027" },
       { key: "startsOn", label: "Début", type: "date", required: true },
       { key: "endsOn", label: "Fin", type: "date", required: true },
+      {
+        key: "orgUnitIds",
+        label: "Cycles et écoles concernés",
+        type: "units",
+        kinds: ["SCHOOL", "CYCLE", "FACULTY"],
+        required: true,
+        hint: "Un complexe n'est pas une école : un lycée peut ouvrir son année quand le supérieur suit un autre calendrier.",
+      },
       { key: "isCurrent", label: "Année en cours", type: "checkbox", default: true },
     ],
     submit: (_s, v) =>
@@ -130,6 +148,52 @@ export const ACTIONS: ActionSpec[] = [
         startsOn: v.startsOn!,
         endsOn: v.endsOn!,
         isCurrent: v.isCurrent === "true",
+        orgUnitIds: (v.orgUnitIds ?? "").split(",").filter(Boolean),
+      }),
+  },
+  {
+    id: "payment-policy",
+    label: "Modalité de paiement",
+    group: "finances",
+    icon: "wallet",
+    summary:
+      "Comment cette école attend d'être payée : annuel, semestriel, trimestriel ou mensuel.",
+    // On the school, the cycle or the department — inherited downward, so a
+    // complex that answers once does not repeat itself on every cycle.
+    scope: ["SCHOOL", "CYCLE", "DEPARTMENT", "ORG_DIVISION", "FACULTY"],
+    fields: [
+      {
+        key: "modality",
+        label: "Modalité",
+        type: "select",
+        required: true,
+        default: "TRIMESTRIEL",
+        options: Object.entries(api.PAYMENT_MODALITY_FR).map(([value, label]) => ({
+          value,
+          label,
+        })),
+      },
+      {
+        key: "installments",
+        label: "Échéances",
+        type: "number",
+        hint: "Laissez vide : le nombre découle de la modalité.",
+      },
+      {
+        key: "dueDayOfMonth",
+        label: "Jour d'échéance",
+        type: "number",
+        hint: "Jour du mois où une tranche est due, le cas échéant.",
+      },
+      { key: "graceDays", label: "Jours de grâce", type: "number", default: 0 },
+    ],
+    submit: (scopeId, v) =>
+      api.academics.setPaymentPolicy({
+        orgUnitId: scopeId!,
+        modality: v.modality as api.PaymentModality,
+        ...(num(v.installments) !== undefined ? { installments: num(v.installments)! } : {}),
+        ...(num(v.dueDayOfMonth) !== undefined ? { dueDayOfMonth: num(v.dueDayOfMonth)! } : {}),
+        ...(num(v.graceDays) !== undefined ? { graceDays: num(v.graceDays)! } : {}),
       }),
   },
   {
@@ -137,16 +201,25 @@ export const ACTIONS: ActionSpec[] = [
     label: "Créer une période",
     group: "structure",
     icon: "clock",
-    summary: "Trimestre ou semestre, sur une école. Un bulletin est un document de période.",
-    scope: ["COMPLEX", "SCHOOL", "CYCLE", "FACULTY"],
+    summary: "Trimestre ou semestre, sur un cycle. Un bulletin est un document de période.",
+    /**
+     * A CYCLE, and nothing else for now.
+     *
+     * The API enforces the same list. A période on a classe lets every class of
+     * a cycle drift into its own calendar and stops two bulletins from being
+     * comparable; on a school it would silently mean "all its cycles", which is
+     * a different statement from the one the operator made.
+     */
+    scope: ["CYCLE"],
     fields: [
       { key: "academicYearId", label: "Année scolaire", type: "select", source: "years", required: true },
       {
         key: "kind", label: "Type", type: "select", required: true, default: "TRIMESTRE",
+        // ANNEE is gone from the console: three trimestres or two semestres,
+        // and the API refuses a fourth of either.
         options: [
-          { value: "TRIMESTRE", label: "Trimestre" },
-          { value: "SEMESTRE", label: "Semestre" },
-          { value: "ANNEE", label: "Année" },
+          { value: "TRIMESTRE", label: "Trimestre (3 par an)" },
+          { value: "SEMESTRE", label: "Semestre (2 par an)" },
         ],
       },
       { key: "label", label: "Libellé", type: "text", required: true, hint: "Trimestre 1" },
@@ -158,7 +231,7 @@ export const ACTIONS: ActionSpec[] = [
       api.academics.createPeriod({
         orgUnitId: scopeId!,
         academicYearId: v.academicYearId!,
-        kind: v.kind as "TRIMESTRE" | "SEMESTRE" | "ANNEE",
+        kind: v.kind as "TRIMESTRE" | "SEMESTRE",
         label: v.label!,
         sequence: num(v.sequence)!,
         startsOn: v.startsOn!,
@@ -171,7 +244,10 @@ export const ACTIONS: ActionSpec[] = [
     group: "structure",
     icon: "lock",
     summary: "Après le conseil : les notes de la période deviennent non modifiables.",
-    scope: ["COMPLEX", "SCHOOL", "CYCLE", "FACULTY"],
+    // A période lives on a CYCLE, so this is where one is locked. It listed
+    // complexes and schools too, which offered a scope whose période list could
+    // only ever come back empty.
+    scope: ["CYCLE"],
     fields: [
       { key: "academicYearId", label: "Année scolaire", type: "select", source: "years", required: true },
       { key: "periodId", label: "Période", type: "select", source: "periodsOfScope", required: true },

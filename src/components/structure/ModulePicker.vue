@@ -43,7 +43,7 @@ const isOn = (m: BlueprintModule) =>
 </script>
 
 <template>
-  <div class="choices">
+  <div class="choices is-tiles">
     <label
       v-for="m in MODULE_ORDER"
       :key="m"

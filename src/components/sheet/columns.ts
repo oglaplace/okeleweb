@@ -64,7 +64,11 @@ export const IDENTITY: SheetColumn[] = [
   { key: "firstName", label: "Prénom", width: 16 },
 ];
 
-export function studentTabs(sheet: api.StudentSheet): SheetTab[] {
+export function studentTabs(
+  sheet: api.StudentSheet,
+  /** Which période the Notes tab is showing. */
+  focus: { periodId: string | null } = { periodId: null },
+): SheetTab[] {
   const tabs: SheetTab[] = [
     {
       id: "general",
@@ -104,24 +108,47 @@ export function studentTabs(sheet: api.StudentSheet): SheetTab[] {
   ];
 
   /**
-   * One group per période, each holding its subjects plus the official average
-   * and rank. This is the tab the whole endpoint exists for: a conseil de classe
-   * reads across a row and down a column, and no other screen lets it.
+   * ONE PÉRIODE at a time, grouped by subject.
+   *
+   * The first version put every subject of every période side by side with one
+   * column each — which says a subject has one evaluation, and almost none
+   * does: a trimestre is an interro, a devoir and a composition, and the
+   * conseil argues about the composition. Showing all three for six subjects
+   * across three trimestres is fifty-four columns, so the période becomes a
+   * selector and the subject becomes the group.
+   *
+   * Each subject group holds its evaluations and then the subject average, so a
+   * row reads left to right the way a teacher reads their own mark book.
    */
-  const gradeGroups: SheetGroup[] = sheet.periods.map((period) => ({
-    label: period.label,
-    columns: [
-      ...sheet.subjects.map((subject) => ({
-        key: `g:${period.id}:${subject.id}`,
-        label: subject.code,
-        type: "grade" as const,
-        width: 7,
-        hint: subject.name,
-      })),
-      { key: `g:${period.id}:avg`, label: "Moy.", type: "grade", width: 7 },
-      { key: `g:${period.id}:rank`, label: "Rang", type: "number", width: 6 },
-    ],
-  }));
+  const period =
+    sheet.periods.find((p) => p.id === focus.periodId) ?? sheet.periods[0];
+
+  const gradeGroups: SheetGroup[] = period
+    ? sheet.subjects.map((subject) => {
+        const evaluations = period.assessments.filter((a) => a.subjectId === subject.id);
+        return {
+          label: subject.code,
+          columns: [
+            ...evaluations.map((a) => ({
+              key: `e:${a.id}`,
+              label: a.label,
+              type: "grade" as const,
+              width: 8,
+              hint: `${subject.name} — ${a.label}, barème ${a.max}, ramené sur 20`,
+            })),
+            {
+              key: `g:${period.id}:${subject.id}`,
+              label: "Moy.",
+              type: "grade" as const,
+              width: 7,
+              hint: `Moyenne ${subject.name} sur ${period.label}`,
+              // No evaluation yet: the cell offers to create the first one.
+              ...(evaluations.length ? {} : { action: { label: "+ éval.", when: "always" as const } }),
+            },
+          ],
+        };
+      })
+    : [];
 
   tabs.push({
     id: "grades",
@@ -238,6 +265,11 @@ export function flattenStudentRow(row: api.StudentSheetRow): Record<string, unkn
     flat[`g:${periodId}:rank`] = period.rank;
     for (const [subjectId, score] of Object.entries(period.bySubject)) {
       flat[`g:${periodId}:${subjectId}`] = score;
+    }
+    // One key per evaluation, so a column can name a devoir rather than a
+    // subject — see studentTabs.
+    for (const [assessmentId, score] of Object.entries(period.byAssessment ?? {})) {
+      flat[`e:${assessmentId}`] = score;
     }
   }
   return flat;

@@ -558,7 +558,14 @@ export interface RosterRow {
 
 // ─── sheets ──────────────────────────────────────────────────────────────────
 
-export interface SheetPeriod { id: string; label: string; sequence: number; kind: string }
+export interface SheetPeriod {
+  id: string;
+  label: string;
+  sequence: number;
+  kind: string;
+  /** The evaluations set in this période — one column each. */
+  assessments: { id: string; subjectId: string; label: string; max: number }[];
+}
 export interface SheetSubject { id: string; code: string; name: string; offeringId: string }
 
 export interface StudentSheetRow {
@@ -584,7 +591,12 @@ export interface StudentSheetRow {
   /** periodId → the marks for that période. */
   grades: Record<
     string,
-    { average: number | null; rank: number | null; bySubject: Record<string, number | null> }
+    {
+      average: number | null;
+      rank: number | null;
+      bySubject: Record<string, number | null>;
+      byAssessment: Record<string, number | null>;
+    }
   >;
   sessions: number;
   present: number;
@@ -1029,6 +1041,37 @@ export interface Period {
   lockedAt: string | null;
 }
 
+/**
+ * How often a family is expected to pay — the minimum cadence a school accepts.
+ *
+ * MENSUEL is nine instalments, not twelve: the school year runs October to July.
+ */
+export type PaymentModality =
+  | "ANNUEL_UNIQUE"
+  | "ANNUEL"
+  | "SEMESTRIEL"
+  | "TRIMESTRIEL"
+  | "MENSUEL";
+
+export const PAYMENT_MODALITY_FR: Record<PaymentModality, string> = {
+  ANNUEL_UNIQUE: "Annuel — payé à l'inscription",
+  ANNUEL: "Annuel — une échéance",
+  SEMESTRIEL: "Semestriel — 2 échéances",
+  TRIMESTRIEL: "Trimestriel — 3 échéances",
+  MENSUEL: "Mensuel — 9 échéances",
+};
+
+export interface PaymentPolicy {
+  id: string;
+  orgUnitId: string;
+  academicYearId: string | null;
+  modality: PaymentModality;
+  installments: number;
+  dueDayOfMonth: number | null;
+  graceDays: number;
+  notes: string | null;
+}
+
 export interface AcademicYear {
   id: string;
   label: string;
@@ -1070,7 +1113,33 @@ export const academics = {
     startsOn: string;
     endsOn: string;
     isCurrent?: boolean;
+    /** Which cycles or schools run this year. At least one — see the API. */
+    orgUnitIds: string[];
   }) => request<AcademicYear>("/academics/years", { method: "POST", body: JSON.stringify(body) }),
+
+  yearScopes: (id: string) =>
+    request<{ id: string; name: string; kind: OrgUnitKind }[]>(`/academics/years/${id}/scopes`),
+
+  /** The payment cadence in force for a unit, inherited from its ancestors. */
+  paymentPolicy: (orgUnitId: string, academicYearId?: string) =>
+    request<PaymentPolicy | null>(
+      `/academics/payment-policy?orgUnitId=${encodeURIComponent(orgUnitId)}` +
+        (academicYearId ? `&academicYearId=${encodeURIComponent(academicYearId)}` : ""),
+    ),
+
+  setPaymentPolicy: (body: {
+    orgUnitId: string;
+    academicYearId?: string | null;
+    modality: PaymentModality;
+    installments?: number;
+    dueDayOfMonth?: number | null;
+    graceDays?: number;
+    notes?: string | null;
+  }) =>
+    request<PaymentPolicy>("/academics/payment-policy", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   subjects: () => request<Subject[]>("/academics/subjects"),
   createSubject: (body: { code: string; name: string }) =>
@@ -1079,7 +1148,9 @@ export const academics = {
   createPeriod: (body: {
     orgUnitId: string;
     academicYearId: string;
-    kind?: "TRIMESTRE" | "SEMESTRE" | "ANNEE";
+    // ANNEE exists in the schema for préscolaire rows the scaffold writes; the
+    // console creates trimestres and semestres only. See the API's PeriodBody.
+    kind?: "TRIMESTRE" | "SEMESTRE";
     label: string;
     sequence: number;
     startsOn: string;

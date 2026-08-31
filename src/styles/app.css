@@ -1039,6 +1039,12 @@ table.data td.c-text {
  * layout. 180px is still wide enough for a date or a phone number, and the
  * tracks stretch to fill whatever is left over.
  */
+/* A field that is a list, not a value: it takes the whole row rather than one
+   180px track, where a name and its path have nowhere to go. */
+.field.is-wide {
+  grid-column: 1 / -1;
+}
+
 .field-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -1120,6 +1126,50 @@ table.data td.c-text {
   opacity: 0;
   pointer-events: none;
 }
+/*
+ * The cycle packs, as square tiles.
+ *
+ * Only here — `.choice` is also the import screen's élèves/personnel radios,
+ * where two wide rows of prose are the right shape. A pack is a THING you are
+ * picking off a shelf, and a grid of equal squares says "these are alternatives
+ * of the same kind" in a way rounded rows of different heights do not.
+ */
+.choices.is-tiles {
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 1px;
+}
+/*
+ * The hairline is on the TILE, not on the container.
+ *
+ * A background on the grid shows through wherever the last row is short — seven
+ * packs in a row of five leaves three cells of grey that look like tiles nobody
+ * can click. Overlapping box-shadows give the same continuous 1px rule and
+ * nothing at all where there is no tile.
+ */
+.choices.is-tiles .choice {
+  aspect-ratio: 1;
+  border-radius: 0;
+  border: none;
+  box-shadow: 0 0 0 1px var(--line);
+  overflow: hidden;
+  padding: var(--s3);
+}
+.choices.is-tiles .choice.is-selected {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+/* The summary is the only thing that can overrun a square, so it is the only
+   thing that clamps. */
+.choices.is-tiles .choice-note {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.choices.is-tiles .choice-basis {
+  margin-top: auto;
+}
+
 .choice-name {
   font-size: var(--t-body);
   font-weight: 600;
@@ -3959,4 +4009,46 @@ table.data td.c-text {
 .sheet-act.is-link:hover {
   color: var(--primary);
   text-decoration-color: var(--primary);
+}
+
+
+/* A list of org units to tick — see ActionField "units". */
+.unitpick {
+  max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.unitpick-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--s2);
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: var(--t-small);
+  cursor: pointer;
+}
+.unitpick-row:last-child {
+  border-bottom: none;
+}
+.unitpick-row:hover {
+  background: var(--surface-2);
+}
+.unitpick-row.is-picked {
+  background: var(--primary-soft);
+  color: var(--primary-soft-ink);
+}
+.unitpick-name {
+  font-weight: 550;
+  color: var(--ink);
+}
+.unitpick-row.is-picked .unitpick-name {
+  color: var(--primary-soft-ink);
+}
+.unitpick-path {
+  color: var(--ink-3);
+  font-size: var(--t-micro);
 }

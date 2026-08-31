@@ -4,6 +4,7 @@ import * as api from "../../lib/api";
 import type { ActionField, ActionSpec } from "../../lib/actions";
 import { useBusyStore } from "../../stores/busy";
 import { useOrgStore } from "../../stores/org";
+import { KIND_FR } from "../structure/kinds";
 
 /**
  * The fields of one action, wherever it was triggered from.
@@ -161,6 +162,17 @@ async function submit() {
 }
 
 const isCheckbox = (f: ActionField) => f.type === "checkbox";
+
+// ── the units multi-select ──────────────────────────────────────────────────
+const unitOptions = (f: ActionField) => org.ofKind(f.kinds ?? []).filter((u) => !u.validTo);
+const picked = (key: string) => (values.value[key] ?? "").split(",").filter(Boolean);
+
+function toggleUnit(key: string, id: string) {
+  const next = new Set(picked(key));
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  values.value = { ...values.value, [key]: [...next].join(",") };
+}
 defineExpose({ submit, canSubmit });
 </script>
 
@@ -174,7 +186,12 @@ defineExpose({ submit, canSubmit });
     </div>
 
     <div v-else class="field-row">
-      <div v-for="f in spec.fields" :key="f.key" class="field">
+      <div
+        v-for="f in spec.fields"
+        :key="f.key"
+        class="field"
+        :class="{ 'is-wide': f.type === 'units' }"
+      >
         <label :for="`f-${spec.id}-${f.key}`">
           {{ f.label }}<span v-if="f.required" aria-hidden="true"> *</span>
         </label>
@@ -191,6 +208,32 @@ defineExpose({ submit, canSubmit });
             :value="o.value"
           >{{ o.label }}</option>
         </select>
+
+        <!--
+          A list, not a choice. An academic year covers several cycles, and a
+          multi-select is the one shape the declarative form could not express;
+          the value stays a comma-joined string so `submit` reads it like any
+          other field.
+        -->
+        <div v-else-if="f.type === 'units'" class="unitpick">
+          <label
+            v-for="u in unitOptions(f)"
+            :key="u.id"
+            class="unitpick-row"
+            :class="{ 'is-picked': picked(f.key).includes(u.id) }"
+          >
+            <input
+              type="checkbox"
+              :checked="picked(f.key).includes(u.id)"
+              @change="toggleUnit(f.key, u.id)"
+            />
+            <span class="unitpick-name">{{ u.name }}</span>
+            <span class="unitpick-path">{{ org.pathOf(u.id) || KIND_FR[u.kind] }}</span>
+          </label>
+          <div v-if="!unitOptions(f).length" class="tnode-hint">
+            Aucune unité éligible — installez d'abord la structure.
+          </div>
+        </div>
 
         <label v-else-if="isCheckbox(f)" class="toggle">
           <input
