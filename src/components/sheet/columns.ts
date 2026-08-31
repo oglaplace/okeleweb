@@ -14,6 +14,14 @@ export type CellType = "text" | "number" | "money" | "percent" | "date" | "grade
 export interface SheetColumn {
   key: string;
   label: string;
+  /**
+   * Turns the cell into a control.
+   *
+   * `when: "empty"` offers it only where there is nothing — a column of
+   * "Définir" buttons beside filled values is noise. `when: "always"` makes
+   * every cell a link, which is what a subject name is.
+   */
+  action?: { label?: string; when: "empty" | "always" };
   type?: CellType;
   /** Column width in ch units; numbers get a sensible default. */
   width?: number;
@@ -283,14 +291,22 @@ export function niveauTabs(sheet: {
       frozen: 2,
       columns: [
         { key: "code", label: "Code", width: 8 },
-        { key: "name", label: "Matière", width: 30 },
+        // The subject name opens its own sheet: one subject, every période.
+        { key: "name", label: "Matière", width: 30, action: { when: "always" } },
         { key: "weeklyHours", label: "H/sem.", type: "number", width: 8 },
         {
           key: "coefficient",
           label: "Coefficient",
           type: "number",
-          width: 12,
-          hint: "Toutes séries confondues. Une série qui diffère a sa propre colonne.",
+          width: 13,
+          /**
+           * Blank is the normal state here and the blocking one: the scaffold
+           * deliberately never guesses a coefficient, so this column starts
+           * empty on every school. An empty cell that offers to fill itself is
+           * the difference between a report and a tool.
+           */
+          action: { label: "Définir", when: "empty" },
+          hint: "Toutes séries confondues. Vide = à définir ; le conseil ne peut pas calculer sans lui.",
         },
         {
           key: "slots",
@@ -332,6 +348,50 @@ export function niveauTabs(sheet: {
   }
 
   return tabs;
+}
+
+/**
+ * One subject across the year: assessments grouped by période.
+ *
+ * Built from the sheet rather than declared, because the columns ARE the
+ * devoirs the teacher set — a fixed list could not know them.
+ */
+export function subjectTabs(sheet: {
+  periods: { id: string; label: string; assessments: { id: string; label: string; max: number }[] }[];
+}): SheetTab[] {
+  const identity: SheetColumn[] = [
+    { key: "matricule", label: "Matricule", width: 14 },
+    { key: "lastName", label: "Nom", width: 18 },
+    { key: "firstName", label: "Prénom", width: 16 },
+    { key: "classe", label: "Classe", width: 9 },
+  ];
+
+  const groups: SheetGroup[] = sheet.periods.map((period) => ({
+    label: period.label,
+    columns: [
+      ...period.assessments.map((a) => ({
+        key: `m:${a.id}`,
+        label: a.label,
+        type: "grade" as const,
+        width: 8,
+        hint: `${a.label} — barème ${a.max}, ramené sur 20`,
+      })),
+      { key: `p:${period.id}:avg`, label: "Moy.", type: "grade" as const, width: 7 },
+    ],
+  }));
+
+  return [
+    {
+      id: "marks",
+      label: "Notes",
+      identity,
+      frozen: identity.length,
+      ...(groups.length ? { groups } : { columns: identity }),
+      ...(groups.length
+        ? {}
+        : { empty: "Aucune période ouverte pour cette année — il n'y a rien à noter." }),
+    },
+  ];
 }
 
 /** A CYCLE or SCHOOL as its calendar: the périodes the year is cut into. */

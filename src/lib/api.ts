@@ -76,10 +76,18 @@ async function request<T>(
   try {
     res = await fetch(`${config().apiBase}${path}`, { ...rest, headers });
   } catch {
-    // Network-level failure. Status 0 is the app's signal for "the server was
-    // not reachable", which on an edge box means the box is down and in the
-    // cloud means the internet is.
-    throw new ApiError(0, "Serveur injoignable.");
+    /*
+     * Network-level failure. Status 0 is the app's signal for "the server was
+     * not reachable", which on an edge box means the box is down and in the
+     * cloud means the internet is.
+     *
+     * The method and path are in the message now. Every transport failure used
+     * to read as the same six words, which made a report of one impossible to
+     * act on: "serveur injoignable" on a delete and on a whole page down are
+     * very different problems wearing the same sentence.
+     */
+    const method = (rest.method ?? "GET").toUpperCase();
+    throw new ApiError(0, `Serveur injoignable (${method} ${path}).`);
   }
 
   if (res.status === 204) return undefined as T;
@@ -608,6 +616,19 @@ export interface StaffSheetRow extends StaffMember {
 /** How absences are counted — per day, or per subject. See the API's sheets. */
 export type AttendanceMode = "GENERAL" | "BY_SUBJECT";
 
+export interface SubjectSheet {
+  niveau: { id: string; name: string };
+  subject: { id: string; code: string; name: string };
+  offeringId: string | null;
+  periods: {
+    id: string;
+    label: string;
+    sequence: number;
+    assessments: { id: string; label: string; max: number; givenOn: string | null }[];
+  }[];
+  rows: Record<string, unknown>[];
+}
+
 export interface NiveauSheet {
   niveau: { id: string; name: string; code: string };
   classes: number;
@@ -658,6 +679,14 @@ export const sheets = {
         `&academicYearId=${encodeURIComponent(academicYearId)}`,
     ),
 
+  /** One subject, every pupil of the niveau, every période. */
+  subject: (niveauId: string, subjectId: string, academicYearId: string) =>
+    request<SubjectSheet>(
+      `/sheets/subject?niveauId=${encodeURIComponent(niveauId)}` +
+        `&subjectId=${encodeURIComponent(subjectId)}` +
+        `&academicYearId=${encodeURIComponent(academicYearId)}`,
+    ),
+
   /** The périodes of a cycle or school — the year's calendar. */
   periods: (orgUnitId: string, academicYearId: string) =>
     request<PeriodSheet>(
@@ -701,7 +730,40 @@ export const timetable = {
     room?: string | null;
   }) => request<TimetableSlot>("/timetable/slots", { method: "POST", body: JSON.stringify(body) }),
 
-  removeSlot: (id: string) => request<{ id: string }>(`/timetable/slots/${id}`, { method: "DELETE" }),
+  /**
+   * Removal goes through a POST, for one slot or for fifty.
+   *
+   * The per-id DELETE exists and is proven by an end-to-end test, but in the
+   * browser it came back as "Serveur injoignable" — a fetch that never got a
+   * response, which is a transport failure and not something the handler can
+   * fix. A DELETE with an id in the path and a body-shaped intent is the kind
+   * of request proxies and caches disagree about; this is the same operation
+   * expressed as a POST, and it is what multi-select needs regardless.
+   */
+  removeSlots: (classeId: string, ids: string[]) =>
+    request<{ removed: number }>("/timetable/slots/bulk-delete", {
+      method: "POST",
+      body: JSON.stringify({ classeId, ids }),
+    }),
+
+  /** Many at once: a block selection, assigned in one go. */
+  addSlots: (
+    classeId: string,
+    academicYearId: string,
+    slots: {
+      courseOfferingId: string;
+      periodId?: string | null;
+      employmentId?: string | null;
+      dayOfWeek: number;
+      startsAtMin: number;
+      endsAtMin: number;
+      room?: string | null;
+    }[],
+  ) =>
+    request<{ created: number }>("/timetable/slots/bulk", {
+      method: "POST",
+      body: JSON.stringify({ classeId, academicYearId, slots }),
+    }),
 
   copyWeek: (fromClasseId: string, toClasseId: string, academicYearId: string) =>
     request<{ copied: number; skipped: number }>("/timetable/copy", {

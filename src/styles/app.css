@@ -3761,8 +3761,22 @@ table.data td.c-text {
    neither. The empty cell is the control, which is the whole builder — a
    director clicks Tuesday at 8 and says "maths" rather than filling a form
    with a day field and an hour field they already expressed by clicking. */
+/* The grid takes the height like every other sheet — it is one, and a week
+   that stops two thirds of the way down the pane reads as broken. */
+.timetable {
+  flex: 1;
+  min-height: 0;
+}
 .timetable .sheet-scroll {
   padding: 0;
+}
+.sheet-toggle {
+  font-size: var(--t-small);
+  white-space: nowrap;
+}
+.sheet-count.is-strong {
+  color: var(--primary);
+  font-weight: 650;
 }
 .tt-table {
   width: 100%;
@@ -3786,7 +3800,7 @@ table.data td.c-text {
   letter-spacing: 0.06em;
 }
 .tt-hour {
-  width: 9ch;
+  width: 8ch;
   position: sticky;
   left: 0;
   z-index: 3;
@@ -3799,9 +3813,19 @@ table.data td.c-text {
   background: var(--surface-2);
   border-bottom: 1px solid var(--line-soft);
 }
+/*
+ * Half-hour rows, so the hour lines are the ones that read.
+ *
+ * A grid whose every line is equally heavy is a grid you have to count your way
+ * down. The tick between 08:00 and 08:30 is faint; the line at 09:00 is not.
+ */
+.tt-table tbody tr.is-hour td,
+.tt-table tbody tr.is-hour th {
+  border-top: 1px solid var(--line);
+}
 .tt-cell {
-  height: 54px;
-  padding: 3px;
+  height: 26px;
+  padding: 2px;
   border-bottom: 1px solid var(--line-soft);
   border-right: 1px solid var(--line-soft);
   vertical-align: top;
@@ -3814,6 +3838,13 @@ table.data td.c-text {
 }
 .tt-cell.is-free:hover:not(.is-locked) {
   background: var(--surface-2);
+}
+/* Selection reads through both states: a chosen lesson and a chosen gap are
+   the same selection, and the bar counts them separately. */
+.tt-cell.is-selected {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+  background: var(--primary-soft);
 }
 .tt-add {
   display: none;
@@ -3835,7 +3866,7 @@ table.data td.c-text {
 .tt-slot {
   position: relative;
   height: 100%;
-  padding: 5px 7px;
+  padding: 3px 6px;
   border-radius: var(--radius-sm);
   border-left: 3px solid hsl(var(--tt-hue) 55% 45%);
   background: hsl(var(--tt-hue) 55% 45% / 0.14);
@@ -3847,6 +3878,15 @@ table.data td.c-text {
 .tt-subject {
   font-weight: 700;
   color: var(--ink);
+  line-height: 1.2;
+}
+/* A 30-minute lesson has one line of room; hide the extras rather than
+   overflow them. The tooltip and the dialog still carry everything. */
+.tt-cell[rowspan="1"] .tt-time,
+.tt-cell[rowspan="1"] .tt-teacher,
+.tt-cell[rowspan="1"] .tt-room,
+.tt-cell[rowspan="2"] .tt-room {
+  display: none;
 }
 .tt-time,
 .tt-room {
@@ -3884,4 +3924,39 @@ table.data td.c-text {
 .tt-remove:hover {
   background: var(--danger-soft, var(--surface-2));
   color: var(--danger);
+}
+
+
+/* A cell that is a control. Two shapes: a quiet link for a name that opens
+   something, and a small outlined chip for "this is missing, fill it". */
+.sheet-act {
+  padding: 1px 8px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: var(--t-micro);
+  font-weight: 600;
+}
+.sheet-act:hover {
+  border-color: var(--primary);
+  border-style: solid;
+  color: var(--primary);
+}
+.sheet-act.is-link {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  color: var(--ink);
+  font-size: var(--t-small);
+  font-weight: 550;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+}
+.sheet-act.is-link:hover {
+  color: var(--primary);
+  text-decoration-color: var(--primary);
 }

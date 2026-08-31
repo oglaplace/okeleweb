@@ -27,7 +27,11 @@ const props = defineProps<{
   /** Names the export file: "6e A — Finances.csv". */
   title?: string;
 }>();
-const emit = defineEmits<{ pick: [row: Record<string, unknown>] }>();
+const emit = defineEmits<{
+  pick: [row: Record<string, unknown>];
+  /** A cell that is a control was used — see SheetColumn.action. */
+  act: [{ row: Record<string, unknown>; column: SheetColumn }];
+}>();
 
 /** A column plus what the renderer needs to know about its neighbours. */
 interface Col extends SheetColumn {
@@ -370,7 +374,27 @@ defineExpose({ exportCsv });
               }"
               :style="{ left: frozenLeft(i) }"
             >
-              {{ format(row[column.key], column) }}
+              <!-- A cell that offers to fill itself, where the column asked
+                   for it and the value is missing. -->
+              <button
+                v-if="
+                  column.action &&
+                  (column.action.when === 'always' ||
+                    row[column.key] === null ||
+                    row[column.key] === undefined)
+                "
+                class="sheet-act"
+                :class="{ 'is-link': column.action.when === 'always' }"
+                type="button"
+                @click.stop="emit('act', { row, column })"
+              >
+                {{
+                  column.action.when === "always"
+                    ? format(row[column.key], column)
+                    : (column.action.label ?? "Définir")
+                }}
+              </button>
+              <template v-else>{{ format(row[column.key], column) }}</template>
             </td>
             <td class="sheet-fill" />
           </tr>

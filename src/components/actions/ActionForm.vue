@@ -18,7 +18,12 @@ import { useOrgStore } from "../../stores/org";
  * The scope is a prop, never a question asked here — by the time these fields
  * render, WHERE has already been answered.
  */
-const props = defineProps<{ spec: ActionSpec; scopeId: string | null }>();
+const props = defineProps<{
+  spec: ActionSpec;
+  scopeId: string | null;
+  /** Values the caller already knows — see ActionDialog.prefill. */
+  prefill?: Record<string, string>;
+}>();
 const emit = defineEmits<{ done: [] }>();
 
 const busy = useBusyStore();
@@ -38,7 +43,9 @@ function resetDefaults() {
   for (const f of props.spec.fields ?? []) {
     if (f.default !== undefined) next[f.key] = String(f.default);
   }
-  values.value = next;
+  // Prefill wins over the declared default: the caller knows where the operator
+  // is standing, and the registry only knows what is usually true.
+  values.value = { ...next, ...(props.prefill ?? {}) };
 }
 
 /**

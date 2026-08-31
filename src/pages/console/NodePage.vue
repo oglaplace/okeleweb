@@ -2,7 +2,7 @@
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import * as api from "../../lib/api";
-import type { ActionSpec } from "../../lib/actions";
+import { byId, type ActionSpec } from "../../lib/actions";
 import { KIND_FR } from "../../components/structure/kinds";
 import { useOrgStore } from "../../stores/org";
 import ActionDialog from "../../components/actions/ActionDialog.vue";
@@ -14,7 +14,7 @@ import DataSheet from "../../components/sheet/DataSheet.vue";
 import SheetTabs from "../../components/sheet/SheetTabs.vue";
 import {
   childrenTab, flattenStudentRow, niveauTabs, periodTab, staffTabs, studentTabs,
-  type SheetTab,
+  subjectTabs, type SheetColumn, type SheetTab,
 } from "../../components/sheet/columns";
 import TimetableGrid from "../../components/sheet/TimetableGrid.vue";
 
@@ -49,6 +49,8 @@ const sheet = ref<api.StudentSheet | null>(null);
 const staff = ref<api.StaffSheetRow[]>([]);
 /** The programme of a NIVEAU — what is taught here, and at what weight. */
 const programme = ref<api.NiveauSheet | null>(null);
+/** One subject of that programme, opened from it. */
+const subject = ref<api.SubjectSheet | null>(null);
 /** The calendar of a CYCLE or SCHOOL. */
 const periods = ref<api.PeriodSheet | null>(null);
 /** The weekly grid of a CLASSE, and what a builder needs to extend it. */
@@ -122,6 +124,10 @@ async function loadSheet() {
 
   if (u.kind === "NIVEAU") {
     programme.value = await api.sheets.niveau(u.id, yearId.value).catch(() => null);
+    // A subject drilled into stays open across a reload — it is in the URL.
+    subject.value = subjectId.value
+      ? await api.sheets.subject(u.id, subjectId.value, yearId.value).catch(() => null)
+      : null;
     return;
   }
 
@@ -178,8 +184,6 @@ const runSpec = ref<ActionSpec | null>(null);
  */
 const inlineForm = ref<"enroll" | null>(null);
 
-/** The empty timetable's button: show the builder before any slot exists. */
-const startGrid = ref(false);
 
 function onRun(payload: { spec: ActionSpec }) {
   if (payload.spec.inline) {
@@ -191,7 +195,7 @@ function onRun(payload: { spec: ActionSpec }) {
 
 function onRunDone() {
   notice.value = `${runSpec.value?.label} — effectué.`;
-  void load();
+  void loadSheet();
 }
 
 /** The overlay closed after a save: show what changed, not a stale list. */
@@ -231,9 +235,26 @@ watch(
 
 const TIMETABLE_TAB: SheetTab = { id: "timetable", label: "Emploi du temps" };
 
+/**
+ * Which subject of the programme is open, from the URL.
+ *
+ * A query rather than component state: the back button is how anyone leaves a
+ * drill-down, and a subject sheet you cannot link to is one you cannot send to
+ * the teacher it is about.
+ */
+const subjectId = computed(() =>
+  typeof route.query.subject === "string" ? route.query.subject : null,
+);
+watch(subjectId, () => void loadSheet());
+
 const tabs = computed<SheetTab[]>(() => {
   // A classe: its pupils under four column sets, plus its week.
   if (sheet.value) return [...studentTabs(sheet.value), TIMETABLE_TAB];
+
+  // A subject opened from the programme replaces the tab strip with its own:
+  // it is a drill-down, and offering the level's other sheets beside it invites
+  // the operator to lose their place.
+  if (subject.value) return subjectTabs(subject.value);
 
   return [
     ...(children.value.length ? [childrenTab()] : []),
@@ -255,6 +276,7 @@ const childRows = computed(() =>
 
 /** Flattened once per load, not per render: the grade grid is a nested map. */
 const sheetRows = computed<Record<string, unknown>[]>(() => {
+  if (subject.value) return subject.value.rows;
   if (tab.value === "children") return childRows.value as unknown as Record<string, unknown>[];
   if (tab.value === "periods") return (periods.value?.rows ?? []) as unknown as Record<string, unknown>[];
   if (tab.value === "programme" || tab.value === "coefficients") {
@@ -278,14 +300,49 @@ const rowKey = computed(() =>
   sheet.value && tab.value !== "children" && tab.value !== "timetable" ? "studentId" : "id",
 );
 
-// Moving node or tab puts the builder away: it is a state of THIS empty grid.
-watch([id, tab], () => (startGrid.value = false));
 
 /** A child row is a destination; a pupil row is not (yet). */
 function onPick(row: Record<string, unknown>) {
   if (tab.value !== "children") return;
   void router.push({ name: "unit", params: { id: String(row.id) } });
 }
+
+/**
+ * A cell that is a control was used.
+ *
+ * Two cases, both on the programme sheet: the subject NAME opens that subject's
+ * marks, and an empty COEFFICIENT offers to fill itself. The second is the more
+ * interesting one — everything the form needs except the number is already
+ * known from where the operator is standing, so it is prefilled and the dialog
+ * asks one question.
+ */
+function onAct(payload: { row: Record<string, unknown>; column: SheetColumn }) {
+  const { row, column } = payload;
+
+  if (column.key === "name" && unit.value?.kind === "NIVEAU") {
+    void router.push({
+      name: "unit",
+      params: { id: unit.value.id },
+      query: { subject: String(row.subjectId) },
+    });
+    return;
+  }
+
+  if (column.key === "coefficient" || column.key.startsWith("coef:")) {
+    const spec = byId("set-coefficient");
+    if (!spec || !unit.value) return;
+    // Everything the niveau and the row already answer, answered.
+    coefficientPrefill.value = {
+      academicYearId: yearId.value ?? "",
+      subjectId: String(row.subjectId),
+      ...(column.key.startsWith("coef:") ? { serieId: column.key.slice(5) } : {}),
+    };
+    runSpec.value = spec;
+  }
+}
+
+/** Values the coefficient dialog opens with — see onAct. */
+const coefficientPrefill = ref<Record<string, string>>({});
 
 const XAF = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
 const moneyFmt = (v: number) => XAF.format(v);
@@ -367,6 +424,25 @@ const totalDue = computed(() =>
         </div>
       </div>
 
+      <!--
+        A drill-down says what it is and how to leave.
+        The browser's back button works — the subject is in the URL — but a
+        screen whose only exit is browser chrome is a screen people feel stuck
+        in, and the heading above still says "Sixième".
+      -->
+      <div v-if="subject" class="sheet-notes">
+        <RouterLink
+          class="btn sm ghost"
+          :to="{ name: 'unit', params: { id: unit.id } }"
+        >
+          ← Programme
+        </RouterLink>
+        <span class="sheet-note">
+          {{ subject.subject.name }} — {{ subject.rows.length }} élève(s) du niveau,
+          toutes classes confondues
+        </span>
+      </div>
+
       <!-- Why a column set is empty, straight from the API rather than left
            for the operator to work out from blank cells. Above the grid, not
            below: below, they pushed the tab strip — the control they are
@@ -388,43 +464,27 @@ const totalDue = computed(() =>
         that IS the button — see TimetableGrid. It shares the tab strip because
         it is another face of the same class, not another screen.
       -->
+      <!--
+        The week. No "create a timetable" prompt: an empty grid IS the create
+        screen, and a door in front of an open door only costs a click. The one
+        thing worth saying up front is when there is nothing to place.
+      -->
       <template v-if="activeTab?.id === 'timetable' && unit.kind === 'CLASSE' && yearId">
-        <div v-if="!grid.length && !offerings.length" class="card">
-          <div class="empty">
-            <div class="empty-title">Aucune matière programmée</div>
-            <div style="max-width: 56ch; margin: 0 auto">
-              Un créneau porte une matière du niveau, et
-              {{ org.byId(unit.parentId)?.name ?? "ce niveau" }} n'en a aucune pour
-              l'année en cours. Programmez-en une d'abord.
-            </div>
-            <div class="empty-actions">
-              <RouterLink
-                class="btn primary"
-                :to="{ name: 'action', params: { id: 'create-offering' }, query: { scope: unit.parentId } }"
-              >
-                Programmer une matière
-              </RouterLink>
-            </div>
-          </div>
-        </div>
-
-        <div v-else-if="!grid.length" class="card">
-          <div class="empty">
-            <div class="empty-title">Aucun emploi du temps</div>
-            <div style="max-width: 56ch; margin: 0 auto">
-              Sans créneau il n'y a pas de séance, et sans séance il n'y a pas
-              d'appel — l'assiduité de cette classe ne peut pas être tenue.
-            </div>
-            <div class="empty-actions">
-              <button class="btn primary" type="button" @click="startGrid = true">
-                Construire l'emploi du temps
-              </button>
-            </div>
-          </div>
+        <div v-if="!offerings.length" class="sheet-notes">
+          <span class="sheet-note">
+            Aucune matière programmée sur
+            {{ org.byId(unit.parentId)?.name ?? "ce niveau" }} — un créneau porte une
+            matière du niveau.
+          </span>
+          <RouterLink
+            class="btn sm"
+            :to="{ name: 'action', params: { id: 'create-offering' }, query: { scope: unit.parentId } }"
+          >
+            Programmer une matière
+          </RouterLink>
         </div>
 
         <TimetableGrid
-          v-if="grid.length || startGrid"
           :classe-id="unit.id"
           :academic-year-id="yearId"
           :slots="grid"
@@ -454,8 +514,9 @@ const totalDue = computed(() =>
           :rows="sheetRows"
           :row-key="rowKey"
           :clickable="tab === 'children'"
-          :title="unit.name"
+          :title="subject ? `${unit.name} — ${subject.subject.code}` : unit.name"
           @pick="onPick"
+          @act="onAct"
         />
 
         <SheetTabs v-model="tab" :tabs="tabs">
@@ -509,7 +570,8 @@ const totalDue = computed(() =>
         v-if="runSpec"
         :spec="runSpec"
         :unit="unit"
-        @close="runSpec = null"
+        :prefill="coefficientPrefill"
+        @close="((runSpec = null), (coefficientPrefill = {}))"
         @done="onRunDone"
       />
 

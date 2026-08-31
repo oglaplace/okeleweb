@@ -19,7 +19,18 @@ import DialogShell from "../ui/DialogShell.vue";
  * and the node named in the title. Triggered from the rail, where nothing is
  * selected, the full page asks — see pages/console/ActionPage.vue.
  */
-const props = defineProps<{ spec: ActionSpec; unit: api.OrgUnit | api.TreeUnit }>();
+const props = defineProps<{
+  spec: ActionSpec;
+  unit: api.OrgUnit | api.TreeUnit;
+  /**
+   * Field values the caller already knows.
+   *
+   * The point of opening a form from a cell: the niveau, the year and the
+   * subject are all answered by WHERE the operator clicked, so asking for them
+   * again would be asking them to retype what they just pointed at.
+   */
+  prefill?: Record<string, string>;
+}>();
 const emit = defineEmits<{ close: []; done: [] }>();
 
 const subtitle = computed(() => `${KIND_FR[props.unit.kind]} · ${props.unit.name}`);
@@ -42,7 +53,7 @@ function onDone() {
       <strong>Pas encore disponible.</strong> {{ spec.planned }}
     </div>
 
-    <ActionForm v-else :spec="spec" :scope-id="unit.id" @done="onDone">
+    <ActionForm v-else :spec="spec" :scope-id="unit.id" :prefill="prefill" @done="onDone">
       <template #cancel>
         <button class="btn ghost" type="button" @click="emit('close')">Annuler</button>
       </template>
