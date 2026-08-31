@@ -4,6 +4,7 @@ import { useRouter } from "vue-router";
 import * as api from "../../lib/api";
 import { useBusyStore } from "../../stores/busy";
 import { ESTABLISHMENT_LABELS, TIER_LABELS } from "./labels";
+import Alert from "../../components/ui/Alert.vue";
 
 /**
  * Every établissement on this node.
@@ -113,7 +114,7 @@ onMounted(() => void load());
       </label>
     </div>
 
-    <div v-if="error" class="form-error">{{ error }}</div>
+    <Alert v-if="error" kind="error" @close="error = null">{{ error }}</Alert>
 
     <div class="card is-grid">
       <div v-if="loading" class="card-body stack">

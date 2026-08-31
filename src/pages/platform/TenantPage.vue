@@ -5,6 +5,7 @@ import * as api from "../../lib/api";
 import { useBusyStore } from "../../stores/busy";
 import PhoneInput from "../../components/ui/PhoneInput.vue";
 import { ESTABLISHMENT_LABELS, TIER_LABELS, TIER_NOTES } from "./labels";
+import Alert from "../../components/ui/Alert.vue";
 
 /**
  * One établissement's registration record.
@@ -121,7 +122,9 @@ onMounted(() => void load());
       </div>
     </div>
 
-    <div v-else-if="error" class="form-error">{{ error }}</div>
+    <!-- The load failed: this banner is the whole page, so it has no
+         close button — there is nothing behind it to reveal. -->
+    <Alert v-else-if="error" :closable="false">{{ error }}</Alert>
 
     <template v-else-if="data">
       <div class="page-head">
@@ -147,7 +150,7 @@ onMounted(() => void load());
         </div>
       </div>
 
-      <div v-if="notice" class="form-ok">{{ notice }}</div>
+      <Alert v-if="notice" kind="ok" @close="notice = null">{{ notice }}</Alert>
 
       <div class="grid-cards" style="margin-bottom: var(--s5)">
         <div class="stat">
@@ -194,7 +197,7 @@ onMounted(() => void load());
           </div>
 
           <div v-if="adding" class="card-body" style="border-bottom: 1px solid var(--line-soft)">
-            <div v-if="addError" class="form-error">{{ addError }}</div>
+            <Alert v-if="addError" kind="error" @close="addError = null">{{ addError }}</Alert>
             <div class="field-row">
               <div class="field">
                 <label for="new-name">Nom complet</label>

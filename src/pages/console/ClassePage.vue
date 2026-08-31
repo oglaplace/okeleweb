@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 import * as api from "../../lib/api";
+import Alert from "../../components/ui/Alert.vue";
 
 /**
  * One classe: the roster, and the conseil de classe preview.
@@ -170,11 +171,11 @@ watch(yearId, () => void loadYearScoped());
       </div>
     </div>
 
-    <div v-if="error" class="form-error">{{ error }}</div>
-    <div v-if="issued !== null" class="form-error" style="background: var(--ok-soft); color: var(--ok)">
+    <Alert v-if="error" kind="error" @close="error = null">{{ error }}</Alert>
+    <Alert v-if="issued !== null" kind="ok" :auto-dismiss="0" @close="issued = null">
       {{ issued }} bulletin(s) publié(s) et figé(s).
       <RouterLink :to="{ name: 'bulletins', params: { id: classeId } }">Imprimer →</RouterLink>
-    </div>
+    </Alert>
     <div v-if="loading" class="card"><div class="empty">Chargement…</div></div>
 
     <!-- Preview: computed, nothing written. -->

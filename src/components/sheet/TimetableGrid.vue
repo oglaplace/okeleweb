@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import * as api from "../../lib/api";
 import { useBusyStore } from "../../stores/busy";
 import DialogShell from "../ui/DialogShell.vue";
+import Alert from "../ui/Alert.vue";
 
 /**
  * The weekly grid — a different animal from the other sheets.
@@ -648,7 +649,7 @@ const label = computed(() => {
       </span>
     </div>
 
-    <div v-if="error" class="form-error" style="margin: var(--s2) var(--s3) 0">{{ error }}</div>
+    <Alert v-if="error" kind="error" style="margin: var(--s2) var(--s3) 0" @close="error = null">{{ error }}</Alert>
 
     <div class="sheet-scroll">
       <table class="tt-table">
@@ -730,7 +731,7 @@ const label = computed(() => {
       icon="calendar"
       @close="draft = null"
     >
-      <div v-if="error" class="form-error">{{ error }}</div>
+      <Alert v-if="error" kind="error" @close="error = null">{{ error }}</Alert>
 
       <div v-if="!offerings.length" class="empty">
         <div class="empty-title">Aucune matière programmée</div>
@@ -825,7 +826,7 @@ const label = computed(() => {
       icon="calendar"
       @close="edit = null"
     >
-      <div v-if="error" class="form-error">{{ error }}</div>
+      <Alert v-if="error" kind="error" @close="error = null">{{ error }}</Alert>
 
       <div class="field-row">
         <div class="field is-wide">

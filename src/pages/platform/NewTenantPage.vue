@@ -5,6 +5,7 @@ import * as api from "../../lib/api";
 import { useBusyStore } from "../../stores/busy";
 import PhoneInput from "../../components/ui/PhoneInput.vue";
 import ModulePicker from "../../components/structure/ModulePicker.vue";
+import Alert from "../../components/ui/Alert.vue";
 import {
   DEFAULT_MODULES, ESTABLISHMENT_LABELS, ESTABLISHMENT_NOTES,
   TIER_LABELS, TIER_NOTES,
@@ -158,7 +159,7 @@ async function submit() {
       </div>
     </div>
 
-    <div v-if="error" class="form-error">{{ error }}</div>
+    <Alert v-if="error" kind="error" @close="error = null">{{ error }}</Alert>
 
     <form class="card" @submit.prevent="submit">
       <div class="card-body">

@@ -6,6 +6,7 @@ import { parseCsv } from "../../lib/csv";
 import { useBusyStore } from "../../stores/busy";
 import { useOrgStore } from "../../stores/org";
 import UnitSelect from "../../components/structure/UnitSelect.vue";
+import Alert from "../../components/ui/Alert.vue";
 
 /**
  * A term's worth of people, from a spreadsheet.
@@ -145,8 +146,8 @@ const clean = computed(() => report.value !== null && report.value.problems.leng
       </div>
     </div>
 
-    <div v-if="notice" class="form-ok">{{ notice }}</div>
-    <div v-if="error" class="form-error">{{ error }}</div>
+    <Alert v-if="notice" kind="ok" @close="notice = null">{{ notice }}</Alert>
+    <Alert v-if="error" kind="error" @close="error = null">{{ error }}</Alert>
 
     <div class="card">
       <div class="card-body">

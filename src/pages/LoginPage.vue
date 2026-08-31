@@ -7,6 +7,7 @@ import { useDeploymentStore } from "../stores/deployment";
 import { firebaseConfigured } from "../lib/firebase";
 import PhoneInput from "../components/ui/PhoneInput.vue";
 import ThemeToggle from "../components/ThemeToggle.vue";
+import Alert from "../components/ui/Alert.vue";
 
 const auth = useAuthStore();
 const busy = useBusyStore();
@@ -92,10 +93,12 @@ function restart() {
             Le numéro <strong>{{ unlinked }}</strong> est valide, mais il n'est
             rattaché à aucun établissement.
           </div>
-          <div class="form-error">
+          <!-- Not closable: this IS the screen. Dismissing it would leave a
+               login page with nothing on it and no explanation. -->
+          <Alert :closable="false">
             Demandez à l'administrateur de votre établissement de vous ajouter,
             puis réessayez.
-          </div>
+          </Alert>
           <button class="btn block" type="button" @click="restart">
             Essayer un autre numéro
           </button>
@@ -116,10 +119,12 @@ function restart() {
           <!-- Shown BEFORE sign-in on purpose: "the server is unreachable" is
                the answer to most login failures, and finding out after three
                rejected codes is how a school decides the software is broken. -->
-          <div v-if="dep.unreachable" class="form-error">
+          <!-- A live condition, not a message: closing it would not make the
+               server answer, and it would come back on the next attempt. -->
+          <Alert v-if="dep.unreachable" :closable="false">
             Le serveur ne répond pas. Vérifiez la connexion avant de vous identifier.
-          </div>
-          <div v-else-if="error" class="form-error">{{ error }}</div>
+          </Alert>
+          <Alert v-else-if="error" @close="error = null">{{ error }}</Alert>
 
           <form v-if="step === 'phone'" @submit.prevent="send">
             <div class="field">

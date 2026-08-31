@@ -1020,6 +1020,11 @@ table.data td.c-text {
   font-size: var(--t-small);
   color: var(--ink-3);
 }
+/* An empty dropdown that says why. See ActionForm.emptyReason. */
+.field .hint.is-warn {
+  color: var(--warn);
+  font-weight: 550;
+}
 .field.is-invalid > input,
 .field.is-invalid > select {
   border-color: var(--danger);
@@ -1451,9 +1456,24 @@ table.data td.c-text {
 }
 
 /* ---------- messages ---------- */
+/*
+ * Messages, and the way out of them.
+ *
+ * Every banner here used to stay until whatever set it decided otherwise —
+ * which for most of them was never. "Emploi du temps publié" sat above the
+ * grid for the rest of the session, pushing the sheet down to tell the
+ * operator something they already knew. So they close, and confirmations go on
+ * their own after a few seconds; see Alert.vue for why errors do not.
+ *
+ * `.form-error` / `.form-ok` are kept as aliases: they are what the
+ * stylesheet's own name for this shape has always been, and a component that
+ * silently renamed them would break anything still using them.
+ */
+.alert,
 .form-error,
 .form-ok {
   display: flex;
+  align-items: flex-start;
   gap: var(--s2);
   padding: 10px 12px;
   border-radius: var(--radius);
@@ -1461,15 +1481,61 @@ table.data td.c-text {
   margin-bottom: var(--s4);
   border: 1px solid transparent;
 }
+.alert-body {
+  flex: 1;
+  min-width: 0;
+}
+.alert.is-error,
 .form-error {
   background: var(--danger-soft);
   color: var(--danger);
   border-color: color-mix(in srgb, var(--danger) 28%, transparent);
 }
+.alert.is-ok,
 .form-ok {
   background: var(--ok-soft);
   color: var(--ok);
   border-color: color-mix(in srgb, var(--ok) 28%, transparent);
+}
+.alert.is-warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 28%, transparent);
+}
+/*
+ * The ×, in the message's own colour.
+ *
+ * Sized to the touch target a thumb needs on the cheap Android half this is
+ * used on, and full-opacity rather than the usual ghosted close: a control
+ * that only appears on hover does not exist on a touchscreen.
+ */
+.alert-x {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin: -2px -4px -2px 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  opacity: 0.7;
+  cursor: pointer;
+}
+.alert-x:hover {
+  opacity: 1;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+.alert-x:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+}
+/* Never on paper — see the bulletin's print rules. */
+@media print {
+  .alert {
+    display: none;
+  }
 }
 
 .empty {
@@ -3651,21 +3717,36 @@ table.data td.c-text {
 }
 
 /* The control that belongs to a COLUMN — see SheetColumn.headerButton. */
+/*
+ * The control that belongs to a COLUMN — see SheetColumn.headerButton.
+ *
+ * Outlined rather than a bare glyph. The first version was a grey ⋯ in the
+ * header's own micro type, which is to say invisible: "you can edit the
+ * evaluation from the sheet" is only true if someone can find the thing that
+ * edits it. It is never hover-only either — half of this runs on touchscreens,
+ * where hover does not exist.
+ */
 .sheet-colbtn {
   margin-left: 5px;
-  padding: 0 4px;
-  border: none;
+  padding: 0 5px;
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
-  background: none;
-  color: var(--ink-3);
+  background: var(--surface);
+  color: var(--ink-2);
   font: inherit;
   font-size: var(--t-micro);
-  line-height: 1;
+  line-height: 15px;
+  vertical-align: middle;
   cursor: pointer;
 }
 .sheet-colbtn:hover {
-  background: var(--surface);
-  color: var(--primary);
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-ink);
+}
+.sheet-colbtn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
 }
 
 /* Where the typing got to. Nobody presses save; this is the receipt. */

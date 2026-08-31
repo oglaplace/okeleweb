@@ -4,6 +4,7 @@ import * as api from "../../lib/api";
 import PhoneInput from "../../components/ui/PhoneInput.vue";
 import { useBusyStore } from "../../stores/busy";
 import { KIND_FR } from "../../components/structure/kinds";
+import Alert from "../../components/ui/Alert.vue";
 
 /**
  * Staff, and where they are posted.
@@ -153,8 +154,8 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
       </div>
     </div>
 
-    <div v-if="notice" class="form-ok">{{ notice }}</div>
-    <div v-if="error" class="form-error">{{ error }}</div>
+    <Alert v-if="notice" kind="ok" @close="notice = null">{{ notice }}</Alert>
+    <Alert v-if="error" kind="error" @close="error = null">{{ error }}</Alert>
 
     <div v-if="adding" class="card" style="margin-bottom: var(--s4)">
       <div class="card-head">

@@ -5,6 +5,7 @@ import type { ActionField, ActionSpec } from "../../lib/actions";
 import { useBusyStore } from "../../stores/busy";
 import { useOrgStore } from "../../stores/org";
 import { KIND_FR } from "../structure/kinds";
+import Alert from "../ui/Alert.vue";
 
 /**
  * The fields of one action, wherever it was triggered from.
@@ -132,6 +133,29 @@ async function resolveOptions(out: Record<string, { value: string; label: string
   }
 }
 
+/**
+ * Why a select is empty, when it is.
+ *
+ * An empty dropdown and a dropdown that failed to load look identical, and
+ * both look like "there are none" — which sends an operator off to create a
+ * période that already exists. Every scope-bound source can legitimately come
+ * back empty, so each one gets a sentence rather than a blank.
+ */
+const EMPTY_REASON: Record<string, string> = {
+  years: "Aucune année scolaire ouverte.",
+  periodsOfScope: "Aucune période définie pour cette année sur ce cycle.",
+  offeringsOfScope: "Aucune matière programmée sur ce niveau.",
+  assessmentTypes: "Aucun type d'évaluation — créez-en un d'abord.",
+  subjects: "Aucune matière au catalogue.",
+  feeTypes: "Aucun type de frais.",
+};
+function emptyReason(f: ActionField): string | null {
+  if (loadingOptions.value || !f.source) return null;
+  const list = f.options ?? options.value[f.key];
+  if (list === undefined || list.length) return null;
+  return EMPTY_REASON[f.source] ?? "Aucun choix disponible.";
+}
+
 watch(
   () => props.spec.id,
   async () => {
@@ -207,8 +231,8 @@ defineExpose({ submit, canSubmit });
 
 <template>
   <form class="action-form" @submit.prevent="submit">
-    <div v-if="notice" class="form-ok">{{ notice }}</div>
-    <div v-if="error" class="form-error">{{ error }}</div>
+    <Alert v-if="notice" kind="ok" @close="notice = null">{{ notice }}</Alert>
+    <Alert v-if="error" kind="error" @close="error = null">{{ error }}</Alert>
 
     <div v-if="!spec.fields?.length" class="hint">
       Aucun paramètre — cette action s'exécute telle quelle.
@@ -291,7 +315,9 @@ defineExpose({ submit, canSubmit });
           autocomplete="off"
         />
 
-        <span v-if="f.hint && f.type !== 'text'" class="hint">{{ f.hint }}</span>
+        <!-- Said out loud rather than left as a blank dropdown. -->
+        <span v-if="emptyReason(f)" class="hint is-warn">{{ emptyReason(f) }}</span>
+        <span v-else-if="f.hint && f.type !== 'text'" class="hint">{{ f.hint }}</span>
       </div>
     </div>
 

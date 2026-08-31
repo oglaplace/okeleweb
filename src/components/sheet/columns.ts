@@ -196,7 +196,9 @@ export function studentTabs(
                 : {}),
               headerButton: {
                 key: `assessment:${a.id}`,
-                label: a.published ? "🔒" : a.submitted ? "✓" : "⋯",
+                // A pencil, not an ellipsis: the button opens the evaluation
+                // for editing, and an ellipsis promises a menu that is not there.
+                label: a.published ? "🔒" : a.submitted ? "✓" : "✎",
                 hint: a.published
                   ? "Publiée — figée par le conseil"
                   : a.submitted
@@ -383,7 +385,16 @@ export const SUBJECT_IDENTITY: SheetColumn[] = [
  */
 export function niveauTabs(sheet: {
   series: { id: string; code: string; name: string }[];
+  rows?: { assessments: number }[];
 }): SheetTab[] {
+  /*
+   * "Devoir" was too narrow a word for what the column counts.
+   *
+   * A devoir is one KIND of evaluation — a trimestre is an interro, a devoir
+   * and a composition, and the column totals all three. Pluralised from the
+   * total for the same reason a count of one should not read "1 Évaluations".
+   */
+  const evaluations = (sheet.rows ?? []).reduce((sum, r) => sum + (r.assessments ?? 0), 0);
   const tabs: SheetTab[] = [
     {
       id: "programme",
@@ -416,7 +427,14 @@ export function niveauTabs(sheet: {
           total: true,
           hint: "Nombre d'heures placées à l'emploi du temps, toutes classes du niveau.",
         },
-        { key: "assessments", label: "Devoirs", type: "number", width: 9, total: true },
+        {
+          key: "assessments",
+          label: evaluations === 1 ? "Évaluation" : "Évaluations",
+          type: "number",
+          width: 12,
+          total: true,
+          hint: "Interros, devoirs et compositions créés dans cette matière, toutes périodes.",
+        },
       ],
     },
   ];

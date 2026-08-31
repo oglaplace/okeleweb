@@ -5,6 +5,7 @@ import { useBusyStore } from "../../stores/busy";
 import { useOrgStore } from "../../stores/org";
 import PhoneInput from "../ui/PhoneInput.vue";
 import UnitSelect from "../structure/UnitSelect.vue";
+import Alert from "../ui/Alert.vue";
 
 /**
  * Enrol one pupil — the form, wherever it is shown.
@@ -200,8 +201,8 @@ defineExpose({ submit });
   </div>
 
   <form v-else class="enroll-form" @submit.prevent="submit">
-    <div v-if="notice" class="form-ok">{{ notice }}</div>
-    <div v-if="error" class="form-error">{{ error }}</div>
+    <Alert v-if="notice" kind="ok" @close="notice = null">{{ notice }}</Alert>
+    <Alert v-if="error" kind="error" @close="error = null">{{ error }}</Alert>
 
     <fieldset class="fieldset">
       <legend>Élève</legend>

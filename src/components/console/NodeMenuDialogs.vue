@@ -4,6 +4,7 @@ import * as api from "../../lib/api";
 import { useBusyStore } from "../../stores/busy";
 import { KIND_FR } from "../structure/kinds";
 import DialogShell from "../ui/DialogShell.vue";
+import Alert from "../ui/Alert.vue";
 
 /**
  * The dialogs behind the tree's ⋯ menu.
@@ -115,7 +116,7 @@ async function submit() {
 
 <template>
   <DialogShell v-if="unit && action" :title="title" @close="emit('done', false)">
-    <div v-if="error" class="form-error">{{ error }}</div>
+    <Alert v-if="error" kind="error" @close="error = null">{{ error }}</Alert>
 
     <template v-if="action === 'add'">
       <div v-if="!allowedKinds.length" class="hint">

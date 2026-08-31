@@ -6,6 +6,7 @@ import ModulePicker from "../../components/structure/ModulePicker.vue";
 import UpgradeDialog from "../../components/structure/UpgradeDialog.vue";
 import Icon from "../../components/ui/Icon.vue";
 import { KIND_FR } from "../../components/structure/kinds";
+import Alert from "../../components/ui/Alert.vue";
 
 /**
  * Structure: what the établissement is made of, and how to add to it.
@@ -210,8 +211,8 @@ async function install() {
 
     <UpgradeDialog v-if="upgrading" @close="upgrading = false" @applied="onUpgraded" />
 
-    <div v-if="notice" class="form-ok">{{ notice }}</div>
-    <div v-if="error" class="form-error">{{ error }}</div>
+    <Alert v-if="notice" kind="ok" @close="notice = null">{{ notice }}</Alert>
+    <Alert v-if="error" kind="error" @close="error = null">{{ error }}</Alert>
 
     <!-- The tree in the pane stays put while this is open: installing a cycle
          must not make the operator lose their place in the structure. -->
@@ -253,7 +254,7 @@ async function install() {
         <button class="btn sm ghost" type="button" @click="creating = false">Annuler</button>
       </div>
       <div class="card-body">
-        <div v-if="createError" class="form-error">{{ createError }}</div>
+        <Alert v-if="createError" kind="error" @close="createError = null">{{ createError }}</Alert>
         <div v-if="!allowedKinds.length" class="hint">
           Rien ne peut être créé à la racine : le complexe existe déjà. Sélectionnez
           une unité dans l'arborescence pour y ajouter un élément.

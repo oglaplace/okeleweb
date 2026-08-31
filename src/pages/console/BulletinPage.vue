@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import * as api from "../../lib/api";
 import Icon from "../../components/ui/Icon.vue";
+import Alert from "../../components/ui/Alert.vue";
 
 /**
  * ONE PUPIL'S BULLETIN — the document, not a screen about it.
@@ -128,7 +129,9 @@ const DECISIONS: Record<string, string> = {
       <div class="skeleton" style="width: 40%" /><div class="skeleton" style="width: 70%" />
     </div></div>
 
-    <div v-else-if="error" class="form-error">{{ error }}</div>
+    <!-- The load failed: this banner is the whole page, so it has no
+         close button — there is nothing behind it to reveal. -->
+    <Alert v-else-if="error" :closable="false">{{ error }}</Alert>
 
     <article v-else-if="bulletin" class="bulletin" :class="{ 'is-draft': bulletin.status === 'PROVISIONAL' }">
       <!--

@@ -18,6 +18,7 @@ import {
   subjectTabs, type SheetColumn, type SheetTab,
 } from "../../components/sheet/columns";
 import TimetableGrid from "../../components/sheet/TimetableGrid.vue";
+import Alert from "../../components/ui/Alert.vue";
 
 /**
  * One unit: what it is, what it holds, and everything that can be done to it.
@@ -615,7 +616,9 @@ const totalDue = computed(() =>
       <div class="skeleton" style="width: 35%" /><div class="skeleton" style="width: 60%" />
     </div></div>
 
-    <div v-else-if="error" class="form-error">{{ error }}</div>
+    <!-- The load failed: this banner is the whole page, so it has no
+         close button — there is nothing behind it to reveal. -->
+    <Alert v-else-if="error" :closable="false">{{ error }}</Alert>
 
     <template v-else-if="unit">
       <!--
@@ -682,8 +685,8 @@ const totalDue = computed(() =>
         </div>
       </div>
 
-      <div v-if="notice" class="form-ok">{{ notice }}</div>
-      <div v-if="markError" class="form-error">{{ markError }}</div>
+      <Alert v-if="notice" kind="ok" @close="notice = null">{{ notice }}</Alert>
+      <Alert v-if="markError" kind="error" @close="markError = null">{{ markError }}</Alert>
 
       <!--
         A drill-down says what it is and how to leave.
@@ -923,7 +926,7 @@ const totalDue = computed(() =>
         icon="fileText"
         @close="((editing = null), (confirmDelete = false))"
       >
-        <div v-if="markError" class="form-error">{{ markError }}</div>
+        <Alert v-if="markError" kind="error" @close="markError = null">{{ markError }}</Alert>
 
         <template v-if="!editing.published && !editing.submitted">
           <div class="field-row">

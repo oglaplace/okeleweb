@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import * as api from "../../lib/api";
 import { useBusyStore } from "../../stores/busy";
 import DialogShell from "../ui/DialogShell.vue";
+import Alert from "../ui/Alert.vue";
 
 /**
  * "Mettre à niveau" — as a list you read, not a button you trust.
@@ -114,7 +115,7 @@ async function apply() {
     wide
     @close="emit('close')"
   >
-    <div v-if="error" class="form-error">{{ error }}</div>
+    <Alert v-if="error" kind="error" @close="error = null">{{ error }}</Alert>
 
     <div v-if="loading" class="stack">
       <div class="skeleton" style="width: 45%" /><div class="skeleton" style="width: 70%" />

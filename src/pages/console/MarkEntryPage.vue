@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import * as api from "../../lib/api";
+import Alert from "../../components/ui/Alert.vue";
 
 /**
  * Mark entry — the teacher's daily screen, and the only place marks are created.
@@ -305,11 +306,13 @@ watch(assessmentId, () => void loadGrid());
       </button>
     </div>
 
-    <div v-if="error" class="form-error">{{ error }}</div>
+    <Alert v-if="error" kind="error" @close="error = null">{{ error }}</Alert>
 
-    <div v-if="locked" class="form-error" style="background: var(--warn-soft); color: var(--warn)">
+    <!-- A live condition. Closing it would not unlock the période, and the
+         grid below is read-only either way. -->
+    <Alert v-if="locked" kind="warn" :closable="false">
       Cette période est verrouillée — les notes sont en lecture seule.
-    </div>
+    </Alert>
 
     <div v-if="loading" class="card"><div class="empty">Chargement…</div></div>
 
