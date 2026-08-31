@@ -32,6 +32,8 @@ export interface SheetGroup {
 export interface SheetTab {
   id: string;
   label: string;
+  /** Identity columns prepended to a grouped tab. Defaults to a pupil's. */
+  identity?: SheetColumn[];
   /**
    * How many leading columns stay put while the rest scrolls sideways.
    *
@@ -124,25 +126,62 @@ export function studentTabs(sheet: api.StudentSheet): SheetTab[] {
       : "Aucune période n'est ouverte pour cette année — il n'y a rien à noter.",
   });
 
-  tabs.push({
-    id: "attendance",
-    label: "Assiduité",
-    columns: [
-      ...IDENTITY,
-      { key: "sessions", label: "Séances", type: "number", total: true },
-      { key: "present", label: "Présent", type: "number", total: true },
-      { key: "absent", label: "Absent", type: "number", total: true, warnAbove: 1 },
-      { key: "late", label: "Retards", type: "number", total: true, warnAbove: 1 },
-      { key: "excused", label: "Excusé", type: "number", total: true },
-      {
-        key: "attendanceRate",
-        label: "Assiduité",
-        type: "percent",
-        width: 11,
-        hint: "Présences et retards sur séances pointées. Arriver en retard n'est pas être absent.",
-      },
-    ],
-  });
+  /**
+   * From the collège up, an absence belongs to a lesson, not to a day.
+   *
+   * Below it the same teacher takes every hour, so per-subject columns would be
+   * one number repeated six times — see the API, which decides this from
+   * `singleTitulaire` on the niveau rather than from a list of school codes.
+   */
+  if (sheet.attendanceMode === "BY_SUBJECT" && sheet.subjects.length) {
+    tabs.push({
+      id: "attendance",
+      label: "Assiduité",
+      frozen: IDENTITY.length,
+      groups: [
+        {
+          label: "Total",
+          columns: [
+            { key: "sessions", label: "Séances", type: "number", width: 8 },
+            { key: "absent", label: "Abs.", type: "number", width: 6, total: true, warnAbove: 1 },
+            { key: "late", label: "Ret.", type: "number", width: 6, total: true },
+            { key: "attendanceRate", label: "Taux", type: "percent", width: 9 },
+          ],
+        },
+        {
+          label: "Absences par matière",
+          columns: sheet.subjects.map((subject) => ({
+            key: `a:${subject.id}`,
+            label: subject.code,
+            type: "number" as const,
+            width: 6,
+            warnAbove: 1,
+            hint: subject.name,
+          })),
+        },
+      ],
+    });
+  } else {
+    tabs.push({
+      id: "attendance",
+      label: "Assiduité",
+      columns: [
+        ...IDENTITY,
+        { key: "sessions", label: "Séances", type: "number", total: true },
+        { key: "present", label: "Présent", type: "number", total: true },
+        { key: "absent", label: "Absent", type: "number", total: true, warnAbove: 1 },
+        { key: "late", label: "Retards", type: "number", total: true, warnAbove: 1 },
+        { key: "excused", label: "Excusé", type: "number", total: true },
+        {
+          key: "attendanceRate",
+          label: "Assiduité",
+          type: "percent",
+          width: 11,
+          hint: "Présences et retards sur séances pointées. Arriver en retard n'est pas être absent.",
+        },
+      ],
+    });
+  }
 
   /**
    * The summary is not a sixth set of data — it is one column pulled from each
@@ -183,6 +222,9 @@ export function studentTabs(sheet: api.StudentSheet): SheetTab[] {
  */
 export function flattenStudentRow(row: api.StudentSheetRow): Record<string, unknown> {
   const flat: Record<string, unknown> = { ...row };
+  for (const [subjectId, absences] of Object.entries(row.absenceBySubject ?? {})) {
+    flat[`a:${subjectId}`] = absences;
+  }
   for (const [periodId, period] of Object.entries(row.grades)) {
     flat[`g:${periodId}:avg`] = period.average;
     flat[`g:${periodId}:rank`] = period.rank;
@@ -212,6 +254,105 @@ export function childrenTab(): SheetTab {
       { key: "code", label: "Code", width: 10 },
       { key: "capacity", label: "Capacité", type: "number", width: 10 },
       { key: "state", label: "État", width: 10 },
+    ],
+  };
+}
+
+/** The identity columns of a programme row, for the grouped coefficient tab. */
+export const SUBJECT_IDENTITY: SheetColumn[] = [
+  { key: "code", label: "Code", width: 8 },
+  { key: "name", label: "Matière", width: 30 },
+];
+
+/**
+ * A NIVEAU as its programme.
+ *
+ * The level is where the curriculum lives — offerings and coefficients both key
+ * on it, never on the classe — so this is the one screen where "what is taught
+ * in Sixième, how many hours, at what weight" is a list rather than an
+ * inference across three tables. `slots` and `assessments` are the two columns
+ * that say whether a subject is actually being TAUGHT or merely declared.
+ */
+export function niveauTabs(sheet: {
+  series: { id: string; code: string; name: string }[];
+}): SheetTab[] {
+  const tabs: SheetTab[] = [
+    {
+      id: "programme",
+      label: "Programme",
+      frozen: 2,
+      columns: [
+        { key: "code", label: "Code", width: 8 },
+        { key: "name", label: "Matière", width: 30 },
+        { key: "weeklyHours", label: "H/sem.", type: "number", width: 8 },
+        {
+          key: "coefficient",
+          label: "Coefficient",
+          type: "number",
+          width: 12,
+          hint: "Toutes séries confondues. Une série qui diffère a sa propre colonne.",
+        },
+        {
+          key: "slots",
+          label: "Créneaux",
+          type: "number",
+          width: 10,
+          total: true,
+          hint: "Nombre d'heures placées à l'emploi du temps, toutes classes du niveau.",
+        },
+        { key: "assessments", label: "Devoirs", type: "number", width: 9, total: true },
+      ],
+    },
+  ];
+
+  // Coefficients differ by série — that is the whole reason the table exists —
+  // so they get their own tab only when the school actually has séries.
+  if (sheet.series.length) {
+    tabs.push({
+      id: "coefficients",
+      label: "Coefficients",
+      frozen: 2,
+      identity: SUBJECT_IDENTITY,
+      groups: [
+        {
+          label: "Par série",
+          columns: [
+            { key: "coefficient", label: "Toutes", type: "number", width: 9 },
+            ...sheet.series.map((serie) => ({
+              key: `coef:${serie.id}`,
+              label: serie.code,
+              type: "number" as const,
+              width: 8,
+              hint: serie.name,
+            })),
+          ],
+        },
+      ],
+    });
+  }
+
+  return tabs;
+}
+
+/** A CYCLE or SCHOOL as its calendar: the périodes the year is cut into. */
+export function periodTab(): SheetTab {
+  return {
+    id: "periods",
+    label: "Périodes",
+    frozen: 2,
+    columns: [
+      { key: "sequence", label: "Rang", type: "number", width: 6 },
+      { key: "label", label: "Période", width: 20 },
+      { key: "kind", label: "Type", width: 12 },
+      { key: "startsOn", label: "Début", type: "date", width: 12 },
+      { key: "endsOn", label: "Fin", type: "date", width: 12 },
+      {
+        key: "state",
+        label: "État",
+        width: 11,
+        hint: "Une période terminée mais non verrouillée laisse ses notes modifiables.",
+      },
+      { key: "locked", label: "Verrouillée", type: "pill", width: 12 },
     ],
   };
 }

@@ -13,8 +13,10 @@ import DialogShell from "../../components/ui/DialogShell.vue";
 import DataSheet from "../../components/sheet/DataSheet.vue";
 import SheetTabs from "../../components/sheet/SheetTabs.vue";
 import {
-  childrenTab, flattenStudentRow, staffTabs, studentTabs, type SheetTab,
+  childrenTab, flattenStudentRow, niveauTabs, periodTab, staffTabs, studentTabs,
+  type SheetTab,
 } from "../../components/sheet/columns";
+import TimetableGrid from "../../components/sheet/TimetableGrid.vue";
 
 /**
  * One unit: what it is, what it holds, and everything that can be done to it.
@@ -45,6 +47,15 @@ const unit = ref<api.OrgUnit | null>(null);
 const children = ref<api.OrgUnit[]>([]);
 const sheet = ref<api.StudentSheet | null>(null);
 const staff = ref<api.StaffSheetRow[]>([]);
+/** The programme of a NIVEAU — what is taught here, and at what weight. */
+const programme = ref<api.NiveauSheet | null>(null);
+/** The calendar of a CYCLE or SCHOOL. */
+const periods = ref<api.PeriodSheet | null>(null);
+/** The weekly grid of a CLASSE, and what a builder needs to extend it. */
+const grid = ref<api.TimetableSlot[]>([]);
+const offerings = ref<{ id: string; subject: { id: string; code: string; name: string } }[]>([]);
+const siblings = ref<{ id: string; name: string }[]>([]);
+const teachers = ref<{ id: string; label: string }[]>([]);
 const years = ref<api.AcademicYear[]>([]);
 const yearId = ref<string | null>(null);
 const loading = ref(true);
@@ -65,14 +76,16 @@ async function load() {
     unit.value = u;
     children.value = kids;
 
+    years.value = await api.academics.years().catch(() => []);
+    yearId.value =
+      yearId.value ?? (years.value.find((y) => y.isCurrent) ?? years.value[0])?.id ?? null;
+
     if (u.kind === "CLASSE") {
-      years.value = await api.academics.years().catch(() => []);
-      yearId.value =
-        yearId.value ?? (years.value.find((y) => y.isCurrent) ?? years.value[0])?.id ?? null;
       await loadSheet();
     } else {
       // Everything else holds units — and, often, people posted to it.
       staff.value = await api.sheets.staff(u.id).then((r) => r.rows).catch(() => []);
+      await loadSheet();
     }
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Chargement impossible.";
@@ -82,10 +95,68 @@ async function load() {
 }
 watch(id, load, { immediate: true });
 
-/** The sheet alone — a year change must not reload the whole page. */
+/**
+ * Whatever this KIND of node is a sheet of — and only that.
+ *
+ * A classe is pupils and a week; a niveau is a programme; a cycle is a
+ * calendar. Loading all three for every node would be three requests to draw
+ * one, and two of them would always be empty by construction.
+ */
 async function loadSheet() {
-  if (!unit.value || unit.value.kind !== "CLASSE" || !yearId.value) return;
-  sheet.value = await api.sheets.classe(unit.value.id, yearId.value).catch(() => null);
+  const u = unit.value;
+  if (!u || !yearId.value) return;
+  programme.value = null;
+  periods.value = null;
+  grid.value = [];
+
+  if (u.kind === "CLASSE") {
+    const [s, g] = await Promise.all([
+      api.sheets.classe(u.id, yearId.value).catch(() => null),
+      api.timetable.forClasse(u.id, yearId.value).catch(() => null),
+    ]);
+    sheet.value = s;
+    grid.value = g?.slots ?? [];
+    await loadBuilderOptions();
+    return;
+  }
+
+  if (u.kind === "NIVEAU") {
+    programme.value = await api.sheets.niveau(u.id, yearId.value).catch(() => null);
+    return;
+  }
+
+  // Périodes hang off a school or a cycle — never off a classe.
+  if (u.kind === "CYCLE" || u.kind === "SCHOOL" || u.kind === "FACULTY") {
+    periods.value = await api.sheets.periods(u.id, yearId.value).catch(() => null);
+  }
+}
+
+/**
+ * What the builder offers: the niveau's subjects, its other classes, the staff.
+ *
+ * Offerings come from the NIVEAU because that is where a course is programmed —
+ * asking the classe would be asking the wrong row, and is exactly the mistake
+ * the timetable dialog explains when there are none.
+ */
+async function loadBuilderOptions() {
+  const u = unit.value;
+  if (!u || !yearId.value) return;
+  const niveauId = u.parentId;
+  if (!niveauId) return;
+
+  const [offs, kids, people] = await Promise.all([
+    api.academics.offerings(niveauId, yearId.value).catch(() => []),
+    api.orgUnits.children(niveauId).catch(() => []),
+    api.people.staff().catch(() => []),
+  ]);
+  offerings.value = offs.map((o) => ({ id: o.id, subject: o.subject }));
+  siblings.value = kids
+    .filter((c) => c.kind === "CLASSE" && c.id !== u.id)
+    .map((c) => ({ id: c.id, name: c.name }));
+  teachers.value = people.map((person) => ({
+    id: person.id,
+    label: `${person.lastName} ${person.firstName}`,
+  }));
 }
 watch(yearId, () => {
   if (!loading.value) void loadSheet();
@@ -106,6 +177,9 @@ const runSpec = ref<ActionSpec | null>(null);
  * class, and closing it refreshes what is underneath.
  */
 const inlineForm = ref<"enroll" | null>(null);
+
+/** The empty timetable's button: show the builder before any slot exists. */
+const startGrid = ref(false);
 
 function onRun(payload: { spec: ActionSpec }) {
   if (payload.spec.inline) {
@@ -141,13 +215,32 @@ async function onStructureDone(changed: boolean) {
 const treeUnit = computed(() => org.byId(id.value));
 
 // ── the sheet ───────────────────────────────────────────────────────────────
-const tab = ref("general");
+/**
+ * Which face of this node is open.
+ *
+ * Seeded from the URL so an action can point at one — "emploi du temps" in the
+ * rail lands on the grid, not on the pupil list with the grid one click away.
+ */
+const tab = ref(typeof route.query.tab === "string" ? route.query.tab : "general");
+watch(
+  () => route.query.tab,
+  (t) => {
+    if (typeof t === "string" && t) tab.value = t;
+  },
+);
+
+const TIMETABLE_TAB: SheetTab = { id: "timetable", label: "Emploi du temps" };
 
 const tabs = computed<SheetTab[]>(() => {
-  if (sheet.value) return studentTabs(sheet.value);
-  // A school has children AND staff; both are sheets of the same workbook.
+  // A classe: its pupils under four column sets, plus its week.
+  if (sheet.value) return [...studentTabs(sheet.value), TIMETABLE_TAB];
+
   return [
     ...(children.value.length ? [childrenTab()] : []),
+    // A niveau is where the curriculum lives, so its sheet is the programme.
+    ...(programme.value ? niveauTabs(programme.value) : []),
+    // A cycle or a school owns the calendar the whole level is cut into.
+    ...(periods.value ? [periodTab()] : []),
     ...(staff.value.length ? staffTabs() : []),
   ];
 });
@@ -163,6 +256,10 @@ const childRows = computed(() =>
 /** Flattened once per load, not per render: the grade grid is a nested map. */
 const sheetRows = computed<Record<string, unknown>[]>(() => {
   if (tab.value === "children") return childRows.value as unknown as Record<string, unknown>[];
+  if (tab.value === "periods") return (periods.value?.rows ?? []) as unknown as Record<string, unknown>[];
+  if (tab.value === "programme" || tab.value === "coefficients") {
+    return (programme.value?.rows ?? []) as unknown as Record<string, unknown>[];
+  }
   if (sheet.value) return sheet.value.rows.map(flattenStudentRow);
   return staff.value as unknown as Record<string, unknown>[];
 });
@@ -177,7 +274,12 @@ watch(tabs, (list) => {
   if (list.length && !list.some((t) => t.id === tab.value)) tab.value = list[0]!.id;
 });
 
-const rowKey = computed(() => (sheet.value && tab.value !== "children" ? "studentId" : "id"));
+const rowKey = computed(() =>
+  sheet.value && tab.value !== "children" && tab.value !== "timetable" ? "studentId" : "id",
+);
+
+// Moving node or tab puts the builder away: it is a state of THIS empty grid.
+watch([id, tab], () => (startGrid.value = false));
 
 /** A child row is a destination; a pupil row is not (yet). */
 function onPick(row: Record<string, unknown>) {
@@ -281,7 +383,72 @@ const totalDue = computed(() =>
         {{ activeTab.empty }}
       </div>
 
-      <template v-if="activeTab">
+      <!--
+        The week is not a row sheet. Time down, days across, and an empty cell
+        that IS the button — see TimetableGrid. It shares the tab strip because
+        it is another face of the same class, not another screen.
+      -->
+      <template v-if="activeTab?.id === 'timetable' && unit.kind === 'CLASSE' && yearId">
+        <div v-if="!grid.length && !offerings.length" class="card">
+          <div class="empty">
+            <div class="empty-title">Aucune matière programmée</div>
+            <div style="max-width: 56ch; margin: 0 auto">
+              Un créneau porte une matière du niveau, et
+              {{ org.byId(unit.parentId)?.name ?? "ce niveau" }} n'en a aucune pour
+              l'année en cours. Programmez-en une d'abord.
+            </div>
+            <div class="empty-actions">
+              <RouterLink
+                class="btn primary"
+                :to="{ name: 'action', params: { id: 'create-offering' }, query: { scope: unit.parentId } }"
+              >
+                Programmer une matière
+              </RouterLink>
+            </div>
+          </div>
+        </div>
+
+        <div v-else-if="!grid.length" class="card">
+          <div class="empty">
+            <div class="empty-title">Aucun emploi du temps</div>
+            <div style="max-width: 56ch; margin: 0 auto">
+              Sans créneau il n'y a pas de séance, et sans séance il n'y a pas
+              d'appel — l'assiduité de cette classe ne peut pas être tenue.
+            </div>
+            <div class="empty-actions">
+              <button class="btn primary" type="button" @click="startGrid = true">
+                Construire l'emploi du temps
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <TimetableGrid
+          v-if="grid.length || startGrid"
+          :classe-id="unit.id"
+          :academic-year-id="yearId"
+          :slots="grid"
+          :offerings="offerings"
+          :staff="teachers"
+          :siblings="siblings"
+          @changed="loadSheet"
+        />
+
+        <SheetTabs v-model="tab" :tabs="tabs">
+          <template #end>
+            <select
+              v-if="years.length > 1"
+              v-model="yearId"
+              class="btn sm"
+              aria-label="Année scolaire"
+            >
+              <option v-for="y in years" :key="y.id" :value="y.id">{{ y.label }}</option>
+            </select>
+          </template>
+        </SheetTabs>
+      </template>
+
+      <template v-else-if="activeTab">
         <DataSheet
           :tab="activeTab"
           :rows="sheetRows"

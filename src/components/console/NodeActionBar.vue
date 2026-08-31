@@ -48,6 +48,10 @@ function routeFor(spec: ActionSpec, targetId: string): RouteLocationRaw | null {
   if (spec.route === "classe" || spec.route === "marks" || spec.route === "bulletins") {
     return { name: spec.route, params: { id: targetId } };
   }
+  // A tab is a face of the node page, not another screen — see ActionSpec.tab.
+  if (spec.route === "unit") {
+    return { name: "unit", params: { id: targetId }, ...(spec.tab ? { query: { tab: spec.tab } } : {}) };
+  }
   // The rest take it as the scope they pre-select, so the picker they own
   // opens already answered.
   return { name: spec.route, query: { scope: targetId } };

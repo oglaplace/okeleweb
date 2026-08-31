@@ -50,7 +50,10 @@ const GUTTER: Col = { key: "__n", label: "#", width: 3, type: "number" };
  */
 const columns = computed<Col[]>(() => {
   if (!props.tab.groups) return [GUTTER, ...(props.tab.columns ?? [])];
-  const out: Col[] = [GUTTER, ...IDENTITY];
+  // A grouped tab names its own identity when it is not about pupils — the
+  // coefficient grid is rows of SUBJECTS, and prepending a matricule to those
+  // would be a column of nothing.
+  const out: Col[] = [GUTTER, ...(props.tab.identity ?? IDENTITY)];
   props.tab.groups.forEach((group, groupIndex) => {
     group.columns.forEach((column, i) => {
       out.push({ ...column, groupIndex, groupStart: i === 0 });

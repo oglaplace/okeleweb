@@ -88,6 +88,13 @@ export interface ActionSpec {
   inline?: "enroll";
   /** Declared but not yet wired; the reason is shown in place of the action. */
   planned?: string;
+  /**
+   * Which face of the destination to open on.
+   *
+   * A node page is several sheets of one workbook, so "emploi du temps" is not
+   * a different screen — it is the same screen opened on a different tab.
+   */
+  tab?: string;
   submit?: (scopeId: string | null, v: Record<string, string>) => Promise<unknown>;
 }
 
@@ -305,10 +312,13 @@ export const ACTIONS: ActionSpec[] = [
     label: "Emploi du temps",
     group: "programme",
     icon: "calendar",
-    summary: "Séances hebdomadaires par classe et par enseignant.",
+    summary: "La grille hebdomadaire de la classe : matière, enseignant, salle.",
     scope: ["CLASSE"],
-    // Honest: the model has TeachingSession, the API has no route for it.
-    planned: "Le modèle existe (TeachingSession) mais l'API ne l'expose pas encore.",
+    // No longer planned: TimetableSlot and /api/timetable exist. It opens the
+    // class's own page on its timetable tab rather than a screen of its own —
+    // the grid is a face of the class, not a separate destination.
+    route: "unit",
+    tab: "timetable",
   },
 
   // ── notes & bulletins ─────────────────────────────────────────────────────
@@ -478,7 +488,7 @@ export const ACTIONS: ActionSpec[] = [
  *
  * So: never link to one of these without an id. Ask for the unit first.
  */
-export const ROUTE_NEEDS_UNIT = new Set(["classe", "marks", "bulletins"]);
+export const ROUTE_NEEDS_UNIT = new Set(["classe", "marks", "bulletins", "unit"]);
 
 export const byId = (id: string) => ACTIONS.find((a) => a.id === id);
 export const inGroup = (group: ActionGroup) => ACTIONS.filter((a) => a.group === group);

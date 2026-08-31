@@ -584,6 +584,8 @@ export interface StudentSheetRow {
   late: number;
   excused: number;
   attendanceRate: number | null;
+  /** subjectId → absences, when the cycle counts attendance per subject. */
+  absenceBySubject: Record<string, number>;
 }
 
 export interface StudentSheet {
@@ -592,6 +594,7 @@ export interface StudentSheet {
   periods: SheetPeriod[];
   subjects: SheetSubject[];
   rows: StudentSheetRow[];
+  attendanceMode: AttendanceMode;
   /** Why a column set is empty, when it is. Shown rather than left to guess. */
   notes: string[];
 }
@@ -600,6 +603,39 @@ export interface StaffSheetRow extends StaffMember {
   roles: string;
   units: string;
   postings: number;
+}
+
+/** How absences are counted — per day, or per subject. See the API's sheets. */
+export type AttendanceMode = "GENERAL" | "BY_SUBJECT";
+
+export interface NiveauSheet {
+  niveau: { id: string; name: string; code: string };
+  classes: number;
+  series: { id: string; code: string; name: string }[];
+  rows: (Record<string, unknown> & {
+    id: string;
+    subjectId: string;
+    code: string;
+    name: string;
+    weeklyHours: number;
+    coefficient: number | null;
+    assessments: number;
+    slots: number;
+  })[];
+}
+
+export interface PeriodSheet {
+  unit: { id: string; name: string; kind: OrgUnitKind };
+  rows: {
+    id: string;
+    label: string;
+    kind: string;
+    sequence: number;
+    startsOn: string;
+    endsOn: string;
+    locked: boolean;
+    state: string;
+  }[];
 }
 
 export const sheets = {
@@ -614,6 +650,64 @@ export const sheets = {
     request<{ unit: { id: string; name: string; kind: OrgUnitKind }; rows: StaffSheetRow[] }>(
       `/sheets/staff?orgUnitId=${encodeURIComponent(orgUnitId)}`,
     ),
+
+  /** The programme of a niveau: what is taught, how often, at what weight. */
+  niveau: (niveauId: string, academicYearId: string) =>
+    request<NiveauSheet>(
+      `/sheets/niveau?niveauId=${encodeURIComponent(niveauId)}` +
+        `&academicYearId=${encodeURIComponent(academicYearId)}`,
+    ),
+
+  /** The périodes of a cycle or school — the year's calendar. */
+  periods: (orgUnitId: string, academicYearId: string) =>
+    request<PeriodSheet>(
+      `/sheets/periods?orgUnitId=${encodeURIComponent(orgUnitId)}` +
+        `&academicYearId=${encodeURIComponent(academicYearId)}`,
+    ),
+};
+
+// ─── timetable ───────────────────────────────────────────────────────────────
+
+export interface TimetableSlot {
+  id: string;
+  dayOfWeek: number;
+  startsAtMin: number;
+  endsAtMin: number;
+  room: string | null;
+  periodId: string | null;
+  courseOfferingId: string;
+  subject: { id: string; code: string; name: string };
+  employmentId: string | null;
+  teacher: string | null;
+}
+
+export const timetable = {
+  /** The weekly grid, with everything a cell needs to draw itself. */
+  forClasse: (classeId: string, academicYearId: string) =>
+    request<{ classe: { id: string; name: string }; slots: TimetableSlot[] }>(
+      `/timetable?classeId=${encodeURIComponent(classeId)}` +
+        `&academicYearId=${encodeURIComponent(academicYearId)}`,
+    ),
+
+  addSlot: (body: {
+    classeId: string;
+    courseOfferingId: string;
+    academicYearId: string;
+    periodId?: string | null;
+    employmentId?: string | null;
+    dayOfWeek: number;
+    startsAtMin: number;
+    endsAtMin: number;
+    room?: string | null;
+  }) => request<TimetableSlot>("/timetable/slots", { method: "POST", body: JSON.stringify(body) }),
+
+  removeSlot: (id: string) => request<{ id: string }>(`/timetable/slots/${id}`, { method: "DELETE" }),
+
+  copyWeek: (fromClasseId: string, toClasseId: string, academicYearId: string) =>
+    request<{ copied: number; skipped: number }>("/timetable/copy", {
+      method: "POST",
+      body: JSON.stringify({ fromClasseId, toClasseId, academicYearId }),
+    }),
 };
 
 export const enrollment = {

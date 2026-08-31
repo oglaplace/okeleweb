@@ -56,7 +56,13 @@ watch(
   ([s, unit]) => {
     if (!s?.route) return;
     if (ROUTE_NEEDS_UNIT.has(s.route)) {
-      if (unit) void router.replace({ name: s.route, params: { id: unit } });
+      if (unit) {
+        void router.replace({
+          name: s.route,
+          params: { id: unit },
+          ...(s.tab ? { query: { tab: s.tab } } : {}),
+        });
+      }
       return;
     }
     void router.replace({ name: s.route, ...(unit ? { query: { scope: unit } } : {}) });
