@@ -1052,7 +1052,12 @@ export interface MarkEntry {
  * presenting it as a document.
  */
 export interface Bulletin {
-  status: "ISSUED" | "DRAFT" | "PROVISIONAL";
+  /**
+   * ISSUED is the document. PROVISIONAL is the council's own preview.
+   * SIMULATED is neither — it is the same marks read on a different barème,
+   * and it will never be signed in that form.
+   */
+  status: "ISSUED" | "DRAFT" | "PROVISIONAL" | "SIMULATED";
   version: number | null;
   issuedAt: string | null;
   establishment: {
@@ -1085,6 +1090,8 @@ export interface Bulletin {
   };
   /** Every période of the year, so the reader can move between them. */
   calendar: { id: string; label: string; sequence: number }[];
+  /** Every barème the complex has — the picker needs no second request. */
+  gradingSystems: { id: string; name: string; scaleMax: string; passThreshold: string }[];
   gradingSystem: { name: string; scaleMax: string; passThreshold: string };
   lines: {
     subjectCode: string;
@@ -1108,6 +1115,23 @@ export interface Bulletin {
   lateCount: number | null;
   appreciation: string | null;
   decision: { kind: string; computedKind: string | null; note: string | null; decidedOn: string | null } | null;
+}
+
+/** A barème: the scale, where the pass sits, and what the mentions are. */
+export interface GradingSystem {
+  id: string;
+  name: string;
+  scaleMax: string;
+  passThreshold: string;
+  resitBandLow: string | null;
+  progressionModel: string;
+  mentionBands: { min: number; label: string }[] | null;
+  links: {
+    orgUnitId: string;
+    orgUnitName: string;
+    academicYearId: string;
+    isOfficial: boolean;
+  }[];
 }
 
 export const grading = {
@@ -1191,10 +1215,11 @@ export const grading = {
     }),
 
   /** One pupil's bulletin — the frozen one if it exists, else the council's. */
-  bulletin: (studentId: string, periodId?: string | null) =>
+  bulletin: (studentId: string, periodId?: string | null, gradingSystemId?: string | null) =>
     request<Bulletin>(
       `/grading/bulletin?studentId=${encodeURIComponent(studentId)}` +
-        (periodId ? `&periodId=${encodeURIComponent(periodId)}` : ""),
+        (periodId ? `&periodId=${encodeURIComponent(periodId)}` : "") +
+        (gradingSystemId ? `&gradingSystemId=${encodeURIComponent(gradingSystemId)}` : ""),
     ),
 
   marks: (assessmentId: string, classeId: string) =>
@@ -1388,7 +1413,47 @@ export const academics = {
       `/academics/offerings?niveauId=${encodeURIComponent(niveauId)}` +
         `&academicYearId=${encodeURIComponent(academicYearId)}`,
     ),
-  assessmentTypes: () => request<AssessmentType[]>("/academics/assessment-types"),
+  /**
+   * The types usable AT a unit: the complex's shared ones plus that school's
+   * or cycle's own. Without the argument, the whole catalogue — which is what
+   * a settings screen wants and what a mark-entry form must never get.
+   */
+  assessmentTypes: (orgUnitId?: string | null) =>
+    request<AssessmentType[]>(
+      "/academics/assessment-types" +
+        (orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ""),
+    ),
+
+  // ── grading systems ──
+  gradingSystems: (academicYearId?: string) =>
+    request<GradingSystem[]>(
+      "/academics/grading-systems" +
+        (academicYearId ? `?academicYearId=${encodeURIComponent(academicYearId)}` : ""),
+    ),
+
+  createGradingSystem: (body: {
+    name: string;
+    template?: "SECONDAIRE_20" | "PRIMAIRE_10" | "LMD";
+    scaleMax?: number;
+    passThreshold?: number;
+    resitBandLow?: number | null;
+  }) =>
+    request<{ id: string; name: string }>("/academics/grading-systems", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  /** Makes one official for a school or cycle. Exactly one per (unit, year). */
+  linkGradingSystem: (body: {
+    gradingSystemId: string;
+    orgUnitId: string;
+    academicYearId: string;
+    isOfficial?: boolean;
+  }) =>
+    request<{ id: string }>("/academics/grading-systems/link", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   periods: (orgUnitId: string, academicYearId: string) =>
     request<Period[]>(
       `/academics/periods?orgUnitId=${encodeURIComponent(orgUnitId)}` +

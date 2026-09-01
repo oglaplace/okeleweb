@@ -28,6 +28,16 @@ const bulletin = ref<api.Bulletin | null>(null);
 const periodId = ref<string | null>(
   typeof route.query.period === "string" ? route.query.period : null,
 );
+/**
+ * Which barème to read this bulletin on.
+ *
+ * Null is the official one — the document. Anything else is a SIMULATION: the
+ * same marks on a different scale, which is the question a conseil asks out
+ * loud before adopting one ("what does this class look like on /10?"). The
+ * server refuses to serve the frozen bulletin when a system is named, so the
+ * picker can never silently show numbers that contradict it.
+ */
+const systemId = ref<string | null>(null);
 const loading = ref(true);
 const error = ref<string | null>(null);
 
@@ -52,9 +62,20 @@ async function load() {
      * and the server is the only party that knows which périodes this pupil's
      * classe has — they hang off the cycle above it, not off the pupil.
      */
-    const doc = await api.grading.bulletin(studentId.value, periodId.value);
+    const doc = await api.grading.bulletin(studentId.value, periodId.value, systemId.value);
     bulletin.value = doc;
-    periodId.value = doc.period.id;
+    /*
+     * Adopting the période the SERVER chose must not fetch again.
+     *
+     * Opened without one in the URL, `periodId` is null; the response names the
+     * current période and writing it back moves a watched ref, which fetched
+     * the identical document a second time on every single open. Invisible on a
+     * laptop, one wasted round trip per bulletin on the connection this is for.
+     */
+    if (periodId.value !== doc.period.id) {
+      adopting = true;
+      periodId.value = doc.period.id;
+    }
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Bulletin indisponible.";
     bulletin.value = null;
@@ -62,7 +83,19 @@ async function load() {
     loading.value = false;
   }
 }
-watch([studentId, periodId], load, { immediate: true });
+/** True while writing back a value the last response chose — see load(). */
+let adopting = false;
+watch(
+  [studentId, periodId, systemId],
+  () => {
+    if (adopting) {
+      adopting = false;
+      return;
+    }
+    void load();
+  },
+  { immediate: true },
+);
 
 const fullName = computed(() =>
   bulletin.value
@@ -119,6 +152,16 @@ const DECISIONS: Record<string, string> = {
         </select>
       </label>
 
+      <label v-if="(bulletin?.gradingSystems.length ?? 0) > 1" class="sheet-pick">
+        <span>Barème</span>
+        <select v-model="systemId" aria-label="Système de notation">
+          <option :value="null">Officiel</option>
+          <option v-for="g in bulletin!.gradingSystems" :key="g.id" :value="g.id">
+            {{ g.name }} (/{{ Number(g.scaleMax) }})
+          </option>
+        </select>
+      </label>
+
       <div class="sheet-bar-fill" />
       <button class="btn sm" type="button" :disabled="!bulletin" @click="print()">
         <Icon name="fileText" :size="14" /> Imprimer
@@ -133,7 +176,11 @@ const DECISIONS: Record<string, string> = {
          close button — there is nothing behind it to reveal. -->
     <Alert v-else-if="error" :closable="false">{{ error }}</Alert>
 
-    <article v-else-if="bulletin" class="bulletin" :class="{ 'is-draft': bulletin.status === 'PROVISIONAL' }">
+    <article
+      v-else-if="bulletin"
+      class="bulletin"
+      :class="{ 'is-draft': bulletin.status !== 'ISSUED' }"
+    >
       <!--
         The header a ministry inspecting this looks for, in the order it looks:
         complex, école, cycle. Missing levels simply do not print.
@@ -153,7 +200,15 @@ const DECISIONS: Record<string, string> = {
           <div class="bulletin-period">
             {{ bulletin.period.label }} · Année scolaire {{ bulletin.year.label }}
           </div>
-          <div v-if="bulletin.status === 'PROVISIONAL'" class="bulletin-stamp">
+          <!--
+            SIMULATED and PROVISIONAL are different states and must not wear the
+            same words. One is a bulletin nobody has signed yet; the other is a
+            bulletin that will never be signed in this form.
+          -->
+          <div v-if="bulletin.status === 'SIMULATED'" class="bulletin-stamp is-sim">
+            Simulation — {{ bulletin.gradingSystem.name }}
+          </div>
+          <div v-else-if="bulletin.status === 'PROVISIONAL'" class="bulletin-stamp">
             Provisoire — avant conseil de classe
           </div>
           <div v-else class="bulletin-issued">

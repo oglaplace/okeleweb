@@ -49,7 +49,7 @@ const error = ref<string | null>(null);
 const notice = ref<string | null>(null);
 
 /** Fields whose options depend on the chosen scope must reload when it moves. */
-const SCOPE_BOUND = new Set(["periodsOfScope", "offeringsOfScope"]);
+const SCOPE_BOUND = new Set(["periodsOfScope", "offeringsOfScope", "assessmentTypes"]);
 
 function resetDefaults() {
   const next: Record<string, string> = {};
@@ -92,7 +92,16 @@ async function resolveOptions(out: Record<string, { value: string; label: string
           value: r.id, label: `${r.code} — ${r.name}`,
         }));
       } else if (f.source === "assessmentTypes") {
-        out[f.key] = (await api.academics.assessmentTypes()).map((r) => ({
+        /*
+         * The types usable WHERE this action is being run.
+         *
+         * The list was complex-wide, so a teacher creating an évaluation in the
+         * primaire chose from the lycée's kinds as well as their own. Passing
+         * the scope narrows it to the complex's shared types plus this branch's;
+         * with no scope it stays the whole catalogue, which is what a settings
+         * screen wants.
+         */
+        out[f.key] = (await api.academics.assessmentTypes(props.scopeId)).map((r) => ({
           value: r.id, label: r.name,
         }));
       } else if (f.source === "feeTypes") {
@@ -188,7 +197,11 @@ watch([() => props.scopeId, () => values.value.academicYearId], () => {
 
 const canSubmit = computed(() => {
   if (!props.spec.submit || working.value || loadingOptions.value) return false;
-  if ((props.spec.scope?.length ?? 0) > 0 && !props.scopeId) return false;
+  // `scopeOptional` marks an action whose row CARRIES its scope as a nullable
+  // column — pinned to a cycle, or to nothing and therefore to the complex.
+  if ((props.spec.scope?.length ?? 0) > 0 && !props.scopeId && !props.spec.scopeOptional) {
+    return false;
+  }
   return (props.spec.fields ?? []).every(
     (f) => !f.required || (values.value[f.key] ?? "").toString().trim().length > 0,
   );

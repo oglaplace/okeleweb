@@ -4551,6 +4551,12 @@ table.data td.c-text {
  * week they are being argued over. A provisional bulletin that does not say so
  * is a document a parent keeps and quotes back.
  */
+/* A simulation is not a draft of anything: it will never be signed in this
+   form, so it does not borrow the "not yet" colour. */
+.bulletin-stamp.is-sim {
+  border-color: var(--primary);
+  color: var(--primary);
+}
 .bulletin-stamp {
   display: inline-block;
   margin-top: 4px;

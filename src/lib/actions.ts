@@ -84,6 +84,15 @@ export interface ActionSpec {
   summary: string;
   /** OrgUnit kinds the action applies to. Null = complex-wide, no scope step. */
   scope: api.OrgUnitKind[] | null;
+  /**
+   * The scope narrows the action but is not required.
+   *
+   * For a row that CARRIES its scope as a nullable column: an assessment type
+   * pinned to a cycle is that cycle's, and one pinned nowhere is the complex's.
+   * Both are legitimate, so the form must not insist on a unit — which is what
+   * `scope: [...]` alone would do.
+   */
+  scopeOptional?: boolean;
   fields?: ActionField[];
   /** A screen of its own, for actions that are not forms. */
   route?: string;
@@ -370,18 +379,91 @@ export const ACTIONS: ActionSpec[] = [
     group: "programme",
     icon: "fileText",
     summary: "Interro, devoir, composition — et leur poids par défaut.",
-    scope: null,
+    /**
+     * Scoped now, and optional.
+     *
+     * Run from a school or a cycle it belongs to that branch; run from the rail
+     * with nothing selected it belongs to the whole complex, which is right for
+     * the national three. A type pinned nowhere used to appear everywhere —
+     * the lycée's BAC blanc in the primaire's form.
+     */
+    scope: ["SCHOOL", "CYCLE"],
+    scopeOptional: true,
     fields: [
       { key: "code", label: "Code", type: "text", required: true, hint: "COMPO" },
       { key: "name", label: "Nom", type: "text", required: true, hint: "Composition" },
       { key: "defaultWeight", label: "Poids par défaut", type: "number", default: 1 },
     ],
-    submit: (_s, v) =>
+    submit: (scopeId, v) =>
       api.academics.createAssessmentType({
         code: v.code!,
         name: v.name!,
         ...(num(v.defaultWeight) !== undefined ? { defaultWeight: num(v.defaultWeight)! } : {}),
+        ...(scopeId ? { orgUnitId: scopeId } : {}),
       }),
+  },
+  {
+    id: "grading-system",
+    label: "Système de notation",
+    group: "evaluation",
+    icon: "check",
+    summary: "Le barème, le seuil de réussite et les mentions — ce sur quoi un bulletin se calcule.",
+    /**
+     * The one thing a fresh complex could not do at all.
+     *
+     * Without an official barème every bulletin screen answers "no grading
+     * system set", and until now nothing in the console created one. The
+     * scaffold installs the /20 conventions on day one; this is how a school
+     * replaces them, or gives one cycle its own.
+     */
+    scope: ["COMPLEX", "SCHOOL", "CYCLE"],
+    fields: [
+      { key: "name", label: "Nom", type: "text", required: true, hint: "Barème du collège" },
+      {
+        key: "template",
+        label: "Modèle",
+        type: "select",
+        required: true,
+        options: [
+          { value: "SECONDAIRE_20", label: "Secondaire — /20, moyenne à 10" },
+          { value: "PRIMAIRE_10", label: "Primaire — /10, moyenne à 5" },
+          { value: "LMD", label: "Supérieur — LMD, crédits capitalisables" },
+        ],
+        default: "SECONDAIRE_20",
+      },
+      { key: "academicYearId", label: "Année scolaire", type: "select", source: "years", required: true },
+      {
+        key: "scaleMax",
+        label: "Barème",
+        type: "number",
+        hint: "Laisser vide pour celui du modèle.",
+      },
+      {
+        key: "passThreshold",
+        label: "Moyenne",
+        type: "number",
+        hint: "Le seuil de réussite. Vide = celui du modèle.",
+      },
+    ],
+    /**
+     * Two calls, deliberately: defining a barème grants it nowhere, and making
+     * it official is the act with consequences. Doing both here is what makes
+     * the action useful — a system nobody attached changes nothing.
+     */
+    submit: async (scopeId, v) => {
+      const system = await api.academics.createGradingSystem({
+        name: v.name!,
+        template: (v.template as "SECONDAIRE_20" | "PRIMAIRE_10" | "LMD") ?? "SECONDAIRE_20",
+        ...(num(v.scaleMax) !== undefined ? { scaleMax: num(v.scaleMax)! } : {}),
+        ...(num(v.passThreshold) !== undefined ? { passThreshold: num(v.passThreshold)! } : {}),
+      });
+      return api.academics.linkGradingSystem({
+        gradingSystemId: system.id,
+        orgUnitId: scopeId!,
+        academicYearId: v.academicYearId!,
+        isOfficial: true,
+      });
+    },
   },
   {
     id: "timetable",
