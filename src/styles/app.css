@@ -1141,7 +1141,9 @@ table.data td.c-text {
  */
 .choices.is-tiles {
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 1px;
+  /* Separated rather than butted together: a 1px seam made a wall of packs
+     read as one object, and the thing being chosen is one tile. */
+  gap: var(--s2);
 }
 /*
  * The hairline is on the TILE, not on the container.
@@ -1153,15 +1155,19 @@ table.data td.c-text {
  */
 .choices.is-tiles .choice {
   aspect-ratio: 1;
-  border-radius: 0;
+  /* Square, but not sharp. Enough radius to read as a card and not so much
+     that it stops being a tile. */
+  border-radius: var(--radius);
   border: none;
   box-shadow: 0 0 0 1px var(--line);
   overflow: hidden;
   padding: var(--s3);
 }
+.choices.is-tiles .choice:hover {
+  box-shadow: 0 0 0 1px var(--line-strong);
+}
 .choices.is-tiles .choice.is-selected {
-  outline: 2px solid var(--primary);
-  outline-offset: -2px;
+  box-shadow: 0 0 0 2px var(--primary);
 }
 /* The summary is the only thing that can overrun a square, so it is the only
    thing that clamps. */

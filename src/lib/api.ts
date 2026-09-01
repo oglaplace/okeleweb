@@ -218,7 +218,7 @@ export interface ScaffoldPreview {
  */
 export interface PlanItem {
   key: string;
-  kind: "UNIT" | "SUBJECT" | "SERIE" | "PERIOD" | "OFFERING" | "FISCAL_YEAR";
+  kind: "UNIT" | "SUBJECT" | "SERIE" | "PERIOD" | "OFFERING" | "FISCAL_YEAR" | "GRADING";
   label: string;
   detail: string;
   module: BlueprintModule | null;
@@ -228,6 +228,7 @@ export interface ScaffoldReport extends ScaffoldPreview {
   periods: number;
   offerings: number;
   fiscalYears: number;
+  gradingSystems: number;
   /** Units that already existed and were left alone. */
   skipped: number;
 }
@@ -614,7 +615,19 @@ export interface StudentSheetRow {
       average: number | null;
       rank: number | null;
       bySubject: Record<string, number | null>;
-      byAssessment: Record<string, number | null>;
+      /** The mark AS ENTERED, on that evaluation's own barème. */
+      byAssessment: Record<string, number | "abs" | null>;
+      /**
+       * The weighted average, computed live by the engine the conseil will run.
+       *
+       * `average` above is the OFFICIAL one and only exists once bulletins are
+       * issued — months after the first devoir. `complete` says whether every
+       * subject has a mark, so a mean over three subjects out of nine can be
+       * shown AND labelled rather than hidden or passed off as final.
+       */
+      live: number | null;
+      liveMention: string | null;
+      complete: boolean;
     }
   >;
   sessions: number;
@@ -1433,10 +1446,14 @@ export const academics = {
 
   createGradingSystem: (body: {
     name: string;
+    /** Omitted entirely for a system built from scratch. */
     template?: "SECONDAIRE_20" | "PRIMAIRE_10" | "LMD";
     scaleMax?: number;
     passThreshold?: number;
     resitBandLow?: number | null;
+    eliminatoryFloor?: number | null;
+    progressionModel?: "REDOUBLEMENT" | "CAPITALISATION";
+    mentionBands?: { min: number; label: string }[] | null;
   }) =>
     request<{ id: string; name: string }>("/academics/grading-systems", {
       method: "POST",

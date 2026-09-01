@@ -428,6 +428,10 @@ export const ACTIONS: ActionSpec[] = [
           { value: "SECONDAIRE_20", label: "Secondaire — /20, moyenne à 10" },
           { value: "PRIMAIRE_10", label: "Primaire — /10, moyenne à 5" },
           { value: "LMD", label: "Supérieur — LMD, crédits capitalisables" },
+          // Nothing inherited: every field below is the answer, and a blank one
+          // is a blank one. A school whose barème matches none of the three had
+          // no way in at all before this.
+          { value: "CUSTOM", label: "Partir de zéro — tout définir" },
         ],
         default: "SECONDAIRE_20",
       },
@@ -436,13 +440,41 @@ export const ACTIONS: ActionSpec[] = [
         key: "scaleMax",
         label: "Barème",
         type: "number",
-        hint: "Laisser vide pour celui du modèle.",
+        hint: "Sur combien une note est donnée. Vide = celui du modèle.",
       },
       {
         key: "passThreshold",
         label: "Moyenne",
         type: "number",
         hint: "Le seuil de réussite. Vide = celui du modèle.",
+      },
+      {
+        key: "resitBandLow",
+        label: "Seuil de rattrapage",
+        type: "number",
+        hint: "En dessous de la moyenne mais au-dessus de ce seuil : session de rattrapage. Vide = pas de rattrapage.",
+      },
+      {
+        key: "eliminatoryFloor",
+        label: "Note éliminatoire",
+        type: "number",
+        hint: "En dessous, rien ne compense, quelle que soit la moyenne. Vide = aucune.",
+      },
+      {
+        key: "progressionModel",
+        label: "Progression",
+        type: "select",
+        options: [
+          { value: "REDOUBLEMENT", label: "Redoublement — l'année entière se refait" },
+          { value: "CAPITALISATION", label: "Capitalisation — une UE validée reste acquise" },
+        ],
+        hint: "Vide = celui du modèle.",
+      },
+      {
+        key: "mentionBands",
+        label: "Mentions",
+        type: "text",
+        hint: "16=Très bien, 14=Bien, 12=Assez bien, 10=Passable",
       },
     ],
     /**
@@ -451,11 +483,25 @@ export const ACTIONS: ActionSpec[] = [
      * the action useful — a system nobody attached changes nothing.
      */
     submit: async (scopeId, v) => {
+      const custom = v.template === "CUSTOM";
       const system = await api.academics.createGradingSystem({
         name: v.name!,
-        template: (v.template as "SECONDAIRE_20" | "PRIMAIRE_10" | "LMD") ?? "SECONDAIRE_20",
+        /*
+         * CUSTOM sends no template, so the API's own default fills only what
+         * was left blank. Naming a template here would silently reinstate the
+         * /20 conventions the operator just chose to abandon.
+         */
+        ...(custom
+          ? {}
+          : { template: (v.template as "SECONDAIRE_20" | "PRIMAIRE_10" | "LMD") ?? "SECONDAIRE_20" }),
         ...(num(v.scaleMax) !== undefined ? { scaleMax: num(v.scaleMax)! } : {}),
         ...(num(v.passThreshold) !== undefined ? { passThreshold: num(v.passThreshold)! } : {}),
+        ...(num(v.resitBandLow) !== undefined ? { resitBandLow: num(v.resitBandLow)! } : {}),
+        ...(num(v.eliminatoryFloor) !== undefined ? { eliminatoryFloor: num(v.eliminatoryFloor)! } : {}),
+        ...(v.progressionModel
+          ? { progressionModel: v.progressionModel as "REDOUBLEMENT" | "CAPITALISATION" }
+          : {}),
+        ...(parseMentions(v.mentionBands) ? { mentionBands: parseMentions(v.mentionBands)! } : {}),
       });
       return api.academics.linkGradingSystem({
         gradingSystemId: system.id,
@@ -646,6 +692,30 @@ export const ACTIONS: ActionSpec[] = [
  *
  * So: never link to one of these without an id. Ask for the unit first.
  */
+/**
+ * "16=Très bien, 14=Bien" → the bands the engine reads.
+ *
+ * A list in a form built from flat fields, which is the one shape the
+ * declarative registry cannot express. Typing them is not elegant, and it is
+ * still better than the alternative on offer, which was a school unable to name
+ * its own mentions at all. Anything unparseable is dropped rather than guessed:
+ * a band nobody can read is a mention printed on a bulletin by accident.
+ */
+export function parseMentions(
+  raw: string | undefined,
+): { min: number; label: string }[] | null {
+  if (!raw?.trim()) return null;
+  const bands = raw
+    .split(",")
+    .map((part) => part.split("="))
+    .filter((pair) => pair.length === 2)
+    .map(([min, label]) => ({ min: Number(min!.trim()), label: label!.trim() }))
+    .filter((b) => Number.isFinite(b.min) && b.label.length > 0)
+    // Highest first: the engine takes the first band a mark clears.
+    .sort((a, b) => b.min - a.min);
+  return bands.length ? bands : null;
+}
+
 export const ROUTE_NEEDS_UNIT = new Set(["classe", "marks", "bulletins", "unit"]);
 
 export const byId = (id: string) => ACTIONS.find((a) => a.id === id);

@@ -221,6 +221,51 @@ export function studentTabs(
       })
     : [];
 
+  /**
+   * THE MOYENNE GÉNÉRALE, at the end of the row where a bulletin puts it.
+   *
+   * Its own group, after every subject, because it is not one more subject: it
+   * is what all of them come to. Computed by the API from the same engine, the
+   * same coefficients and the same barème the conseil will use — so this column
+   * in November is the number on the bulletin in January.
+   *
+   * `complete` is shown rather than used to hide the value. "How are they doing
+   * so far" is the question being asked all term, and a mean over part of the
+   * programme answers it honestly as long as it says so.
+   */
+  if (period && gradeGroups.length) {
+    gradeGroups.push({
+      label: "Bilan",
+      title: `Moyenne générale — ${period.label}`,
+      columns: [
+        {
+          key: `g:${period.id}:live`,
+          label: "Moy. gén.",
+          type: "grade",
+          width: 10,
+          hint:
+            "Moyenne pondérée par les coefficients, sur les notes déjà saisies. " +
+            "C'est le moteur du conseil de classe qui la produit.",
+        },
+        {
+          key: `g:${period.id}:mention`,
+          label: "Mention",
+          width: 12,
+          hint: "Selon les bandes du système de notation en vigueur.",
+        },
+        {
+          key: `g:${period.id}:complete`,
+          label: "Complet",
+          type: "pill",
+          width: 9,
+          hint:
+            "Toutes les matières ont une note. Sinon la moyenne ne porte que sur " +
+            "la partie déjà évaluée.",
+        },
+      ],
+    });
+  }
+
   tabs.push({
     id: "grades",
     label: "Notes",
@@ -334,6 +379,9 @@ export function flattenStudentRow(row: api.StudentSheetRow): Record<string, unkn
   for (const [periodId, period] of Object.entries(row.grades)) {
     flat[`g:${periodId}:avg`] = period.average;
     flat[`g:${periodId}:rank`] = period.rank;
+    flat[`g:${periodId}:live`] = period.live;
+    flat[`g:${periodId}:mention`] = period.liveMention;
+    flat[`g:${periodId}:complete`] = period.complete;
     for (const [subjectId, score] of Object.entries(period.bySubject)) {
       flat[`g:${periodId}:${subjectId}`] = score;
     }

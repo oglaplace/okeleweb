@@ -34,13 +34,22 @@ const KIND_FR: Record<api.PlanItem["kind"], string> = {
   OFFERING: "Programmations",
   SERIE: "Séries",
   PERIOD: "Périodes",
+  /*
+   * The barème, offered here like everything else.
+   *
+   * A complex scaffolded before grading systems existed has no official one,
+   * and every bulletin screen in it answers "no grading system set". "Mettre à
+   * niveau" is exactly where that gets fixed — it is the screen whose whole job
+   * is "here is what is missing, tick what you want".
+   */
+  GRADING: "Système de notation",
   FISCAL_YEAR: "Comptabilité",
 };
 
 /** Grouped by what the row IS: a director decides by category, not by row. */
 const groups = computed(() => {
   const order: api.PlanItem["kind"][] = [
-    "UNIT", "SUBJECT", "OFFERING", "SERIE", "PERIOD", "FISCAL_YEAR",
+    "UNIT", "SUBJECT", "OFFERING", "SERIE", "PERIOD", "GRADING", "FISCAL_YEAR",
   ];
   return order
     .map((kind) => ({ kind, label: KIND_FR[kind], rows: items.value.filter((i) => i.kind === kind) }))
