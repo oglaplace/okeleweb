@@ -196,9 +196,10 @@ export function studentTabs(
                 : {}),
               headerButton: {
                 key: `assessment:${a.id}`,
-                // A pencil, not an ellipsis: the button opens the evaluation
-                // for editing, and an ellipsis promises a menu that is not there.
-                label: a.published ? "🔒" : a.submitted ? "✓" : "✎",
+                // Three dots, back by request. The dialog it opens is a set of
+                // choices — modifier, remettre, supprimer — so the ellipsis is
+                // the more honest promise of the two anyway.
+                label: a.published ? "🔒" : a.submitted ? "✓" : "⋯",
                 hint: a.published
                   ? "Publiée — figée par le conseil"
                   : a.submitted

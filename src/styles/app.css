@@ -1444,7 +1444,18 @@ table.data td.c-text {
 
 /* A button mid-request. The label stays put and the spinner takes the icon
    slot, so the button does not resize under the cursor that just clicked it. */
-.btn .btn-spin {
+/*
+ * The spinner, wherever it is put.
+ *
+ * This was `.btn .btn-spin`, which meant it only existed inside a button. Used
+ * anywhere else — the action form's "chargement", the sheet's save indicator —
+ * it rendered as an empty inline span with no size and no animation, so those
+ * places showed a line of text and nothing turning. The descendant selector
+ * was habit, not a decision: it draws itself from `currentColor` and needs no
+ * context at all.
+ */
+.btn-spin {
+  display: inline-block;
   width: 13px;
   height: 13px;
   flex: none;
@@ -1453,6 +1464,17 @@ table.data td.c-text {
   border-right-color: transparent;
   opacity: 0.75;
   animation: orbit 0.7s linear infinite;
+}
+/* Standing on its own in a banner rather than tucked beside a label. */
+.form-loading .btn-spin {
+  width: 16px;
+  height: 16px;
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn-spin {
+    animation-duration: 2.4s;
+  }
 }
 
 /* ---------- messages ---------- */

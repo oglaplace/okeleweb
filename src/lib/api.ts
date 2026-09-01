@@ -798,12 +798,16 @@ export const timetable = {
   /**
    * Removal goes through a POST, for one slot or for fifty.
    *
-   * The per-id DELETE exists and is proven by an end-to-end test, but in the
-   * browser it came back as "Serveur injoignable" — a fetch that never got a
-   * response, which is a transport failure and not something the handler can
-   * fix. A DELETE with an id in the path and a body-shaped intent is the kind
-   * of request proxies and caches disagree about; this is the same operation
-   * expressed as a POST, and it is what multi-select needs regardless.
+   * The note that used to be here blamed proxies for the per-id DELETE coming
+   * back as "Serveur injoignable". That was wrong, and worth correcting rather
+   * than deleting: the cause was the API registering @fastify/cors with no
+   * options, whose v11 default allows GET, HEAD and POST only — so the browser
+   * refused the DELETE at the preflight and it never left. It is fixed
+   * server-side and asserted by tests/cors.test.ts.
+   *
+   * This stays a POST anyway, because it is no longer a workaround: multi-select
+   * sends a LIST of ids, and a DELETE with a body is the shape nobody agrees
+   * about. One endpoint for one slot and for fifty.
    */
   removeSlots: (classeId: string, ids: string[]) =>
     request<{ removed: number }>("/timetable/slots/bulk-delete", {
