@@ -202,7 +202,9 @@ const canSubmit = computed(() => {
   if ((props.spec.scope?.length ?? 0) > 0 && !props.scopeId && !props.spec.scopeOptional) {
     return false;
   }
-  return (props.spec.fields ?? []).every(
+  // Only what is on screen. A hidden required field can never be filled, so
+  // counting it would leave the button dead with nothing to point at.
+  return visibleFields.value.every(
     (f) => !f.required || (values.value[f.key] ?? "").toString().trim().length > 0,
   );
 });
@@ -228,6 +230,20 @@ async function submit() {
 }
 
 const isCheckbox = (f: ActionField) => f.type === "checkbox";
+
+/**
+ * The fields this form is actually asking for right now.
+ *
+ * A field can depend on another's value — see ActionField.when. Picking a
+ * grading template answers the barème, the mentions and the progression model
+ * by definition, so showing them anyway turns one choice into nine and
+ * suggests the template did not settle them.
+ */
+const visibleFields = computed(() =>
+  (props.spec.fields ?? []).filter(
+    (f) => !f.when || f.when.is.includes(values.value[f.when.field] ?? ""),
+  ),
+);
 
 // ── the units multi-select ──────────────────────────────────────────────────
 const unitOptions = (f: ActionField) => org.ofKind(f.kinds ?? []).filter((u) => !u.validTo);
@@ -258,9 +274,9 @@ defineExpose({ submit, canSubmit });
       Chargement des choix disponibles…
     </div>
 
-    <div v-if="spec.fields?.length" class="field-row" :class="{ 'is-loading': loadingOptions }">
+    <div v-if="visibleFields.length" class="field-row" :class="{ 'is-loading': loadingOptions }">
       <div
-        v-for="f in spec.fields"
+        v-for="f in visibleFields"
         :key="f.key"
         class="field"
         :class="{ 'is-wide': f.type === 'units' }"

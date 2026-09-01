@@ -74,6 +74,18 @@ export interface ActionField {
   source?: OptionSource;
   options?: { value: string; label: string }[];
   default?: string | number | boolean;
+  /**
+   * Shown only when another field has one of these values.
+   *
+   * A form that offers everything at once is a form that asks a school to
+   * decide things it did not come here to decide: picking "Secondaire" and
+   * then being shown a rounding stage, a resit threshold and a note
+   * éliminatoire suggests all three are part of the choice, when the whole
+   * point of a template is that they are already answered.
+   *
+   * Only the branch that needs them shows them.
+   */
+  when?: { field: string; is: string[] };
 }
 
 export interface ActionSpec {
@@ -436,45 +448,63 @@ export const ACTIONS: ActionSpec[] = [
         default: "SECONDAIRE_20",
       },
       { key: "academicYearId", label: "Année scolaire", type: "select", source: "years", required: true },
+      /*
+       * Everything below belongs to "Partir de zéro" and appears only there.
+       *
+       * The three templates already answer these — that is what a template IS
+       * — and showing them anyway makes a school think the barème is nine
+       * decisions rather than one. See ActionField.when.
+       */
       {
         key: "scaleMax",
         label: "Barème",
         type: "number",
-        hint: "Sur combien une note est donnée. Vide = celui du modèle.",
+        required: true,
+        default: 20,
+        hint: "Sur combien une note est donnée.",
+        when: { field: "template", is: ["CUSTOM"] },
       },
       {
         key: "passThreshold",
         label: "Moyenne",
         type: "number",
-        hint: "Le seuil de réussite. Vide = celui du modèle.",
-      },
-      {
-        key: "resitBandLow",
-        label: "Seuil de rattrapage",
-        type: "number",
-        hint: "En dessous de la moyenne mais au-dessus de ce seuil : session de rattrapage. Vide = pas de rattrapage.",
-      },
-      {
-        key: "eliminatoryFloor",
-        label: "Note éliminatoire",
-        type: "number",
-        hint: "En dessous, rien ne compense, quelle que soit la moyenne. Vide = aucune.",
+        required: true,
+        default: 10,
+        hint: "Le seuil de réussite.",
+        when: { field: "template", is: ["CUSTOM"] },
       },
       {
         key: "progressionModel",
         label: "Progression",
         type: "select",
+        required: true,
+        default: "REDOUBLEMENT",
         options: [
           { value: "REDOUBLEMENT", label: "Redoublement — l'année entière se refait" },
           { value: "CAPITALISATION", label: "Capitalisation — une UE validée reste acquise" },
         ],
-        hint: "Vide = celui du modèle.",
+        when: { field: "template", is: ["CUSTOM"] },
       },
       {
         key: "mentionBands",
         label: "Mentions",
         type: "text",
         hint: "16=Très bien, 14=Bien, 12=Assez bien, 10=Passable",
+        when: { field: "template", is: ["CUSTOM"] },
+      },
+      {
+        key: "resitBandLow",
+        label: "Seuil de rattrapage",
+        type: "number",
+        hint: "Sous la moyenne mais au-dessus de ce seuil : session de rattrapage. Vide = pas de rattrapage.",
+        when: { field: "template", is: ["CUSTOM"] },
+      },
+      {
+        key: "eliminatoryFloor",
+        label: "Note éliminatoire",
+        type: "number",
+        hint: "En dessous, rien ne compense, quelle que soit la moyenne. Vide = aucune.",
+        when: { field: "template", is: ["CUSTOM"] },
       },
     ],
     /**
@@ -494,14 +524,31 @@ export const ACTIONS: ActionSpec[] = [
         ...(custom
           ? {}
           : { template: (v.template as "SECONDAIRE_20" | "PRIMAIRE_10" | "LMD") ?? "SECONDAIRE_20" }),
-        ...(num(v.scaleMax) !== undefined ? { scaleMax: num(v.scaleMax)! } : {}),
-        ...(num(v.passThreshold) !== undefined ? { passThreshold: num(v.passThreshold)! } : {}),
-        ...(num(v.resitBandLow) !== undefined ? { resitBandLow: num(v.resitBandLow)! } : {}),
-        ...(num(v.eliminatoryFloor) !== undefined ? { eliminatoryFloor: num(v.eliminatoryFloor)! } : {}),
-        ...(v.progressionModel
-          ? { progressionModel: v.progressionModel as "REDOUBLEMENT" | "CAPITALISATION" }
+        /*
+         * The detail fields travel ONLY with CUSTOM.
+         *
+         * They carry defaults so the custom branch opens on something sensible,
+         * and those defaults survive in `values` even while the fields are
+         * hidden — so sending them unconditionally would push scaleMax 20 onto
+         * a school that chose the /10 primaire template and silently overrule
+         * the very thing they picked.
+         */
+        ...(custom
+          ? {
+              ...(num(v.scaleMax) !== undefined ? { scaleMax: num(v.scaleMax)! } : {}),
+              ...(num(v.passThreshold) !== undefined ? { passThreshold: num(v.passThreshold)! } : {}),
+              ...(num(v.resitBandLow) !== undefined ? { resitBandLow: num(v.resitBandLow)! } : {}),
+              ...(num(v.eliminatoryFloor) !== undefined
+                ? { eliminatoryFloor: num(v.eliminatoryFloor)! }
+                : {}),
+              ...(v.progressionModel
+                ? { progressionModel: v.progressionModel as "REDOUBLEMENT" | "CAPITALISATION" }
+                : {}),
+              ...(parseMentions(v.mentionBands)
+                ? { mentionBands: parseMentions(v.mentionBands)! }
+                : {}),
+            }
           : {}),
-        ...(parseMentions(v.mentionBands) ? { mentionBands: parseMentions(v.mentionBands)! } : {}),
       });
       return api.academics.linkGradingSystem({
         gradingSystemId: system.id,
