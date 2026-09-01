@@ -359,18 +359,57 @@ const sheetRows = computed<Record<string, unknown>[]>(() => {
   if (sheet.value) {
     const rows = sheet.value.rows.map(flattenStudentRow);
     if (!markOverrides.value.size) return rows;
-    // What was typed wins over what was loaded, until the reload catches up.
+    // What was typed wins over what was loaded, until the reload catches up —
+    // and the subject averages are recomputed from it as it is typed.
     return rows.map((row) => {
       const out = { ...row };
       for (const [key, value] of markOverrides.value) {
         const [column, studentId] = key.split("|");
         if (studentId === row.studentId && column) out[column] = value;
       }
-      return out;
+      return withLiveAverages(out);
     });
   }
   return staff.value as unknown as Record<string, unknown>[];
 });
+
+/**
+ * The subject averages, recomputed from what is on screen.
+ *
+ * A mark typed into the sheet has to move the Moy. beside it, or the column
+ * is a number that lags a save behind and quietly contradicts the cells it is
+ * the average of. The server sends the same figure and wins the moment the
+ * reload lands — this only fills the seconds in between.
+ *
+ * The rule is the API's, deliberately duplicated rather than approximated: each
+ * mark scaled to /20 by its OWN barème, absences and blanks skipped entirely
+ * because an absence is not a zero, two decimals. If the two ever disagree the
+ * cell will visibly jump when the save returns, which is the failure mode worth
+ * having — a silent divergence would be the other one.
+ */
+function withLiveAverages(row: Record<string, unknown>): Record<string, unknown> {
+  const period = sheet.value?.periods.find((p) => p.id === periodId.value);
+  if (!period) return row;
+
+  const out = { ...row };
+  for (const subject of sheet.value?.subjects ?? []) {
+    const evaluations = period.assessments.filter((a) => a.subjectId === subject.id);
+    if (!evaluations.length) continue;
+
+    let sum = 0;
+    let n = 0;
+    for (const a of evaluations) {
+      const value = out[`e:${a.id}`];
+      // 'abs' and null alike: neither is a score, and averaging either in
+      // would invent a grade the pupil never got.
+      if (typeof value !== "number") continue;
+      sum += (value / (a.max || 20)) * 20;
+      n += 1;
+    }
+    out[`g:${period.id}:${subject.id}`] = n ? Math.round((sum / n) * 100) / 100 : null;
+  }
+  return out;
+}
 
 /**
  * Whether this période can still be typed into at all.
