@@ -53,7 +53,7 @@ export interface SheetGroup {
   /** Full name of what the group is about, for the header's tooltip. */
   title?: string;
   /**
-   * A button in the group's own header.
+   * Buttons in the group's own header.
    *
    * Where an action belongs to a COLUMN BLOCK rather than to a row: adding an
    * evaluation to Mathématiques is one act for the whole class, and offering it
@@ -61,6 +61,15 @@ export interface SheetGroup {
    * looking like it would do something to that pupil.
    */
   action?: { key: string; label: string; hint?: string };
+  /**
+   * A second, quieter one — a fact about the group that can be changed.
+   *
+   * The coefficient is the case it exists for: it is defined on the niveau, it
+   * is the number every mark under this header will be multiplied by, and it
+   * starts empty on every school. Sending a titulaire to another screen to fill
+   * it in is how it stays empty until the conseil refuses to compute.
+   */
+  badge?: { key: string; label: string; hint?: string; missing?: boolean };
 }
 
 export interface SheetTab {
@@ -165,6 +174,15 @@ export function studentTabs(
            * when an evaluation belongs to the whole class. One button, in the
            * one place that names the subject, is the honest shape.
            */
+          badge: {
+            key: `coefficient:${subject.id}`,
+            label: subject.coefficient === null ? "coef ?" : `coef ${subject.coefficient}`,
+            missing: subject.coefficient === null,
+            hint:
+              subject.coefficient === null
+                ? `Aucun coefficient pour ${subject.name} — le conseil ne peut pas pondérer sans lui. Cliquer pour le définir.`
+                : `Coefficient ${subject.coefficient} — cliquer pour le modifier.`,
+          },
           action: {
             key: `assessment:${subject.id}`,
             label: evaluations.length ? "＋" : "＋ évaluation",

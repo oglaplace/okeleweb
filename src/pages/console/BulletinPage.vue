@@ -182,6 +182,33 @@ const DECISIONS: Record<string, string> = {
       :class="{ 'is-draft': bulletin.status !== 'ISSUED' }"
     >
       <!--
+        NOT A DOCUMENT YET, said the way paper says it.
+        A small outlined pill beside the title was easy to miss and easy to
+        mistake for decoration — and this is the one thing about the page that
+        changes what it IS. A banner across the top says it before anything is
+        read, and the watermark says it again on every part of the sheet a
+        photograph or a photocopy might crop to.
+      -->
+      <div v-if="bulletin.status !== 'ISSUED'" class="bulletin-notice" role="status">
+        <div class="bulletin-notice-head">
+          {{ bulletin.status === "SIMULATED" ? "Simulation" : "Document provisoire" }}
+        </div>
+        <p v-if="bulletin.status === 'SIMULATED'">
+          Les mêmes notes lues sur le barème
+          <strong>{{ bulletin.gradingSystem.name }}</strong>, qui n'est pas celui
+          de l'établissement. Aucun bulletin ne sera édité sous cette forme.
+        </p>
+        <p v-else>
+          Le conseil de classe ne s'est pas encore tenu. Les moyennes et le rang
+          peuvent changer, aucune décision n'est arrêtée, et
+          <strong>ce document ne doit pas être remis à une famille</strong>.
+        </p>
+      </div>
+
+      <div v-if="bulletin.status !== 'ISSUED'" class="bulletin-watermark" aria-hidden="true">
+        {{ bulletin.status === "SIMULATED" ? "SIMULATION" : "PROVISOIRE" }}
+      </div>
+      <!--
         The header a ministry inspecting this looks for, in the order it looks:
         complex, école, cycle. Missing levels simply do not print.
       -->
@@ -200,18 +227,7 @@ const DECISIONS: Record<string, string> = {
           <div class="bulletin-period">
             {{ bulletin.period.label }} · Année scolaire {{ bulletin.year.label }}
           </div>
-          <!--
-            SIMULATED and PROVISIONAL are different states and must not wear the
-            same words. One is a bulletin nobody has signed yet; the other is a
-            bulletin that will never be signed in this form.
-          -->
-          <div v-if="bulletin.status === 'SIMULATED'" class="bulletin-stamp is-sim">
-            Simulation — {{ bulletin.gradingSystem.name }}
-          </div>
-          <div v-else-if="bulletin.status === 'PROVISIONAL'" class="bulletin-stamp">
-            Provisoire — avant conseil de classe
-          </div>
-          <div v-else class="bulletin-issued">
+          <div v-if="bulletin.status === 'ISSUED' || bulletin.status === 'DRAFT'" class="bulletin-issued">
             Délivré le {{ day(bulletin.issuedAt) }}<template v-if="(bulletin.version ?? 1) > 1">
               · version {{ bulletin.version }}</template>
           </div>
@@ -319,10 +335,18 @@ const DECISIONS: Record<string, string> = {
       </section>
 
       <!-- Signature blocks. A bulletin nobody signed is a printout. -->
-      <footer class="bulletin-sign">
+      <!--
+        Nobody signs a provisional bulletin, so it does not offer the lines.
+        Three empty rules under a draft invite exactly the thing the banner
+        above forbids: someone signs it, and it becomes the document.
+      -->
+      <footer v-if="bulletin.status === 'ISSUED'" class="bulletin-sign">
         <div><span>Le titulaire</span></div>
         <div><span>Le chef d'établissement</span></div>
         <div><span>Le parent / tuteur</span></div>
+      </footer>
+      <footer v-else class="bulletin-unsigned">
+        Les signatures apparaîtront sur le bulletin définitif, après le conseil.
       </footer>
     </article>
   </div>

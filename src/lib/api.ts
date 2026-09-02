@@ -586,7 +586,14 @@ export interface SheetAssessment {
   submitted: boolean;
   published: boolean;
 }
-export interface SheetSubject { id: string; code: string; name: string; offeringId: string }
+export interface SheetSubject {
+  id: string;
+  code: string;
+  name: string;
+  offeringId: string;
+  /** All séries confounded. Null is the normal, blocking, starting state. */
+  coefficient: number | null;
+}
 
 export interface StudentSheetRow {
   enrollmentId: string;
@@ -765,7 +772,18 @@ export interface TimetableGrid {
   classe: { id: string; name: string };
   published: boolean;
   publishedAt: string | null;
+  /** Which release the public is currently reading. Null before the first. */
+  version: number | null;
   isDraft: boolean;
+  /**
+   * The draft differs from what was released.
+   *
+   * Publication freezes a snapshot, so an edit is no longer public the moment
+   * it is typed — which means the toolbar has to say when something is waiting.
+   * Compared on what a pupil can SEE (day, hours, subject, teacher, room), so
+   * deleting a lesson and drawing an identical one does not raise it.
+   */
+  hasUnpublishedChanges: boolean;
   slots: TimetableSlot[];
 }
 
@@ -785,7 +803,7 @@ export const timetable = {
    * not here: a rule the server does not enforce is not a rule.
    */
   publish: (classeId: string, academicYearId: string) =>
-    request<{ publishedAt: string }>("/timetable/publish", {
+    request<{ publishedAt: string; version: number }>("/timetable/publish", {
       method: "POST",
       body: JSON.stringify({ classeId, academicYearId }),
     }),

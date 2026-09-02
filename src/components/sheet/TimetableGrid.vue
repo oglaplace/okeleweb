@@ -30,6 +30,9 @@ const props = defineProps<{
   /** Whether anyone outside the office can see this week yet. */
   published: boolean;
   publishedAt: string | null;
+  /** Which release the public is reading, and whether the draft has moved on. */
+  version: number | null;
+  hasUnpublishedChanges: boolean;
   readonly?: boolean;
 }>();
 const emit = defineEmits<{
@@ -38,6 +41,16 @@ const emit = defineEmits<{
   /** Published or withdrawn — the page owns that flag. */
   published: [value: boolean];
 }>();
+
+/**
+ * Anything typed since the last release is a DRAFT.
+ *
+ * The server compares the live week to the frozen one and answers on load, but
+ * an edit made in this session must not wait for a reload to be admitted: the
+ * whole reason for freezing is that the office should always know whether what
+ * they are looking at is what the school is showing.
+ */
+const editedSincePublish = ref(false);
 
 const busy = useBusyStore();
 const error = ref<string | null>(null);
@@ -353,6 +366,7 @@ async function save() {
     );
     // Spliced in, not refetched: the rest of the week never repaints.
     commit([...rows.value, ...report.slots]);
+    editedSincePublish.value = true;
     lit(report.slots.map((s) => s.id));
     draft.value = null;
     clearSelection();
@@ -446,6 +460,7 @@ async function applyEdit() {
     );
     const updated = new Map(report.slots.map((s) => [s.id, s]));
     commit(rows.value.map((s) => updated.get(s.id) ?? s));
+    editedSincePublish.value = true;
     lit([...updated.keys()]);
     edit.value = null;
     clearSelection();
@@ -465,6 +480,7 @@ async function removeSlots(slots: api.TimetableSlot[]) {
   // refuses: a delete that waits for a round trip before showing anything
   // feels like a click that did not land.
   commit(rows.value.filter((s) => !ids.has(s.id)));
+  editedSincePublish.value = true;
   edit.value = null;
   clearSelection();
   try {
@@ -491,19 +507,23 @@ async function togglePublished() {
   publishing.value = true;
   error.value = null;
   try {
-    if (props.published) {
+    if (props.published && !pending.value) {
       await busy.run(() => api.timetable.unpublish(props.classeId, props.academicYearId));
       emit("published", false);
     } else {
       await busy.run(() => api.timetable.publish(props.classeId, props.academicYearId));
       emit("published", true);
     }
+    editedSincePublish.value = false;
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Publication impossible.";
   } finally {
     publishing.value = false;
   }
 }
+
+/** There is a released week, and the draft has moved past it. */
+const pending = computed(() => props.published && (props.hasUnpublishedChanges || editedSincePublish.value));
 
 const publishedOn = computed(() =>
   props.publishedAt
@@ -609,32 +629,64 @@ const label = computed(() => {
         above the grid: it is a property of the week, it never changes height,
         and a school checking "is this live?" looks where the controls are.
       -->
+      <!--
+        Three states, not two. "Publié" and "Brouillon" were the whole
+        vocabulary, and the state that matters most is the third: a released
+        week with unreleased changes sitting on top of it. Saying only "Publié"
+        there tells the office their edits are live when they are not.
+      -->
       <span
         class="tt-state"
-        :class="published ? 'is-live' : 'is-draft'"
+        :class="pending ? 'is-pending' : published ? 'is-live' : 'is-draft'"
         :title="
-          published
-            ? `Visible par les enseignants et les familles${publishedOn ? ` depuis le ${publishedOn}` : ''}`
-            : 'Visible uniquement par vous. Les enseignants et les familles ne voient rien.'
+          pending
+            ? `Les élèves voient toujours la version ${version}. Vos modifications ne sortiront qu'à la prochaine publication.`
+            : published
+              ? `Visible par les enseignants et les familles${publishedOn ? ` depuis le ${publishedOn}` : ''}`
+              : 'Visible uniquement par vous. Les enseignants et les familles ne voient rien.'
         "
-      >{{ published ? "Publié" : "Brouillon" }}</span>
+      >{{
+        pending
+          ? `Modifications non publiées`
+          : published
+            ? `Publié · v${version}`
+            : "Brouillon"
+      }}</span>
 
       <button
         v-if="!readonly"
         class="btn sm"
-        :class="published ? 'ghost' : 'primary'"
+        :class="published && !pending ? 'ghost' : 'primary'"
         type="button"
         :disabled="publishing || (!published && !rows.length)"
         :title="
           !published && !rows.length
             ? 'Un emploi du temps vide ne peut pas être publié'
-            : undefined
+            : pending
+              ? 'Remplace la version que voient les élèves par celle-ci'
+              : undefined
         "
         @click="togglePublished"
       >
         <span v-if="publishing" class="btn-spin" aria-hidden="true" />
-        {{ published ? "Dépublier" : "Publier" }}
+        {{ pending ? "Publier les modifications" : published ? "Dépublier" : "Publier" }}
       </button>
+
+      <!-- Withdrawing stays reachable while changes are pending: the button
+           above becomes "publish", so the way back needs its own. -->
+      <button
+        v-if="!readonly && pending"
+        class="btn sm ghost"
+        type="button"
+        :disabled="publishing"
+        title="Retire la version publiée. Plus personne ne verra d'emploi du temps."
+        @click="
+          busy.run(() => api.timetable.unpublish(classeId, academicYearId)).then(() => {
+            emit('published', false);
+            editedSincePublish = false;
+          })
+        "
+      >Dépublier</button>
 
       <button
         v-if="!readonly && siblings.length"

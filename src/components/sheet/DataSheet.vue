@@ -401,6 +401,15 @@ defineExpose({ exportCsv });
               :title="group.title ?? group.label"
             >
               <span class="sheet-group-name">{{ group.label }}</span>
+              <!-- A fact about the block that can be changed by clicking it. -->
+              <button
+                v-if="group.badge"
+                class="sheet-group-badge"
+                :class="{ 'is-missing': group.badge.missing }"
+                type="button"
+                :title="group.badge.hint ?? group.badge.label"
+                @click.stop="emit('groupAct', group.badge!.key)"
+              >{{ group.badge.label }}</button>
               <!-- An action that belongs to the block, not to a row. -->
               <button
                 v-if="group.action"

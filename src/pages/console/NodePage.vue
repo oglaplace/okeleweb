@@ -61,6 +61,9 @@ const grid = ref<api.TimetableSlot[]>([]);
 /** Whether this week is on the wall or still only ours — see the API. */
 const gridPublished = ref(false);
 const gridPublishedAt = ref<string | null>(null);
+/** Which release the public reads, and whether the draft has moved past it. */
+const gridVersion = ref<number | null>(null);
+const gridPending = ref(false);
 /** True when the API handed us a week nobody else can see — i.e. we may edit it. */
 const gridIsDraft = ref(false);
 const offerings = ref<{ id: string; subject: { id: string; code: string; name: string } }[]>([]);
@@ -131,6 +134,8 @@ async function loadSheet() {
     gridPublished.value = g?.published ?? false;
     gridPublishedAt.value = g?.publishedAt ?? null;
     gridIsDraft.value = g?.isDraft ?? false;
+    gridVersion.value = g?.version ?? null;
+    gridPending.value = g?.hasUnpublishedChanges ?? false;
     await loadBuilderOptions();
     return;
   }
@@ -237,8 +242,35 @@ function onRunDone() {
  */
 function onGroupAct(key: string) {
   const [kind, id] = key.split(":");
-  if (kind === "assessment") openAssessment(id);
+  if (kind === "assessment") { openAssessment(id); return; }
+
+  /**
+   * The coefficient, set from the sheet where its absence is noticed.
+   *
+   * It belongs to the NIVEAU — the curriculum lives there, not on a cohort —
+   * so the dialog opens scoped to the parent rather than to this classe. That
+   * indirection is the whole reason it used to be somewhere else, and it is
+   * not a reason a titulaire should have to care about: they are looking at a
+   * column of marks that will not be weighted, and this is where they are.
+   */
+  if (kind === "coefficient" && id && unit.value?.parentId) {
+    void flushMarks();
+    coefficientPrefill.value = {
+      academicYearId: yearId.value ?? "",
+      subjectId: id,
+    };
+    coefficientUnit.value = org.byId(unit.value.parentId);
+    runSpec.value = byId("set-coefficient") ?? null;
+  }
 }
+
+/**
+ * The unit a dialog runs against, when it is not this page's own.
+ *
+ * Only the coefficient needs it so far: everything else on a classe acts on the
+ * classe. Null means "use the node we are standing on".
+ */
+const coefficientUnit = ref<api.TreeUnit | null>(null);
 
 /** The overlay closed after a save: show what changed, not a stale list. */
 async function onInlineDone(result: { name: string }) {
@@ -816,15 +848,19 @@ const totalDue = computed(() =>
           :siblings="siblings"
           :published="gridPublished"
           :published-at="gridPublishedAt"
+          :version="gridVersion"
+          :has-unpublished-changes="gridPending"
           :readonly="!gridPublished && !gridIsDraft"
           @changed="(slots) => (grid = slots)"
           @published="
             (v) => {
               gridPublished = v;
               gridPublishedAt = v ? new Date().toISOString() : null;
+              gridVersion = v ? (gridVersion ?? 0) + 1 : null;
+              gridPending = false;
               notice = v
-                ? 'Emploi du temps publié — enseignants et familles le voient.'
-                : 'Emploi du temps retiré — il redevient un brouillon.';
+                ? `Version ${gridVersion} publiée — c'est celle que voient les enseignants et les familles.`
+                : 'Emploi du temps retiré — plus personne ne le voit.';
             }
           "
         />
@@ -937,9 +973,14 @@ const totalDue = computed(() =>
       <ActionDialog
         v-if="runSpec"
         :spec="runSpec"
-        :unit="unit"
+        :unit="coefficientUnit ?? unit"
         :prefill="{ ...coefficientPrefill, ...assessmentPrefill }"
-        @close="((runSpec = null), (coefficientPrefill = {}), (assessmentPrefill = {}))"
+        @close="
+          ((runSpec = null),
+          (coefficientPrefill = {}),
+          (assessmentPrefill = {}),
+          (coefficientUnit = null))
+        "
         @done="onRunDone"
       />
 
