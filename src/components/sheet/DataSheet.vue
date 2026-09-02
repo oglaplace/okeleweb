@@ -401,15 +401,6 @@ defineExpose({ exportCsv });
               :title="group.title ?? group.label"
             >
               <span class="sheet-group-name">{{ group.label }}</span>
-              <!-- A fact about the block that can be changed by clicking it. -->
-              <button
-                v-if="group.badge"
-                class="sheet-group-badge"
-                :class="{ 'is-missing': group.badge.missing }"
-                type="button"
-                :title="group.badge.hint ?? group.badge.label"
-                @click.stop="emit('groupAct', group.badge!.key)"
-              >{{ group.badge.label }}</button>
               <!-- An action that belongs to the block, not to a row. -->
               <button
                 v-if="group.action"
@@ -420,6 +411,23 @@ defineExpose({ exportCsv });
               >
                 {{ group.action.label }}
               </button>
+
+              <!--
+                The coefficient, on its own line under the subject.
+                It was a chip beside the name, which is how a mark book does NOT
+                write it: the weight belongs under the subject it weights, in
+                small type, the way it is printed on every carnet de notes. A
+                pill made it look like a tag rather than the number every mark
+                in this block will be multiplied by.
+              -->
+              <button
+                v-if="group.badge"
+                class="sheet-group-coef"
+                :class="{ 'is-missing': group.badge.missing }"
+                type="button"
+                :title="group.badge.hint ?? group.badge.label"
+                @click.stop="emit('groupAct', group.badge!.key)"
+              >{{ group.badge.label }}</button>
             </th>
             <th class="sheet-fill" />
           </tr>

@@ -125,6 +125,15 @@ export interface Identity {
     phone: string;
     fullName: string;
     email: string | null;
+    /**
+     * The human this account IS, when it is one.
+     *
+     * Null for a shared login — a "secrétariat" account nobody's face belongs
+     * to — and that is the whole reason the field exists: only an account tied
+     * to a person may edit that person's own portrait, so the console offers
+     * the control on the strength of this and the API enforces it regardless.
+     */
+    personId: string | null;
     /** Belongs to no établissement: an operator of the product itself. */
     isPlatformAdmin: boolean;
     permissions: string[];
@@ -484,6 +493,48 @@ export interface ImportReport {
 }
 
 export const people = {
+  /**
+   * A portrait, uploaded as base64 rather than multipart.
+   *
+   * The office may set anyone's; a person may set their own — the API decides,
+   * matching the caller's account against the person, and answers 403 when it
+   * is neither. Kept in the database rather than an object store because the
+   * SOVEREIGN tier runs on a box with no guaranteed internet, and a face on a
+   * CDN is a face missing on exactly the days the connection is down.
+   */
+  setPhoto: (personId: string, data: string) =>
+    request<{ sizeBytes: number; contentType: string }>(
+      `/people/${encodeURIComponent(personId)}/photo`,
+      { method: "POST", body: JSON.stringify({ data }) },
+    ),
+
+  removePhoto: (personId: string) =>
+    request<{ removed: number }>(`/people/${encodeURIComponent(personId)}/photo`, {
+      method: "DELETE",
+    }),
+
+  /**
+   * The portrait as an object URL, or null when there is none.
+   *
+   * NOT a plain <img src>. The endpoint is behind the same bearer token as
+   * everything else, and an <img> tag cannot carry an Authorization header —
+   * pointing one at the URL yields a 401 and a broken-image glyph. So the bytes
+   * are fetched like any other call and handed to the DOM as a blob.
+   *
+   * The caller owns the returned URL and must revokeObjectURL it, or every
+   * re-render of a class list leaks a portrait.
+   */
+  photoObjectUrl: async (personId: string): Promise<string | null> => {
+    await loadConfig();
+    const token = (await phoneAuth.getIdToken().catch(() => null)) ?? getToken();
+    const res = await fetch(
+      `${config().apiBase}/people/${encodeURIComponent(personId)}/photo`,
+      { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+    ).catch(() => null);
+    if (!res || !res.ok) return null;
+    return URL.createObjectURL(await res.blob());
+  },
+
   capabilities: () => request<Capabilities>("/people/capabilities"),
 
   staff: (opts: { q?: string; orgUnitId?: string } = {}) => {
@@ -506,7 +557,11 @@ export const people = {
     type?: "PERMANENT" | "VACATAIRE" | "STAGIAIRE";
     baseAmountXaf?: number;
     assignment?: { orgUnitId: string; role: string };
-  }) => request<unknown>("/people/staff", { method: "POST", body: JSON.stringify(body) }),
+  }) =>
+    request<{ person: { id: string }; employment: { id: string } }>("/people/staff", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   assign: (employmentId: string, body: { orgUnitId: string; role: string }) =>
     request<unknown>(`/people/staff/${employmentId}/assignments`, {
@@ -710,7 +765,83 @@ export interface PeriodSheet {
   }[];
 }
 
+/**
+ * ONE PUPIL, everything the school knows, sectioned by the API.
+ *
+ * The sections are the domain's rather than the layout's — identité, scolarité,
+ * finances, résultats, assiduité — so a second client rendering this folder
+ * does not have to rediscover which of forty fields belong together.
+ */
+export interface StudentDossier {
+  identity: {
+    studentId: string;
+    personId: string;
+    matricule: string;
+    firstName: string;
+    lastName: string;
+    birthDate: string | null;
+    birthPlace: string | null;
+    gender: string | null;
+    phone: string | null;
+    email: string | null;
+    address: string | null;
+    /** The app's own upload, or an external URL. Null when there is neither. */
+    photoUrl: string | null;
+  };
+  guardians: {
+    personId: string;
+    firstName: string;
+    lastName: string;
+    relationship: string;
+    phone: string | null;
+    email: string | null;
+    isPrimary: boolean;
+    isPayer: boolean;
+  }[];
+  schooling: {
+    id: string;
+    year: string;
+    yearId: string;
+    classe: string;
+    classeId: string;
+    serie: string | null;
+    isRepeating: boolean;
+    withdrawnOn: string | null;
+    isCurrent: boolean;
+  }[];
+  finance: {
+    billedXaf: number;
+    paidXaf: number;
+    balanceXaf: number;
+    invoices: {
+      id: string; number: string; status: string; totalXaf: number;
+      issuedOn: string | null; dueOn: string | null; lines: number;
+    }[];
+    payments: {
+      id: string; amountXaf: number; method: string;
+      paidOn: string; reference: string | null;
+    }[];
+  };
+  academic: {
+    marksheets: {
+      id: string; year: string; period: string; periodId: string | null;
+      classe: string; status: string; average: string | null;
+      rank: number | null; rankOf: number | null; mention: string | null;
+    }[];
+    decisions: { year: string; kind: string; note: string | null; decidedOn: string | null }[];
+  };
+  attendance: {
+    classe: string | null;
+    sessions: number; present: number; late: number; absent: number; excused: number;
+    rate: number | null;
+  };
+}
+
 export const sheets = {
+  /** One pupil's whole dossier — see StudentDossier. */
+  student: (studentId: string) =>
+    request<StudentDossier>(`/sheets/student/${encodeURIComponent(studentId)}`),
+
   /** A whole class in one read — see the API's modules/sheets. */
   classe: (classeId: string, academicYearId: string) =>
     request<StudentSheet>(
@@ -935,7 +1066,13 @@ export const enrollment = {
     classeId: string;
     serieId?: string | null;
     isRepeating?: boolean;
-  }) => request<{ id: string }>("/enrollment", { method: "POST", body: JSON.stringify(body) }),
+  }) =>
+    /* `personId` comes back so the caller can attach the portrait without
+       walking student → person for a field the API already had in hand. */
+    request<{ id: string; studentId: string; personId: string }>("/enrollment", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   roster: (classeId: string, academicYearId: string) =>
     request<RosterRow[]>(

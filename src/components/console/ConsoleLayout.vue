@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
+import * as api from "../../lib/api";
 import { useAuthStore } from "../../stores/auth";
 import { useDeploymentStore } from "../../stores/deployment";
 import DeploymentBadge from "./DeploymentBadge.vue";
@@ -23,6 +24,72 @@ const router = useRouter();
 // Once signed in, re-read deployment WITH the tenant so tier and writability
 // are real rather than the anonymous probe's nulls.
 onMounted(() => void dep.refreshForSession());
+
+/**
+ * THE SIGNED-IN PERSON'S OWN PORTRAIT.
+ *
+ * Not a page. Uploading your own photo is a ten-second act that belongs where
+ * your name already is, and a settings screen built to hold one file input is a
+ * screen nobody finds.
+ *
+ * Rules restated from the API for the same reason PhotoInput restates them: a
+ * 3 Mo photo refused after crossing a mobile link is a wasted minute. The
+ * server still enforces them.
+ */
+const MY_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const MY_PHOTO_MAX = 2 * 1024 * 1024;
+
+const myPhoto = ref<string | null>(null);
+const myPhotoBusy = ref(false);
+const myPhotoError = ref<string | null>(null);
+let myPhotoUrl: string | null = null;
+
+async function loadMyPhoto() {
+  const personId = auth.profile?.personId;
+  if (!personId) return;
+  const url = await api.people.photoObjectUrl(personId);
+  if (myPhotoUrl) URL.revokeObjectURL(myPhotoUrl);
+  myPhotoUrl = url;
+  myPhoto.value = url;
+}
+watch(() => auth.profile?.personId, loadMyPhoto, { immediate: true });
+onBeforeUnmount(() => {
+  if (myPhotoUrl) URL.revokeObjectURL(myPhotoUrl);
+});
+
+async function onMyPhoto(event: Event) {
+  const el = event.target as HTMLInputElement;
+  const file = el.files?.[0];
+  el.value = "";
+  const personId = auth.profile?.personId;
+  if (!file || !personId) return;
+
+  myPhotoError.value = null;
+  if (!MY_PHOTO_TYPES.includes(file.type)) {
+    myPhotoError.value = "JPEG, PNG ou WebP";
+    return;
+  }
+  if (file.size > MY_PHOTO_MAX) {
+    myPhotoError.value = "Photo trop lourde (2 Mo max)";
+    return;
+  }
+
+  myPhotoBusy.value = true;
+  try {
+    const data = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error("read"));
+      reader.readAsDataURL(file);
+    });
+    await api.people.setPhoto(personId, data);
+    await loadMyPhoto();
+  } catch (e) {
+    myPhotoError.value = e instanceof api.ApiError ? e.message : "Envoi impossible";
+  } finally {
+    myPhotoBusy.value = false;
+  }
+}
 
 /**
  * The rail collapses to its group icons, like Cloudflare's.
@@ -142,10 +209,35 @@ async function logout() {
         </button>
 
         <div class="who">
-          <span class="avatar" aria-hidden="true">{{ auth.initials }}</span>
+          <!--
+            Your own face, and the one control for putting it there.
+
+            The office can add anyone's portrait from their dossier; this is the
+            other half of the same permission — a teacher, an économe, a pupil
+            old enough to sign in, changing their own without asking anyone.
+            Offered only when the account IS a person: a shared "secrétariat"
+            login has no face to change, and the API would refuse it anyway.
+          -->
+          <label
+            v-if="auth.profile?.personId"
+            class="avatar is-mine"
+            :class="{ 'is-busy': myPhotoBusy }"
+            :title="myPhoto ? 'Changer ma photo' : 'Ajouter ma photo'"
+          >
+            <img v-if="myPhoto" :src="myPhoto" :alt="`Photo de ${auth.profile.fullName}`" />
+            <span v-else aria-hidden="true">{{ auth.initials }}</span>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              :disabled="myPhotoBusy"
+              @change="onMyPhoto"
+            />
+          </label>
+          <span v-else class="avatar" aria-hidden="true">{{ auth.initials }}</span>
+
           <span class="who-text">
             <span class="who-name">{{ auth.profile?.fullName ?? "—" }}</span>
-            <span class="who-role">{{ auth.profile?.complexName ?? "—" }}</span>
+            <span class="who-role">{{ myPhotoError ?? auth.profile?.complexName ?? "—" }}</span>
           </span>
         </div>
         <button class="btn sm" type="button" @click="logout">Se déconnecter</button>

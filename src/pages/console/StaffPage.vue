@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import * as api from "../../lib/api";
 import PhoneInput from "../../components/ui/PhoneInput.vue";
 import { useBusyStore } from "../../stores/busy";
 import { KIND_FR } from "../../components/structure/kinds";
 import Alert from "../../components/ui/Alert.vue";
+import PhotoInput from "../../components/ui/PhotoInput.vue";
 
 /**
  * Staff, and where they are posted.
@@ -33,6 +34,67 @@ const form = ref({
 const assigning = ref<string | null>(null);
 const assignForm = ref({ orgUnitId: "", role: "Enseignant" });
 
+/** The staff portrait — optional, exactly as for a pupil. See PhotoInput. */
+const photo = ref<string | null>(null);
+const photoWarning = ref<string | null>(null);
+
+/**
+ * The portraits already on file, keyed by personId.
+ *
+ * Fetched one by one because the endpoint serves one person, and behind the
+ * bearer token, which an <img src> cannot carry — so each is loaded through the
+ * API layer and kept as a blob URL. Fine for a staff list, which is dozens;
+ * a roster of six hundred pupils would need a different endpoint, and it is
+ * deliberately not given this treatment.
+ */
+const photos = ref<Record<string, string | null>>({});
+const objectUrls: string[] = [];
+
+async function loadPhotos() {
+  await Promise.all(
+    staff.value.map(async (s) => {
+      if (s.personId in photos.value) return;
+      const url = await api.people.photoObjectUrl(s.personId);
+      if (url) objectUrls.push(url);
+      photos.value = { ...photos.value, [s.personId]: url };
+    }),
+  );
+}
+onBeforeUnmount(() => objectUrls.forEach((u) => URL.revokeObjectURL(u)));
+
+/** The office adding someone's photo after the fact, from the list. */
+async function onStaffPhoto(event: Event, personId: string) {
+  const el = event.target as HTMLInputElement;
+  const file = el.files?.[0];
+  el.value = "";
+  if (!file) return;
+
+  photoWarning.value = null;
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+    photoWarning.value = "Format accepté : JPEG, PNG ou WebP.";
+    return;
+  }
+  if (file.size > 2 * 1024 * 1024) {
+    photoWarning.value = `Photo trop lourde (${(file.size / 1024 / 1024).toFixed(1)} Mo, maximum 2 Mo).`;
+    return;
+  }
+
+  try {
+    const data = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error("read"));
+      reader.readAsDataURL(file);
+    });
+    await api.people.setPhoto(personId, data);
+    const fresh = await api.people.photoObjectUrl(personId);
+    if (fresh) objectUrls.push(fresh);
+    photos.value = { ...photos.value, [personId]: fresh };
+  } catch (e) {
+    photoWarning.value = e instanceof api.ApiError ? e.message : "Envoi de la photo impossible.";
+  }
+}
+
 /** Every unit, flattened with its path — an assignment can target any of them. */
 /** Every unit, flattened with its path. One request — see EnrollPage. */
 async function loadUnits() {
@@ -55,6 +117,9 @@ async function load() {
   loading.value = true;
   try {
     staff.value = await busy.run(() => api.people.staff());
+    // After the list, not with it: a portrait that has not arrived yet costs
+    // an initial, and nobody should wait on twenty of them to see the table.
+    void loadPhotos();
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Chargement impossible.";
   } finally {
@@ -79,7 +144,7 @@ async function add() {
   error.value = null;
   try {
     const salary = Number(form.value.baseAmountXaf.replace(/\D/g, "")) || 0;
-    await busy.run(
+    const created = await busy.run(
       () =>
         api.people.createStaff({
           person: {
@@ -95,11 +160,24 @@ async function add() {
         }),
       { title: "Ajout du personnel", detail: "Création de la fiche et du contrat." },
     );
+    /* Same rule as an inscription: the photo is sent after and cannot undo the
+       hiring. See EnrollForm for why it is two calls. */
+    if (photo.value && created.person.id) {
+      try {
+        await api.people.setPhoto(created.person.id, photo.value);
+      } catch (e) {
+        photoWarning.value =
+          `La fiche est créée, mais la photo n'a pas été envoyée` +
+          `${e instanceof api.ApiError ? ` : ${e.message}` : "."}`;
+      }
+    }
+
     notice.value = `${form.value.firstName} ${form.value.lastName} ajouté(e).`;
     form.value.lastName = "";
     form.value.firstName = "";
     form.value.phone = "";
     form.value.baseAmountXaf = "";
+    photo.value = null;
     adding.value = false;
     await load();
   } catch (e) {
@@ -156,6 +234,7 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
 
     <Alert v-if="notice" kind="ok" @close="notice = null">{{ notice }}</Alert>
     <Alert v-if="error" kind="error" @close="error = null">{{ error }}</Alert>
+    <Alert v-if="photoWarning" kind="warn" @close="photoWarning = null">{{ photoWarning }}</Alert>
 
     <div v-if="adding" class="card" style="margin-bottom: var(--s4)">
       <div class="card-head">
@@ -197,6 +276,9 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
           <div class="field"><label for="s-ro">Fonction</label>
             <input id="s-ro" v-model="form.role" autocomplete="off" /></div>
         </div>
+        <!-- Same optional portrait as on an inscription: the badge and the
+             trombinoscope want it, nothing about the hiring depends on it. -->
+        <PhotoInput v-model="photo" />
       </div>
       <div class="card-foot">
         <button class="btn primary" type="button" :disabled="!canAdd" @click="add">
@@ -232,6 +314,26 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
             <tr v-for="s in staff" :key="s.id">
               <td class="c-name">
                 <span class="cell-id">
+                  <!--
+                    The portrait, and the way to set it, in one 28px disc.
+
+                    This is the "later" half of the optional field on the add
+                    form: a school hires in August with no photos and collects
+                    them through September, and the list they are working from
+                    should be where they land. Same control the signed-in person
+                    has over their own in the rail.
+                  -->
+                  <label class="avatar is-mine" :title="`Photo de ${s.firstName} ${s.lastName}`">
+                    <img v-if="photos[s.personId]" :src="photos[s.personId]!" alt="" />
+                    <span v-else aria-hidden="true">
+                      {{ (s.firstName[0] ?? "") + (s.lastName[0] ?? "") }}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      @change="onStaffPhoto($event, s.personId)"
+                    />
+                  </label>
                   <span class="row-text">
                     <span class="cell-strong">{{ s.lastName.toUpperCase() }} {{ s.firstName }}</span>
                     <span class="cell-sub">{{ s.phone ?? "—" }}</span>

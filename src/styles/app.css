@@ -3702,42 +3702,47 @@ table.data td.c-text {
 }
 
 /*
- * A fact about the column block, that turns out to be a button.
+ * THE COEFFICIENT, under the subject it weights.
  *
- * The coefficient: the number every mark under this header is multiplied by,
- * defined on the niveau and empty on every new school. It reads as a label
- * until you need it, and "coef ?" in the warning colour is how a titulaire
- * finds out the conseil will refuse to compute — while looking at the marks
- * that will not be weighted, which is the only moment anyone thinks about it.
+ * It was a pill beside the subject code, which made it read as a tag — one
+ * more label among labels — when it is the number every mark in the block will
+ * be multiplied by. A carnet de notes prints it under the subject in small
+ * type, and that is what this is: a second line, quiet until you need it,
+ * underlined on hover because it turns out to be editable.
+ *
+ * Missing is the state worth seeing. The scaffold never guesses a coefficient,
+ * so it starts empty on every school and the conseil refuses to compute without
+ * it — "coefficient à définir" in the warning colour is how a titulaire finds
+ * that out while looking at the marks it would have weighted.
  */
-.sheet-group-badge {
-  margin-left: 6px;
-  padding: 0 6px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
-  color: var(--ink-2);
+.sheet-group-coef {
+  display: block;
+  width: 100%;
+  margin-top: 1px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ink-3);
   font: inherit;
   font-size: var(--t-micro);
-  font-weight: 600;
-  line-height: 15px;
-  vertical-align: middle;
-  text-transform: none;
+  font-weight: 500;
   letter-spacing: 0;
+  text-transform: none;
   cursor: pointer;
 }
-.sheet-group-badge:hover {
-  border-color: var(--primary);
+.sheet-group-coef:hover {
   color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
-.sheet-group-badge.is-missing {
-  border-color: var(--warn);
-  background: var(--warn-soft);
+.sheet-group-coef.is-missing {
   color: var(--warn);
+  font-weight: 650;
 }
-.sheet-group-badge:focus-visible {
+.sheet-group-coef:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 1px;
+  border-radius: 2px;
 }
 
 /* A week released, with unreleased changes on top of it. */
@@ -4875,4 +4880,371 @@ table.data td.c-text {
   @page {
     margin: 14mm;
   }
+}
+/* ============================================================================
+   ONE PUPIL'S DOSSIER
+   ----------------------------------------------------------------------------
+   The paper folder a secretary keeps, which is a stack and not a set of tabs:
+   the identity page on top, then schooling, then the money, then the results.
+   Sections rather than tabs because the questions asked here cross them — an
+   économe chasing a balance needs the tuteur's number, a titulaire looking at
+   absences needs the class. A tab would hide exactly the half being compared.
+
+   Everything is a plain grid or table on the page's own ground. The console
+   already leans hard on cards; a folder of eight cards reads as eight unrelated
+   things, and this is one thing about one child.
+   ========================================================================== */
+
+.dossier-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+  padding-bottom: var(--s7);
+  min-width: 0;
+}
+
+/* Section jumps, not tab switches — the page scrolls under them. */
+.dossier-nav {
+  display: flex;
+  gap: var(--s1);
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+.dossier-navlink {
+  border: none;
+  background: none;
+  padding: 4px var(--s2);
+  border-radius: var(--radius-sm);
+  color: var(--ink-3);
+  font: inherit;
+  font-size: var(--t-small);
+  cursor: pointer;
+}
+.dossier-navlink:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+/* ── the head: face, name, and the six facts on an identity card ── */
+.dossier-head {
+  display: flex;
+  gap: var(--s5);
+  align-items: flex-start;
+  padding-bottom: var(--s4);
+  border-bottom: 1px solid var(--line);
+}
+
+/* Passport proportions (35×45mm), because that is what will be handed in. */
+.dossier-photo {
+  flex: none;
+  width: 112px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s1);
+}
+.dossier-photo img,
+.dossier-initials {
+  width: 112px;
+  height: 144px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  object-fit: cover;
+  background: var(--surface-2);
+}
+.dossier-initials {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--t-display);
+  font-weight: 600;
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+}
+/* A label wrapping a hidden input: the browser's own file button says
+   "Choisir un fichier / aucun fichier sélectionné" in a shape nothing else in
+   this console has, and it cannot be styled. */
+.dossier-photo-btn {
+  font-size: var(--t-micro);
+  color: var(--primary);
+  cursor: pointer;
+  text-align: center;
+}
+.dossier-photo-btn input { display: none; }
+.dossier-photo-btn:hover { text-decoration: underline; }
+.dossier-photo-btn.is-busy { color: var(--ink-3); cursor: progress; }
+.dossier-photo-rm {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.dossier-photo-rm:hover { color: var(--danger); }
+
+.dossier-id { min-width: 0; flex: 1; }
+.dossier-name {
+  margin: 0;
+  font-size: var(--t-h1);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.dossier-sub {
+  margin-top: 2px;
+  color: var(--ink-3);
+  font-size: var(--t-small);
+}
+
+/* Two columns of label/value at small screens' mercy — a definition list
+   because that is what it is, and screen readers read the pairing. */
+.dossier-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--s2) var(--s5);
+  margin: var(--s4) 0 0;
+}
+.dossier-facts div { min-width: 0; }
+.dossier-facts dt {
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.dossier-facts dd {
+  margin: 1px 0 0;
+  font-size: var(--t-body);
+  overflow-wrap: anywhere;
+}
+
+/* ── the sections ── */
+.dossier-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  scroll-margin-top: var(--s5);
+  min-width: 0;
+}
+.dossier-section h2 {
+  margin: 0;
+  font-size: var(--t-h3);
+  font-weight: 600;
+}
+.dossier-h2-note {
+  font-weight: 400;
+  font-size: var(--t-small);
+  color: var(--ink-3);
+}
+.dossier-empty {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--t-small);
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
+/* Tuteurs, décisions — a few short blocks, not a table with two rows. */
+.dossier-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--s3);
+}
+.dossier-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: var(--s3);
+  min-width: 0;
+}
+.dossier-card-title {
+  font-weight: 600;
+  font-size: var(--t-body);
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  flex-wrap: wrap;
+}
+.dossier-card-note {
+  color: var(--ink-3);
+  font-size: var(--t-small);
+  margin-top: 1px;
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  flex-wrap: wrap;
+}
+.dossier-card-line {
+  font-size: var(--t-small);
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+.dossier-tag {
+  font-size: var(--t-micro);
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--primary-soft);
+  color: var(--primary-soft-ink);
+}
+
+/* Sums first, detail under them: the balance is the question, the invoices are
+   the evidence. Tabular figures so a column of amounts lines up by digit. */
+.dossier-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: var(--s3) var(--s4);
+}
+.dossier-figures div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dossier-figures span {
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.dossier-figures strong {
+  font-size: var(--t-lead);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.dossier-figures strong.is-warn { color: var(--warn); }
+
+.dossier-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-small);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.dossier-table th {
+  text-align: left;
+  font-weight: 600;
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-3);
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.dossier-table td {
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line-soft);
+}
+.dossier-table tr:last-child td { border-bottom: none; }
+.dossier-table .c-num { text-align: right; font-variant-numeric: tabular-nums; }
+.dossier-table small { color: var(--ink-3); }
+/* The year in progress, so the eye lands on it in a list of five. */
+.dossier-table tr.is-current td { font-weight: 600; }
+.dossier-table tr.is-current td:first-child { box-shadow: inset 2px 0 0 var(--primary); }
+
+@media (max-width: 700px) {
+  .dossier-head { flex-direction: column; align-items: flex-start; }
+  .dossier-nav { margin-left: 0; }
+}
+
+/* ── the optional passport photo, on any registration form ─────────────────
+   Frame first, controls beside it. The frame keeps 35×45mm proportions whether
+   or not there is a picture in it, so choosing a file does not shove the rest
+   of the form down the page. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.photoinput {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s4);
+}
+.photoinput-frame {
+  flex: none;
+  width: 84px;
+  height: 108px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.photoinput-frame.is-empty { border-style: dashed; }
+.photoinput-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photoinput-ph {
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+}
+.photoinput-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  min-width: 0;
+}
+.photoinput-label { font-size: var(--t-small); font-weight: 500; }
+/* Says so on the form, not only in the validation: an operator should not have
+   to submit to find out a field was never required. */
+.photoinput-label em { font-style: normal; color: var(--ink-3); font-weight: 400; }
+.photoinput-acts { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.photoinput-hint { font-size: var(--t-micro); color: var(--ink-3); }
+.photoinput-err { font-size: var(--t-micro); color: var(--danger); }
+
+.photoinput.is-compact .photoinput-frame { width: 60px; height: 77px; }
+
+/* ── your own avatar, when it is also the control that sets it ──────────────
+   A label wrapping a hidden file input, so the whole disc is the target. The
+   camera cue appears on hover only: the rail is looked at all day and a badge
+   nailed to it would be permanent furniture for a once-a-year act. */
+.avatar.is-mine {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  padding: 0;
+}
+.avatar.is-mine input { display: none; }
+.avatar.is-mine img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.avatar.is-mine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 22, 30, 0.55)
+    /* a small camera, so the disc says what clicking it does */
+    center / 13px no-repeat
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z'/%3E%3Ccircle cx='12' cy='13' r='4'/%3E%3C/svg%3E");
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.avatar.is-mine:hover::after,
+.avatar.is-mine:focus-within::after { opacity: 1; }
+.avatar.is-mine.is-busy { cursor: progress; }
+.avatar.is-mine.is-busy::after { opacity: 1; }
+/* Names the second and third table in a section — "Factures" then
+   "Règlements" — which a column header alone was being asked to do. */
+.dossier-h3 {
+  margin: var(--s2) 0 0;
+  font-size: var(--t-small);
+  font-weight: 600;
+  color: var(--ink-2);
 }

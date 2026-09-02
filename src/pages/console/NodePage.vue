@@ -485,13 +485,30 @@ function onPick(row: Record<string, unknown>) {
   }
   if (!sheet.value || !row.studentId) return;
   void flushMarks();
+  /*
+   * WHERE A NAME LEADS DEPENDS ON WHICH SHEET YOU CLICKED IT IN.
+   *
+   * On the Notes tab you are already looking at marks for one période, and the
+   * row's document is the bulletin for that période. Everywhere else — the
+   * roster, the roll — the row is a person, and the question behind the click
+   * is "who is this", which the bulletin cannot answer: it knows nothing of
+   * tuteurs, fees, or how many mornings the child missed.
+   */
+  if (tab.value === "grades") {
+    void router.push({
+      name: "bulletin",
+      params: { id: String(row.studentId) },
+      query: {
+        ...(periodId.value ? { period: periodId.value } : {}),
+        from: unit.value?.id ?? "",
+      },
+    });
+    return;
+  }
   void router.push({
-    name: "bulletin",
+    name: "student",
     params: { id: String(row.studentId) },
-    query: {
-      ...(periodId.value ? { period: periodId.value } : {}),
-      from: unit.value?.id ?? "",
-    },
+    query: { from: unit.value?.id ?? "" },
   });
 }
 

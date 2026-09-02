@@ -6,6 +6,7 @@ import { useOrgStore } from "../../stores/org";
 import PhoneInput from "../ui/PhoneInput.vue";
 import UnitSelect from "../structure/UnitSelect.vue";
 import Alert from "../ui/Alert.vue";
+import PhotoInput from "../ui/PhotoInput.vue";
 
 /**
  * Enrol one pupil — the form, wherever it is shown.
@@ -67,6 +68,11 @@ const form = ref({
   guardians: [blankGuardian()] as GuardianRow[],
 });
 
+/** The portrait, as a data URL, or nothing at all. See PhotoInput. */
+const photo = ref<string | null>(null);
+/** Enrolled, but the photo did not go up — a warning, never an error. */
+const photoWarning = ref<string | null>(null);
+
 /** Only to tell "no class exists" apart from "none chosen yet". */
 const classes = computed(() => org.ofKind(["CLASSE"]).filter((u) => !u.validTo));
 
@@ -124,7 +130,7 @@ async function submit() {
   error.value = null;
   const fullName = `${form.value.firstName} ${form.value.lastName}`;
   try {
-    await busy.run(
+    const created = await busy.run(
       () =>
         api.enrollment.enroll({
           person: {
@@ -151,6 +157,27 @@ async function submit() {
         }),
       { title: "Inscription", detail: "Création de l'élève et de son inscription." },
     );
+    /*
+     * THE PHOTO IS SENT AFTER, AND ITS FAILURE IS NOT THE ENROLMENT'S.
+     *
+     * Two calls rather than one because the photo must never be able to undo an
+     * inscription. A file too large, a link that dropped halfway, a format the
+     * server refuses — none of those are reasons a child is not enrolled, and
+     * folding the upload into the same transaction would make every one of them
+     * exactly that. So the pupil exists first; if the picture does not arrive,
+     * the operator is told where to add it and the row is already there.
+     */
+    if (photo.value && created.personId) {
+      try {
+        await api.people.setPhoto(created.personId, photo.value);
+      } catch (e) {
+        photoWarning.value =
+          `${fullName} est inscrit(e), mais la photo n'a pas été envoyée` +
+          `${e instanceof api.ApiError ? ` : ${e.message}` : "."} ` +
+          `Vous pourrez l'ajouter depuis sa fiche.`;
+      }
+    }
+
     notice.value = `${fullName} inscrit(e).`;
     // The classe and the year stay: a secretary enrols a whole list in one
     // sitting, and re-picking the same class forty times is the work.
@@ -160,6 +187,7 @@ async function submit() {
     form.value.birthPlace = "";
     form.value.gender = "";
     form.value.isRepeating = false;
+    photo.value = null;
     form.value.guardians = [blankGuardian()];
     emit("enrolled", { name: fullName, classeId: form.value.classeId });
   } catch (e) {
@@ -203,6 +231,7 @@ defineExpose({ submit });
   <form v-else class="enroll-form" @submit.prevent="submit">
     <Alert v-if="notice" kind="ok" @close="notice = null">{{ notice }}</Alert>
     <Alert v-if="error" kind="error" @close="error = null">{{ error }}</Alert>
+    <Alert v-if="photoWarning" kind="warn" @close="photoWarning = null">{{ photoWarning }}</Alert>
 
     <fieldset class="fieldset">
       <legend>Élève</legend>
@@ -234,6 +263,9 @@ defineExpose({ submit });
           <input id="e-bp" v-model="form.birthPlace" autocomplete="off" />
         </div>
       </div>
+      <!-- Last in the fieldset and marked facultative on its face: an operator
+           enrolling forty pupils should be able to tab straight past it. -->
+      <PhotoInput v-model="photo" />
     </fieldset>
 
     <!--

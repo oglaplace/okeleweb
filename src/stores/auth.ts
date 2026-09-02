@@ -17,6 +17,8 @@ export interface Profile {
    * school's.
    */
   isPlatformAdmin: boolean;
+  /** Whose face this account is — null for a shared office login. */
+  personId: string | null;
   permissions: string[];
   /** Null for platform staff — see above. */
   tenantId: string | null;
@@ -113,6 +115,7 @@ export const useAuthStore = defineStore("auth", {
         fullName: identity.account.fullName,
         phone: identity.account.phone,
         isPlatformAdmin: identity.account.isPlatformAdmin,
+        personId: identity.account.personId ?? null,
         permissions: identity.account.permissions,
         tenantId: identity.deployment.tenant?.id ?? null,
         complexName: identity.deployment.tenant?.name ?? null,

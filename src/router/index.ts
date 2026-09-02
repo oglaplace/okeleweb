@@ -60,6 +60,15 @@ const router = createRouter({
          * should get one.
          */
         { path: "eleve/:id/bulletin", name: "bulletin", component: () => import("../pages/console/BulletinPage.vue") },
+        /**
+         * ONE PUPIL'S DOSSIER — the whole folder, not one période of it.
+         *
+         * Clicking a name in the roster used to open a bulletin, which answers
+         * "how did this child do in the second trimestre" when the question was
+         * usually "who is this child": which class, whose son, what is owed,
+         * how often absent. The bulletin is still a click away from here.
+         */
+        { path: "eleve/:id", name: "student", component: () => import("../pages/console/StudentPage.vue") },
       ],
     },
 

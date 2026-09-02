@@ -176,7 +176,17 @@ export function studentTabs(
            */
           badge: {
             key: `coefficient:${subject.id}`,
-            label: subject.coefficient === null ? "coef ?" : `coef ${subject.coefficient}`,
+            /*
+             * Both states start with "coef." so the eye reads the same slot,
+             * and the missing one stays short: this line sits under a group
+             * header whose width is the sum of its columns, and a subject with
+             * one evaluation is narrow enough that a long sentence here would
+             * stretch the whole block sideways.
+             */
+            label:
+              subject.coefficient === null
+                ? "coef. à définir"
+                : `coef. ${subject.coefficient}`,
             missing: subject.coefficient === null,
             hint:
               subject.coefficient === null
