@@ -89,6 +89,14 @@ const router = createRouter({
          * screen exists for.
          */
         { path: "encaisser", name: "collect", component: () => import("../pages/console/CollectPage.vue") },
+        /**
+         * THE PRICE LIST, as a grid rather than a form.
+         *
+         * Its own screen because it is a table somebody fills in and checks
+         * against itself — the same job as the mark sheet and the timetable,
+         * and the same shape.
+         */
+        { path: "tarifs", name: "tariffs", component: () => import("../pages/console/TariffsPage.vue") },
       ],
     },
 

@@ -5494,3 +5494,104 @@ table.data td.c-text {
   border-left: 2px solid #d8d6cf;
   padding-left: var(--s3);
 }
+
+/* ============================================================================
+   GRILLE TARIFAIRE — the price list as a grid you type into.
+   ----------------------------------------------------------------------------
+   Same shape as the mark sheet, because it is the same job: a table of numbers
+   somebody fills in and checks against its neighbours.
+   ========================================================================== */
+
+/* The bar that applies one figure to everything ticked. Above the table, not
+   below it: the selection is made in the table and acted on here, and a strip
+   under six hundred rows is a strip nobody scrolls back to. */
+.tariff-bulk { margin-bottom: var(--s4); }
+.tariff-bulk-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+.tariff-bulk-lead {
+  font-size: var(--t-small);
+  color: var(--ink-2);
+  white-space: nowrap;
+  margin-right: var(--s2);
+}
+.tariff-bulk-row input { max-width: 170px; }
+.tariff-bulk-row select { max-width: 220px; }
+.tariff-bulk .hint { display: block; margin-top: var(--s2); }
+
+.tariff-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
+.tariff-pick { width: 34px; text-align: center; }
+.tariff-pick input { width: auto; height: auto; }
+/* A ticked row has to be visible while the eye is up in the bulk bar. */
+.data tr.is-picked { background: var(--primary-soft); }
+.data tr.is-picked td:first-child { box-shadow: inset 2px 0 0 var(--primary); }
+
+.tariff-head { white-space: nowrap; }
+.tariff-head-sub {
+  display: block;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--ink-3);
+  font-size: var(--t-micro);
+}
+
+/* Input and its tranche marker as ONE object, right-aligned together.
+   Absolutely positioning the marker at the cell's left edge put it halfway to
+   the previous column, where it read as that column's annotation. */
+.tariff-cell { padding: 2px 4px; }
+.tariff-cell-box {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.tariff-cell .mark-input { width: 96px; text-align: right; }
+/* How many tranches this fee is split into — shown only where it means
+   something, which is a PER_PERIOD fee that actually has a price. */
+.tariff-inst {
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.tariff-total { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ── the catalogue, as a list of offers ── */
+.catalogue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 52vh;
+  overflow-y: auto;
+}
+.catalogue-item {
+  display: flex;
+  gap: var(--s3);
+  align-items: flex-start;
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.catalogue-item:hover { background: var(--surface-2); }
+.catalogue-item.is-installed { opacity: 0.6; cursor: default; }
+.catalogue-item input { width: auto; height: auto; margin-top: 3px; flex: none; }
+.catalogue-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.catalogue-name {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  flex-wrap: wrap;
+  font-size: var(--t-body);
+  font-weight: 500;
+}
+.catalogue-detail { font-size: var(--t-small); color: var(--ink-3); }

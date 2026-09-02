@@ -1408,6 +1408,14 @@ export const finance = {
   /** The SYSCOHADA chart of accounts, once per établissement. */
   seedLedger: () => request<unknown>("/finance/ledger/seed", { method: "POST" }),
 
+  /**
+   * Both kept, and both unused by this console.
+   *
+   * The grille screen writes through `setTariffs`, which upserts and takes
+   * many units at once; these are the single-shot originals. They stay because
+   * the import path and any second client still need a way to create one fee
+   * type or one schedule outright — but nothing here should reach for them.
+   */
   createFeeType: (body: {
     code: string;
     name: string;
@@ -1438,6 +1446,51 @@ export const finance = {
       `/finance/payable?academicYearId=${encodeURIComponent(academicYearId)}` +
         (q ? `&q=${encodeURIComponent(q)}` : ""),
     ),
+
+  /** The fee types this app ships with, marked with what is installed. */
+  feeCatalogue: (stage?: "SCHOOL" | "UNIVERSITY" | "BOTH") =>
+    request<FeeTypeTemplate[]>(
+      "/finance/fee-types/catalogue" + (stage ? `?stage=${stage}` : ""),
+    ),
+
+  /** Installs catalogue entries by code. Idempotent; never overwrites. */
+  installFeeTypes: (codes: string[]) =>
+    request<{ installed: number; skipped: number }>("/finance/fee-types/install", {
+      method: "POST",
+      body: JSON.stringify({ codes }),
+    }),
+
+  /** Every price in the complex for one year: units × fee types. */
+  tariffs: (academicYearId: string) =>
+    request<TariffGrid>(`/finance/tariffs?academicYearId=${encodeURIComponent(academicYearId)}`),
+
+  /**
+   * Writes prices onto one unit or many.
+   *
+   * A null amount REMOVES the line: "we do not charge for the canteen" and
+   * "the canteen is free" are different statements, and only one of them
+   * belongs on a facture.
+   */
+  setTariffs: (body: {
+    academicYearId: string;
+    orgUnitIds: string[];
+    serieId?: string | null;
+    items: { feeTypeId: string; amountXaf: number | null; installments?: number }[];
+  }) =>
+    request<{ units: number; items: number }>("/finance/tariffs", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  /** Bills every pupil in the chosen classes against the grille. */
+  issueInvoices: (academicYearId: string, classeIds: string[]) =>
+    request<{
+      pupils: number; issued: number; alreadyBilled: number;
+      noSchedule: number; failed: number;
+    }>("/finance/invoices/issue", {
+      method: "POST",
+      body: JSON.stringify({ academicYearId, classeIds }),
+    }),
 
   /** Issue this pupil's facture, or hand back the one that exists. */
   issueInvoice: (studentId: string, academicYearId: string) =>
@@ -1477,6 +1530,8 @@ export const finance = {
     invoiceId?: string;
     /** What the règlement is for — one of the complex's declared fee types. */
     feeTypeId?: string;
+    /** The motif in words, for "Autre". */
+    purposeNote?: string;
     amountXaf: number;
     method: PaymentMethod;
     reference?: string;
@@ -1603,6 +1658,32 @@ export interface StudentLedger {
   needsInvoice: boolean;
   /** Whether one could be issued now — false when no grille applies. */
   canIssueInvoice: boolean;
+}
+
+/** One entry of the shipped fee-type catalogue. */
+export interface FeeTypeTemplate {
+  code: string;
+  name: string;
+  recurrence: "ONCE" | "PER_PERIOD" | "MONTHLY";
+  stage: "SCHOOL" | "UNIVERSITY" | "BOTH";
+  detail: string;
+  installed: boolean;
+  /** The tenant's own FeeType id, once installed. */
+  id: string | null;
+}
+
+/** The grille tarifaire as a grid: units down, fee types across. */
+export interface TariffGrid {
+  feeTypes: { id: string; code: string; name: string; recurrence: string }[];
+  units: { id: string; name: string; kind: OrgUnitKind; parentId: string | null; code: string | null }[];
+  series: { id: string; code: string; name: string }[];
+  schedules: {
+    id: string;
+    orgUnitId: string;
+    serieId: string | null;
+    name: string;
+    items: { feeTypeId: string; amountXaf: number; installments: number }[];
+  }[];
 }
 
 /** A pupil the guichet can take money for. */

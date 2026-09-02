@@ -61,6 +61,17 @@ const error = ref<string | null>(null);
  */
 const feeTypes = ref<{ id: string; name: string }[]>([]);
 const feeTypeId = ref("");
+/**
+ * The escape hatch, and why it is not just another option.
+ *
+ * Every catalogued reason is a FeeType and reconciles against the grille. This
+ * one is for the reason nobody planned — a lost card, a fine, a contribution —
+ * and it takes the operator's own words. Without it the honest choices are to
+ * record nothing or to pick the nearest wrong option, which then reconciles
+ * against the wrong line.
+ */
+const OTHER = "__other__";
+const purposeNote = ref("");
 
 onMounted(async () => {
   // Optional to the point of invisible: if this fails, the payment still goes
@@ -107,7 +118,12 @@ async function submit() {
       academicYearId: props.academicYearId,
       amountXaf: parsed.value,
       method: method.value,
-      ...(feeTypeId.value ? { feeTypeId: feeTypeId.value } : {}),
+      ...(feeTypeId.value && feeTypeId.value !== OTHER
+        ? { feeTypeId: feeTypeId.value }
+        : {}),
+      ...(feeTypeId.value === OTHER && purposeNote.value.trim()
+        ? { purposeNote: purposeNote.value.trim() }
+        : {}),
       ...(NEEDS_REFERENCE.includes(method.value) && reference.value.trim()
         ? { reference: reference.value.trim() }
         : {}),
@@ -168,13 +184,45 @@ async function submit() {
         </span>
       </div>
 
-      <div v-if="feeTypes.length" class="field">
-        <label for="pay-for">Motif</label>
-        <select id="pay-for" v-model="feeTypeId">
-          <option value="">Non précisé</option>
-          <option v-for="f in feeTypes" :key="f.id" :value="f.id">{{ f.name }}</option>
-        </select>
-        <span class="hint">Imprimé sur le reçu.</span>
+      <div v-if="feeTypes.length" class="field-row">
+        <div class="field">
+          <label for="pay-for">Motif</label>
+          <select id="pay-for" v-model="feeTypeId">
+            <option value="">Non précisé</option>
+            <option v-for="f in feeTypes" :key="f.id" :value="f.id">{{ f.name }}</option>
+            <option :value="OTHER">Autre…</option>
+          </select>
+          <span class="hint">Imprimé sur le reçu.</span>
+        </div>
+        <div v-if="feeTypeId === OTHER" class="field">
+          <label for="pay-note">Préciser</label>
+          <input
+            id="pay-note"
+            v-model="purposeNote"
+            maxlength="120"
+            autocomplete="off"
+            placeholder="Remplacement de carte scolaire…"
+          />
+        </div>
+      </div>
+
+      <!-- A school that has declared nothing gets told where to declare it,
+           rather than a silently missing field. -->
+      <div v-else class="field">
+        <label for="pay-note-only">Motif</label>
+        <input
+          id="pay-note-only"
+          v-model="purposeNote"
+          maxlength="120"
+          autocomplete="off"
+          placeholder="Scolarité, inscription…"
+          @input="feeTypeId = OTHER"
+        />
+        <span class="hint">
+          Aucun type de frais n'est encore défini.
+          <RouterLink :to="{ name: 'tariffs' }">Les choisir dans la grille tarifaire</RouterLink>
+          évite de le retaper à chaque encaissement.
+        </span>
       </div>
 
       <div class="field-row">

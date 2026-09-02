@@ -652,58 +652,25 @@ export const ACTIONS: ActionSpec[] = [
     submit: () => api.finance.seedLedger(),
   },
   {
-    id: "create-fee-type",
-    label: "Type de frais",
-    group: "finances",
-    icon: "receipt",
-    summary: "Scolarité, inscription, cantine — et leur périodicité.",
-    scope: null,
-    fields: [
-      { key: "code", label: "Code", type: "text", required: true, hint: "SCOL" },
-      { key: "name", label: "Nom", type: "text", required: true, hint: "Scolarité" },
-      {
-        key: "recurrence", label: "Périodicité", type: "select", default: "PER_PERIOD",
-        options: [
-          { value: "ONCE", label: "Une seule fois" },
-          { value: "PER_PERIOD", label: "Par période" },
-          { value: "MONTHLY", label: "Mensuelle" },
-        ],
-      },
-    ],
-    submit: (_s, v) =>
-      api.finance.createFeeType({
-        code: v.code!,
-        name: v.name!,
-        recurrence: v.recurrence as "ONCE" | "PER_PERIOD" | "MONTHLY",
-      }),
-  },
-  {
     id: "fee-schedule",
     label: "Grille tarifaire",
     group: "finances",
     icon: "wallet",
-    summary: "Ce que coûte une année, par niveau et par série.",
-    scope: ["COMPLEX", "SCHOOL", "CYCLE", "NIVEAU"],
-    fields: [
-      { key: "academicYearId", label: "Année scolaire", type: "select", source: "years", required: true },
-      { key: "name", label: "Nom de la grille", type: "text", required: true, hint: "Scolarité 6e" },
-      { key: "feeTypeId", label: "Type de frais", type: "select", source: "feeTypes", required: true },
-      { key: "amountXaf", label: "Montant (XAF)", type: "number", required: true },
-      { key: "installments", label: "Tranches", type: "number", default: 3 },
-    ],
-    submit: (scopeId, v) =>
-      api.finance.createFeeSchedule({
-        orgUnitId: scopeId!,
-        academicYearId: v.academicYearId!,
-        name: v.name!,
-        items: [
-          {
-            feeTypeId: v.feeTypeId!,
-            amountXaf: num(v.amountXaf)!,
-            ...(num(v.installments) !== undefined ? { installments: num(v.installments)! } : {}),
-          },
-        ],
-      }),
+    summary:
+      "Ce que coûte une année, unité par unité — et les types de frais que vous percevez.",
+    scope: null,
+    /*
+     * A SCREEN, not a form, and the fee-type form is gone with it.
+     *
+     * The old pair asked for one unit, one type of fee and one amount per
+     * submission. Pricing a collège of six niveaux across five fee types was
+     * thirty passes with no view of what you had already entered, and the form
+     * could only create — correcting a price collided with the unique index
+     * and the save simply failed. Types of frais now come from a catalogue
+     * inside that screen rather than being typed by hand, which is what let a
+     * misspelling become a permanent option on every receipt.
+     */
+    route: "tariffs",
   },
   {
     id: "outstanding",
