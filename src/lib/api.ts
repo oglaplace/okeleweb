@@ -1421,7 +1421,30 @@ export const finance = {
     items: { feeTypeId: string; amountXaf: number; installments?: number }[];
   }) => request<unknown>("/finance/fee-schedules", { method: "POST", body: JSON.stringify(body) }),
 
-  feeTypes: () => request<{ id: string; code: string; name: string }[]>("/finance/fee-types"),
+  /** What this complex charges for — inscription, scolarité, frais d'examen. */
+  feeTypes: () =>
+    request<{ id: string; code: string; name: string; recurrence: string }[]>(
+      "/finance/fee-types",
+    ),
+
+  /**
+   * Everyone the operator may take money for — not only the debtors.
+   *
+   * A family paying an inscription in advance owes nothing and is on no
+   * impayés list; a payment screen built off that list could not serve them.
+   */
+  payable: (academicYearId: string, q?: string) =>
+    request<Payable[]>(
+      `/finance/payable?academicYearId=${encodeURIComponent(academicYearId)}` +
+        (q ? `&q=${encodeURIComponent(q)}` : ""),
+    ),
+
+  /** Issue this pupil's facture, or hand back the one that exists. */
+  issueInvoice: (studentId: string, academicYearId: string) =>
+    request<{ id: string; number: string; totalXaf: number; paidXaf: number }>(
+      `/finance/students/${encodeURIComponent(studentId)}/invoice`,
+      { method: "POST", body: JSON.stringify({ academicYearId }) },
+    ),
 
   /** One classe's finance sheet, with the tranches the modalité implies. */
   classeLedger: (classeId: string, academicYearId: string) =>
@@ -1452,6 +1475,8 @@ export const finance = {
     studentId?: string;
     academicYearId?: string;
     invoiceId?: string;
+    /** What the règlement is for — one of the complex's declared fee types. */
+    feeTypeId?: string;
     amountXaf: number;
     method: PaymentMethod;
     reference?: string;
@@ -1460,8 +1485,16 @@ export const finance = {
     request<{
       payment: { id: string; amountXaf: number; receivedAt: string };
       receipt: { id: string; number: string };
+      /**
+       * True when there was no facture to put it against — an avance.
+       *
+       * Never an error. The API issues the facture itself when a grille
+       * applies, and books the money as an avance when none does; either way
+       * the parent walks away with a numbered receipt.
+       */
+      unallocated: boolean;
       invoice: {
-        id: string; number: string; status: string;
+        id: string | null; number: string | null; status: string;
         totalXaf: number; paidXaf: number; balanceXaf: number; creditXaf: number;
       };
     }>("/finance/payments", { method: "POST", body: JSON.stringify(body) }),
@@ -1555,9 +1588,36 @@ export interface StudentLedger {
     reference: string | null;
     receivedAt: string;
     invoiceNumber: string | null;
+    /** What it was for, when the operator said so. */
+    purpose: string | null;
+    /** Taken before any facture existed — still waiting on one. */
+    isAdvance: boolean;
     receipt: { id: string; number: string; issuedAt: string; printCount: number } | null;
   }[];
-  totals: { billedXaf: number; paidXaf: number; balanceXaf: number; creditXaf: number };
+  totals: {
+    billedXaf: number; paidXaf: number; balanceXaf: number; creditXaf: number;
+    /** Received with no facture against it. Zero once one is issued. */
+    advanceXaf: number;
+  };
+  /** No facture at all for the year. */
+  needsInvoice: boolean;
+  /** Whether one could be issued now — false when no grille applies. */
+  canIssueInvoice: boolean;
+}
+
+/** A pupil the guichet can take money for. */
+export interface Payable {
+  studentId: string;
+  matricule: string;
+  lastName: string;
+  firstName: string;
+  classe: { id: string; name: string };
+  hasInvoice: boolean;
+  billedXaf: number;
+  paidXaf: number;
+  balanceXaf: number;
+  /** Money already received with no facture against it. */
+  advanceXaf: number;
 }
 
 export interface Unpaid {
@@ -1602,8 +1662,12 @@ export interface ReceiptDoc {
     method: PaymentMethod;
     reference: string | null;
     receivedAt: string;
+    /** Inscription, scolarité, frais d'examen — named on the slip. */
+    purpose: string | null;
   };
   standing: {
+    /** No facture behind it: the school is holding this money. */
+    isAdvance: boolean;
     totalXaf: number; paidToDateXaf: number; remainingXaf: number; creditXaf: number;
   };
 }

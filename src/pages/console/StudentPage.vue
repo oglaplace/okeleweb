@@ -42,10 +42,22 @@ async function load() {
 }
 watch(studentId, load, { immediate: true });
 
-/** Where the operator came from, so "retour" means the class they were in. */
+/**
+ * Where the operator came from — the class AND the sheet they were reading.
+ *
+ * Without the tab this landed on Général every time, which for someone who
+ * opened the pupil from the Finances sheet is a different screen from the one
+ * they left. The tab rides along in the query.
+ */
 const backTo = computed(() =>
   typeof route.query.from === "string" && route.query.from
-    ? { name: "unit" as const, params: { id: route.query.from } }
+    ? {
+        name: "unit" as const,
+        params: { id: route.query.from },
+        query: typeof route.query.tab === "string" && route.query.tab
+          ? { tab: route.query.tab }
+          : {},
+      }
     : null,
 );
 

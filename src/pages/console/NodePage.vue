@@ -294,18 +294,51 @@ const treeUnit = computed(() => org.byId(id.value));
 
 // ── the sheet ───────────────────────────────────────────────────────────────
 /**
- * Which face of this node is open.
+ * WHICH FACE OF THIS NODE IS OPEN — and it lives in the URL.
  *
- * Seeded from the URL so an action can point at one — "emploi du temps" in the
- * rail lands on the grid, not on the pupil list with the grid one click away.
+ * It used to be seeded from the query and then kept as component state, so
+ * clicking a tab changed what you saw without changing where you were. That
+ * broke every way back into this screen: open Finances, click a pupil, press
+ * "retour", and the browser returns to `/console/unit/X` — a URL that has never
+ * heard of the Finances tab — so the page opens on Général and the operator has
+ * to find their place again. The same reasoning the `subject` drill-down
+ * already uses: the back button is how anyone leaves, and a view you cannot
+ * link to is a view you cannot come back to.
+ *
+ * `replace` rather than push, so switching between four tabs does not bury the
+ * page you arrived from under four history entries.
  */
-const tab = ref(typeof route.query.tab === "string" ? route.query.tab : "general");
+const queryTab = () =>
+  typeof route.query.tab === "string" && route.query.tab ? route.query.tab : "general";
+
+/*
+ * A PLAIN REF, SYNCED BOTH WAYS — not a writable computed over the query.
+ *
+ * The computed version was the obvious shape and it does not render. `v-model`
+ * on a writable computed handed the tab strip a value it never re-read: the
+ * setter ran, the URL changed, `tab.value` reported the new tab when called,
+ * and the strip stayed on Général. Verified in a browser, not guessed — the
+ * URL and the highlighted tab disagreed on screen.
+ *
+ * So the ref is what renders, and two watchers keep it and the address in step:
+ * the URL wins on entry and on Back, the ref wins on a click.
+ */
+const tab = ref(queryTab());
+
 watch(
   () => route.query.tab,
-  (t) => {
-    if (typeof t === "string" && t) tab.value = t;
+  () => {
+    const next = queryTab();
+    if (next !== tab.value) tab.value = next;
   },
 );
+
+watch(tab, (next) => {
+  if (queryTab() === next) return;
+  // `replace`, so switching between four tabs does not bury the page the
+  // operator arrived from under four history entries.
+  void router.replace({ query: { ...route.query, tab: next } });
+});
 
 const TIMETABLE_TAB: SheetTab = { id: "timetable", label: "Emploi du temps" };
 
@@ -522,7 +555,9 @@ const activeTab = computed(
 );
 
 // A tab set that changed under us (classe → division) must not leave the strip
-// pointing at a tab that no longer exists.
+// pointing at a tab that no longer exists. Writing `tab` now rewrites the URL,
+// which is what we want: the address should never name a tab this node has not
+// got.
 watch(tabs, (list) => {
   if (list.length && !list.some((t) => t.id === tab.value)) tab.value = list[0]!.id;
 });
@@ -580,7 +615,9 @@ function onPick(row: Record<string, unknown>) {
   void router.push({
     name: "student",
     params: { id: String(row.studentId) },
-    query: { from: unit.value?.id ?? "" },
+    // The tab travels with the link so "retour" comes back to the sheet the
+    // operator was reading, not to Général.
+    query: { from: unit.value?.id ?? "", tab: tab.value },
   });
 }
 

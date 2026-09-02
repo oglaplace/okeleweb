@@ -80,6 +80,15 @@ const router = createRouter({
         { path: "eleve/:id/finances", name: "student-finance", component: () => import("../pages/console/StudentFinancePage.vue") },
         /** Who owes what, across the whole scope the operator can see. */
         { path: "impayes", name: "unpaid", component: () => import("../pages/console/UnpaidPage.vue") },
+        /**
+         * THE GUICHET — take money from whoever is at the counter.
+         *
+         * Separate from Impayés on purpose: that screen is a state of the
+         * world, this one is an act. A family paying an inscription in advance
+         * owes nothing and is on no debtor list, and they are exactly who this
+         * screen exists for.
+         */
+        { path: "encaisser", name: "collect", component: () => import("../pages/console/CollectPage.vue") },
       ],
     },
 

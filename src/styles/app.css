@@ -5478,3 +5478,19 @@ table.data td.c-text {
   .receipt-stage .dialog-body { padding: 0 !important; overflow: visible !important; }
   .receipt { border: none; padding: 0; }
 }
+/* The guichet's situation column: one word per pupil, colour-coded the same
+   way the tranche tags are, so the two finance screens read alike. */
+.tranche-tag.is-clear { background: var(--ok-soft); color: var(--ok); }
+.tranche-tag.is-due { background: var(--danger-soft); color: var(--danger); }
+.tranche-tag.is-credit { background: var(--primary-soft); color: var(--primary-soft-ink); }
+.tranche-tag.is-none { background: var(--surface-2); color: var(--ink-3); }
+/* An avance receipt has to explain itself: the family keeps this slip and may
+   produce it months later, when "no facture existed yet" is not obvious. */
+.receipt-note {
+  margin: var(--s3) 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #3a3f4d;
+  border-left: 2px solid #d8d6cf;
+  padding-left: var(--s3);
+}

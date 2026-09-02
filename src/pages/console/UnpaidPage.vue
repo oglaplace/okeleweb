@@ -86,11 +86,14 @@ const shown = computed(() => ({
 const paying = ref<api.Unpaid["rows"][number] | null>(null);
 const receipt = ref<api.ReceiptDoc | null>(null);
 
-async function onRecorded(res: { paymentId: string; receiptNumber: string; remainingXaf: number }) {
+async function onRecorded(res: {
+  paymentId: string; receiptNumber: string; remainingXaf: number; unallocated: boolean;
+}) {
   const who = paying.value;
   paying.value = null;
-  notice.value =
-    res.remainingXaf > 0
+  notice.value = res.unallocated
+    ? `${who?.lastName} ${who?.firstName} · reçu ${res.receiptNumber} · avance portée au crédit.`
+    : res.remainingXaf > 0
       ? `${who?.lastName} ${who?.firstName} · reçu ${res.receiptNumber} · reste ${money(res.remainingXaf)}.`
       : `${who?.lastName} ${who?.firstName} · reçu ${res.receiptNumber} · solde réglé.`;
   await load();

@@ -55,6 +55,7 @@ const student = computed(() =>
       <div><dt>Date</dt><dd>{{ when }}</dd></div>
       <div><dt>Moyen</dt><dd>{{ api.PAYMENT_METHOD_FR[doc.payment.method] }}</dd></div>
       <div v-if="doc.payment.reference"><dt>Référence</dt><dd>{{ doc.payment.reference }}</dd></div>
+      <div v-if="doc.payment.purpose"><dt>Motif</dt><dd>{{ doc.payment.purpose }}</dd></div>
       <div v-if="doc.invoice"><dt>Facture</dt><dd>{{ doc.invoice.number }}</dd></div>
     </dl>
 
@@ -66,18 +67,38 @@ const student = computed(() =>
       <div class="receipt-amount-words">{{ doc.payment.amountWords }}</div>
     </div>
 
+    <!--
+      An AVANCE has no facture behind it, so there is no "reste à payer" to
+      print. Stating 0 there would tell a parent they owe nothing for the year,
+      which is a claim about a total nobody has worked out yet — and it is
+      exactly the sort of thing a family keeps and produces later.
+    -->
     <table class="receipt-standing">
       <tbody>
-        <tr><th>Total dû</th><td>{{ money(doc.standing.totalXaf) }}</td></tr>
-        <tr><th>Versé à ce jour</th><td>{{ money(doc.standing.paidToDateXaf) }}</td></tr>
-        <tr v-if="doc.standing.creditXaf > 0" class="is-credit">
-          <th>Trop-perçu (crédit)</th><td>{{ money(doc.standing.creditXaf) }}</td>
-        </tr>
-        <tr v-else class="is-remaining">
-          <th>Reste à payer</th><td>{{ money(doc.standing.remainingXaf) }}</td>
-        </tr>
+        <template v-if="doc.standing.isAdvance">
+          <tr><th>Versé à ce jour</th><td>{{ money(doc.standing.paidToDateXaf) }}</td></tr>
+          <tr class="is-credit">
+            <th>Avance portée au crédit de l'élève</th>
+            <td>{{ money(doc.standing.paidToDateXaf) }}</td>
+          </tr>
+        </template>
+        <template v-else>
+          <tr><th>Total dû</th><td>{{ money(doc.standing.totalXaf) }}</td></tr>
+          <tr><th>Versé à ce jour</th><td>{{ money(doc.standing.paidToDateXaf) }}</td></tr>
+          <tr v-if="doc.standing.creditXaf > 0" class="is-credit">
+            <th>Trop-perçu (crédit)</th><td>{{ money(doc.standing.creditXaf) }}</td>
+          </tr>
+          <tr v-else class="is-remaining">
+            <th>Reste à payer</th><td>{{ money(doc.standing.remainingXaf) }}</td>
+          </tr>
+        </template>
       </tbody>
     </table>
+
+    <p v-if="doc.standing.isAdvance" class="receipt-note">
+      Aucune facture n'était émise à la date de ce versement. La somme est portée
+      au crédit de l'élève et sera imputée sur sa facture dès son émission.
+    </p>
 
     <footer class="receipt-foot">
       <div class="receipt-sign">

@@ -719,13 +719,22 @@ export const ACTIONS: ActionSpec[] = [
     label: "Enregistrer un paiement",
     group: "finances",
     icon: "receipt",
-    summary: "Espèces, MoMo, Airtel Money, virement — avec reçu imprimable.",
+    summary:
+      "Inscription, réinscription, scolarité, frais d'examen — espèces, MoMo, " +
+      "virement, avec reçu imprimable.",
     scope: null,
-    // Lands on the debtor list, where the pupil is chosen. There is no
-    // standalone form: a payment is always FOR somebody, and a screen that
-    // opens asking for an invoice number is a screen that sends the operator
-    // away to find one.
-    route: "unpaid",
+    /*
+     * ITS OWN SCREEN, and this is not a detail.
+     *
+     * Both of these pointed at /console/impayes, which made the rail light two
+     * entries at once — the router marks every link to the current route as
+     * active — and looked exactly like a bug because it was one. They are also
+     * two different jobs: Impayés answers "who is behind and by how much",
+     * which is a state of the world; Encaisser takes money from whoever is
+     * standing there, including a family that owes nothing and is paying an
+     * inscription in advance. Those two people are not on the same list.
+     */
+    route: "collect",
   },
 ];
 

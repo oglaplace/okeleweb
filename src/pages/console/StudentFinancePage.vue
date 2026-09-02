@@ -70,11 +70,41 @@ const TRANCHE_FR: Record<api.TrancheState, string> = {
 
 // ── taking money ────────────────────────────────────────────────────────────
 const paying = ref(false);
+const issuing = ref(false);
 
-async function onRecorded(res: { paymentId: string; receiptNumber: string; remainingXaf: number }) {
+/**
+ * Issue the facture, explicitly.
+ *
+ * A button rather than the only way in: taking a payment issues it too, so
+ * nobody is ever BLOCKED on pressing this. It exists for the secretary who is
+ * preparing the year rather than serving a queue — and because "générer la
+ * facture" being invisible was the actual complaint.
+ */
+async function issueInvoice() {
+  if (!led.value) return;
+  issuing.value = true;
+  error.value = null;
+  try {
+    const inv = await api.finance.issueInvoice(led.value.student.id, led.value.year.id);
+    notice.value = `Facture ${inv.number} émise · ${money(inv.totalXaf)}.`;
+    await load();
+  } catch (e) {
+    error.value = e instanceof api.ApiError ? e.message : "Émission impossible.";
+  } finally {
+    issuing.value = false;
+  }
+}
+
+async function onRecorded(res: {
+  paymentId: string; receiptNumber: string; remainingXaf: number; unallocated: boolean;
+}) {
   paying.value = false;
-  notice.value =
-    res.remainingXaf > 0
+  // An avance is not a settled balance and must not be reported as one: there
+  // is no facture, so "solde réglé" would be a claim about a total nobody has
+  // worked out yet.
+  notice.value = res.unallocated
+    ? `Avance enregistrée · reçu ${res.receiptNumber} · portée au crédit de l'élève.`
+    : res.remainingXaf > 0
       ? `Paiement enregistré · reçu ${res.receiptNumber} · reste ${money(res.remainingXaf)}.`
       : `Paiement enregistré · reçu ${res.receiptNumber} · solde réglé.`;
   await load();
@@ -128,7 +158,11 @@ async function printReceipt() {
       <template v-if="led">
         <RouterLink
           class="btn sm ghost"
-          :to="{ name: 'student', params: { id: led.student.id }, query: { from: route.query.from } }"
+          :to="{
+            name: 'student',
+            params: { id: led.student.id },
+            query: { from: route.query.from, tab: 'finances' },
+          }"
         >Fiche de l'élève</RouterLink>
         <button class="btn sm primary" type="button" @click="paying = true">
           Enregistrer un paiement
@@ -154,10 +188,20 @@ async function printReceipt() {
         <div class="dossier-figures">
           <div><span>Facturé</span><strong>{{ money(led.totals.billedXaf) }}</strong></div>
           <div><span>Réglé</span><strong>{{ money(led.totals.paidXaf) }}</strong></div>
-          <div v-if="led.totals.creditXaf > 0">
+          <div v-if="led.totals.advanceXaf > 0">
+            <span>Avance au crédit</span><strong>{{ money(led.totals.advanceXaf) }}</strong>
+          </div>
+          <div v-if="led.totals.creditXaf > 0 && !led.totals.advanceXaf">
             <span>Crédit</span><strong>{{ money(led.totals.creditXaf) }}</strong>
           </div>
-          <div v-else>
+          <div v-if="led.needsInvoice">
+            <span>Reste à payer</span>
+            <!-- No facture, so there is no total to subtract from. Printing 0
+                 here would tell a parent they owe nothing, which is not
+                 something anyone has worked out yet. -->
+            <strong>—</strong>
+          </div>
+          <div v-else-if="!(led.totals.creditXaf > 0 && !led.totals.advanceXaf)">
             <span>Reste à payer</span>
             <strong :class="{ 'is-warn': led.totals.balanceXaf > 0 }">
               {{ money(Math.max(0, led.totals.balanceXaf)) }}
@@ -180,9 +224,31 @@ async function printReceipt() {
           </span>
         </h2>
 
+        <!--
+          No facture is a state with a remedy, and it is stated as one. It is
+          NOT a blocker: encaisser works regardless — the API issues the facture
+          when a grille applies and holds the money as an avance when none does.
+        -->
+        <Alert v-if="led.needsInvoice" kind="warn" :closable="false">
+          <template v-if="led.canIssueInvoice">
+            Aucune facture n'a encore été émise pour {{ led.year.label }}. La grille
+            tarifaire de sa classe s'applique — vous pouvez l'émettre maintenant, ou
+            simplement encaisser : elle sera créée automatiquement.
+            <button class="btn sm" type="button" :disabled="issuing" @click="issueInvoice">
+              <span v-if="issuing" class="btn-spin" aria-hidden="true" />
+              {{ issuing ? "Émission…" : "Émettre la facture" }}
+            </button>
+          </template>
+          <template v-else>
+            Aucune facture, et aucune grille tarifaire ne s'applique à sa classe pour
+            {{ led.year.label }}. Vous pouvez tout de même encaisser : la somme sera
+            portée en avance et imputée dès qu'une grille sera définie.
+          </template>
+        </Alert>
+
         <!-- Without a modalité there is no échéancier to show, and inventing
              one would put a date in front of a parent that nobody agreed. -->
-        <Alert v-if="!led.policy" kind="warn" :closable="false">
+        <Alert v-else-if="!led.policy" kind="warn" :closable="false">
           Aucune modalité de paiement n'est définie pour cette classe : les tranches
           ne peuvent pas être calculées. Définissez-la depuis l'école ou le cycle.
         </Alert>
@@ -215,13 +281,20 @@ async function printReceipt() {
         <table v-if="led.payments.length" class="dossier-table">
           <thead>
             <tr>
-              <th>Date</th><th>Moyen</th><th>Référence</th><th>Reçu</th>
+              <th>Date</th><th>Motif</th><th>Moyen</th><th>Référence</th><th>Reçu</th>
               <th class="c-num">Montant</th><th />
             </tr>
           </thead>
           <tbody>
             <tr v-for="p in led.payments" :key="p.id">
               <td>{{ day(p.receivedAt) }}</td>
+              <td>
+                {{ p.purpose ?? "—" }}
+                <!-- An avance is a different thing from a règlement and the
+                     history has to say which is which, or a parent's total and
+                     the facture's total look like a contradiction. -->
+                <span v-if="p.isAdvance" class="tranche-tag is-credit">avance</span>
+              </td>
               <td>{{ api.PAYMENT_METHOD_FR[p.method] }}</td>
               <td>{{ p.reference ?? "—" }}</td>
               <td>
@@ -281,6 +354,7 @@ async function printReceipt() {
       :student-name="fullName"
       :academic-year-id="led.year.id"
       :balance-xaf="Math.max(0, led.totals.balanceXaf)"
+      :needs-invoice="led.needsInvoice"
       @close="paying = false"
       @recorded="onRecorded"
     />

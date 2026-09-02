@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import * as api from "../../lib/api";
 import Alert from "../ui/Alert.vue";
 import DialogShell from "../ui/DialogShell.vue";
@@ -23,11 +23,25 @@ const props = defineProps<{
   academicYearId: string;
   /** What is still owed, so the form can offer it as the amount. */
   balanceXaf: number;
+  /**
+   * True when this pupil has no facture yet.
+   *
+   * Not a blocker — the API issues one itself when a grille applies, and books
+   * an avance when none does. It is said here so the operator is not surprised
+   * by what the receipt says afterwards.
+   */
+  needsInvoice?: boolean;
 }>();
 const emit = defineEmits<{
   close: [];
   /** The payment landed — the caller reloads and offers the receipt. */
-  recorded: [{ paymentId: string; receiptNumber: string; remainingXaf: number }];
+  recorded: [{
+    paymentId: string;
+    receiptNumber: string;
+    remainingXaf: number;
+    /** No facture behind it — the money is held as an avance. */
+    unallocated: boolean;
+  }];
 }>();
 
 const amount = ref("");
@@ -35,6 +49,25 @@ const method = ref<api.PaymentMethod>("CASH");
 const reference = ref("");
 const working = ref(false);
 const error = ref<string | null>(null);
+
+/**
+ * WHAT THE MONEY IS FOR.
+ *
+ * Driven by the fee types the complex declared — inscription, réinscription,
+ * scolarité, frais d'examen — rather than a free-text box, because those are
+ * exactly the things it has already said it charges for, and a receipt naming
+ * one can be reconciled against the grille. A school that needs another motif
+ * adds a fee type; that is the system working rather than being worked around.
+ */
+const feeTypes = ref<{ id: string; name: string }[]>([]);
+const feeTypeId = ref("");
+
+onMounted(async () => {
+  // Optional to the point of invisible: if this fails, the payment still goes
+  // through with no motif, which is exactly what happened before the field
+  // existed.
+  feeTypes.value = await api.finance.feeTypes().catch(() => []);
+});
 
 /** Only these carry one; the rest would print an empty box on every slip. */
 const NEEDS_REFERENCE: api.PaymentMethod[] = ["MTN_MOMO", "AIRTEL_MONEY", "BANK_TRANSFER", "CHEQUE"];
@@ -74,6 +107,7 @@ async function submit() {
       academicYearId: props.academicYearId,
       amountXaf: parsed.value,
       method: method.value,
+      ...(feeTypeId.value ? { feeTypeId: feeTypeId.value } : {}),
       ...(NEEDS_REFERENCE.includes(method.value) && reference.value.trim()
         ? { reference: reference.value.trim() }
         : {}),
@@ -82,6 +116,7 @@ async function submit() {
       paymentId: res.payment.id,
       receiptNumber: res.receipt.number,
       remainingXaf: res.invoice.balanceXaf,
+      unallocated: res.unallocated,
     });
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Enregistrement impossible.";
@@ -102,6 +137,17 @@ async function submit() {
     <form class="stack" @submit.prevent="submit">
       <Alert v-if="error" @close="error = null">{{ error }}</Alert>
 
+      <!--
+        Said before the money is taken, not discovered afterwards on the slip.
+        The payment goes through either way: the API issues the facture when a
+        grille applies, and holds the money as an avance when none does.
+      -->
+      <Alert v-if="needsInvoice" kind="warn" :closable="false">
+        Aucune facture n'existe encore pour cet élève. Le paiement sera enregistré
+        et la facture émise automatiquement si une grille tarifaire s'applique —
+        sinon la somme sera portée en avance sur sa scolarité.
+      </Alert>
+
       <div class="field">
         <label for="pay-amt">Montant reçu (XAF)</label>
         <div class="pay-amount">
@@ -120,6 +166,15 @@ async function submit() {
           <template v-else-if="after === 0">Solde entièrement réglé.</template>
           <template v-else>Trop-perçu de {{ money(-after) }}, porté au crédit de l'élève.</template>
         </span>
+      </div>
+
+      <div v-if="feeTypes.length" class="field">
+        <label for="pay-for">Motif</label>
+        <select id="pay-for" v-model="feeTypeId">
+          <option value="">Non précisé</option>
+          <option v-for="f in feeTypes" :key="f.id" :value="f.id">{{ f.name }}</option>
+        </select>
+        <span class="hint">Imprimé sur le reçu.</span>
       </div>
 
       <div class="field-row">
