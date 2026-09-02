@@ -14,8 +14,8 @@ import DialogShell from "../../components/ui/DialogShell.vue";
 import DataSheet from "../../components/sheet/DataSheet.vue";
 import SheetTabs from "../../components/sheet/SheetTabs.vue";
 import {
-  childrenTab, flattenStudentRow, niveauTabs, periodTab, staffTabs, studentTabs,
-  subjectTabs, type SheetColumn, type SheetTab,
+  childrenTab, financeTab, flattenLedgerRow, flattenStudentRow, niveauTabs,
+  periodTab, staffTabs, studentTabs, subjectTabs, type SheetColumn, type SheetTab,
 } from "../../components/sheet/columns";
 import TimetableGrid from "../../components/sheet/TimetableGrid.vue";
 import Alert from "../../components/ui/Alert.vue";
@@ -310,6 +310,54 @@ watch(
 const TIMETABLE_TAB: SheetTab = { id: "timetable", label: "Emploi du temps" };
 
 /**
+ * THE FINANCE LEDGER, loaded only when the Finances tab is opened.
+ *
+ * Not folded into `sheets.classe()`, and not because of layering: the ledger
+ * walks the org tree for the modalité and allocates every payment across the
+ * tranches, which is real work to do on every load of a screen where four
+ * people out of five are looking at marks. It arrives on the click instead.
+ */
+const ledger = ref<api.ClasseLedger | null>(null);
+const ledgerLoading = ref(false);
+/**
+ * Why the ledger is not here, in words the operator can act on.
+ *
+ * A censeur has no `finance.read`, so this call answers 403 for a large share
+ * of the people who will click the tab. Leaving `ledger` null and showing
+ * "Chargement…" would spin forever in front of them — the tab has to say that
+ * finances are not theirs to see, not pretend to still be working.
+ */
+const ledgerError = ref<string | null>(null);
+
+async function loadLedger() {
+  const u = unit.value;
+  if (!u || u.kind !== "CLASSE" || !yearId.value) return;
+  ledgerLoading.value = true;
+  ledgerError.value = null;
+  try {
+    ledger.value = await api.finance.classeLedger(u.id, yearId.value);
+  } catch (e) {
+    ledger.value = null;
+    ledgerError.value =
+      e instanceof api.ApiError && e.code === "OUT_OF_SCOPE"
+        ? "Vous n'avez pas accès aux finances de cette classe."
+        : e instanceof api.ApiError
+          ? e.message
+          : "Situation financière indisponible.";
+  } finally {
+    ledgerLoading.value = false;
+  }
+}
+
+watch(
+  [tab, unit, yearId],
+  ([t]) => {
+    if (t === "finances") void loadLedger();
+  },
+  { immediate: true },
+);
+
+/**
  * Which subject of the programme is open, from the URL.
  *
  * A query rather than component state: the back button is how anyone leaves a
@@ -353,6 +401,17 @@ const tabs = computed<SheetTab[]>(() => {
   if (sheet.value) {
     return [
       ...studentTabs(sheet.value, { periodId: periodId.value, editable: canEnterMarks.value }),
+      // Built from the modalité de paiement, so it is only real once the
+      // ledger has landed. Until then it is a tab with a spinner behind it —
+      // hiding it would make the strip jump under the operator's cursor.
+      ledger.value
+        ? financeTab(ledger.value)
+        : {
+            id: "finances",
+            label: "Finances",
+            columns: [],
+            empty: ledgerError.value ?? "Chargement de la situation financière…",
+          },
       TIMETABLE_TAB,
     ];
   }
@@ -387,6 +446,9 @@ const sheetRows = computed<Record<string, unknown>[]>(() => {
   if (tab.value === "periods") return (periods.value?.rows ?? []) as unknown as Record<string, unknown>[];
   if (tab.value === "programme" || tab.value === "coefficients") {
     return (programme.value?.rows ?? []) as unknown as Record<string, unknown>[];
+  }
+  if (tab.value === "finances") {
+    return (ledger.value?.rows ?? []).map(flattenLedgerRow);
   }
   if (sheet.value) {
     const rows = sheet.value.rows.map(flattenStudentRow);
@@ -502,6 +564,16 @@ function onPick(row: Record<string, unknown>) {
         ...(periodId.value ? { period: periodId.value } : {}),
         from: unit.value?.id ?? "",
       },
+    });
+    return;
+  }
+  // On the Finances tab the row is a debt, and what you want next is the
+  // échéancier and the reçus — not the pupil's birthplace.
+  if (tab.value === "finances") {
+    void router.push({
+      name: "student-finance",
+      params: { id: String(row.studentId) },
+      query: { from: unit.value?.id ?? "", ...(yearId.value ? { year: yearId.value } : {}) },
     });
     return;
   }

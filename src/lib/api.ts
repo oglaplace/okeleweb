@@ -1422,7 +1422,191 @@ export const finance = {
   }) => request<unknown>("/finance/fee-schedules", { method: "POST", body: JSON.stringify(body) }),
 
   feeTypes: () => request<{ id: string; code: string; name: string }[]>("/finance/fee-types"),
+
+  /** One classe's finance sheet, with the tranches the modalité implies. */
+  classeLedger: (classeId: string, academicYearId: string) =>
+    request<ClasseLedger>(
+      `/finance/classe-ledger?classeId=${encodeURIComponent(classeId)}` +
+        `&academicYearId=${encodeURIComponent(academicYearId)}`,
+    ),
+
+  /** One pupil's échéancier and every règlement against it. */
+  studentLedger: (studentId: string, academicYearId?: string) =>
+    request<StudentLedger>(
+      `/finance/student/${encodeURIComponent(studentId)}` +
+        (academicYearId ? `?academicYearId=${encodeURIComponent(academicYearId)}` : ""),
+    ),
+
+  /** The debtor worklist, most overdue first. */
+  unpaid: (academicYearId: string) =>
+    request<Unpaid>(`/finance/unpaid?academicYearId=${encodeURIComponent(academicYearId)}`),
+
+  /**
+   * Takes money.
+   *
+   * Name the pupil and the year, not the facture — that is what the person at
+   * the guichet has. The API finds the facture, allocates, writes the receipt
+   * and answers with what is left, so the slip and the screen cannot disagree.
+   */
+  recordPayment: (body: {
+    studentId?: string;
+    academicYearId?: string;
+    invoiceId?: string;
+    amountXaf: number;
+    method: PaymentMethod;
+    reference?: string;
+    receivedAt?: string;
+  }) =>
+    request<{
+      payment: { id: string; amountXaf: number; receivedAt: string };
+      receipt: { id: string; number: string };
+      invoice: {
+        id: string; number: string; status: string;
+        totalXaf: number; paidXaf: number; balanceXaf: number; creditXaf: number;
+      };
+    }>("/finance/payments", { method: "POST", body: JSON.stringify(body) }),
+
+  /** Everything the printed slip carries. Reading is not printing. */
+  receipt: (paymentId: string) =>
+    request<ReceiptDoc>(`/finance/payments/${encodeURIComponent(paymentId)}/receipt`),
+
+  /** Records that a copy was actually handed over — the count is evidence. */
+  markReceiptPrinted: (receiptId: string) =>
+    request<{ number: string; printCount: number }>(
+      `/finance/receipts/${encodeURIComponent(receiptId)}/printed`,
+      { method: "POST" },
+    ),
 };
+
+export type PaymentMethod =
+  | "CASH" | "MTN_MOMO" | "AIRTEL_MONEY" | "BANK_TRANSFER" | "CHEQUE" | "OTHER";
+
+export const PAYMENT_METHOD_FR: Record<PaymentMethod, string> = {
+  CASH: "Espèces",
+  MTN_MOMO: "MTN MoMo",
+  AIRTEL_MONEY: "Airtel Money",
+  BANK_TRANSFER: "Virement",
+  CHEQUE: "Chèque",
+  OTHER: "Autre",
+};
+
+/** Where one tranche stands. DUE is simply not yet paid and not yet late. */
+export type TrancheState = "PAID" | "PARTIAL" | "LATE" | "DUE" | "NONE";
+
+export interface Tranche {
+  number: number;
+  label: string;
+  dueOn: string;
+  dueXaf: number;
+  paidXaf: number;
+  balanceXaf: number;
+  state: TrancheState;
+}
+
+/** The cadence a school announced, as it applies here. */
+export interface LedgerPolicy {
+  modality: PaymentModality;
+  installments: number;
+  dueDayOfMonth: number | null;
+  graceDays: number;
+  notes: string | null;
+}
+
+export interface ClasseLedger {
+  year: { id: string; label: string };
+  /** Null when nobody has declared one — the sheet says so rather than guessing. */
+  policy: LedgerPolicy | null;
+  tranches: { number: number; label: string; dueOn: string }[];
+  rows: {
+    studentId: string;
+    matricule: string;
+    lastName: string;
+    firstName: string;
+    invoiceCount: number;
+    billedXaf: number;
+    paidXaf: number;
+    balanceXaf: number;
+    paymentCount: number;
+    lastPaymentOn: string | null;
+    lastPaymentXaf: number | null;
+    lastPaymentMethod: string | null;
+    byTranche: Tranche[];
+    state: "CLEAR" | "PARTIAL" | "LATE" | "NONE";
+  }[];
+  totals: { billedXaf: number; paidXaf: number; balanceXaf: number; lateCount: number };
+}
+
+export interface StudentLedger {
+  student: { id: string; personId: string; matricule: string; firstName: string; lastName: string };
+  classe: { id: string; name: string };
+  year: { id: string; label: string };
+  policy: LedgerPolicy | null;
+  tranches: Tranche[];
+  invoices: {
+    id: string; number: string; status: string;
+    totalXaf: number; paidXaf: number; balanceXaf: number;
+    issuedOn: string | null; dueOn: string | null;
+    lines: { id: string; label: string; amountXaf: number; installment: number; dueOn: string | null }[];
+  }[];
+  payments: {
+    id: string;
+    amountXaf: number;
+    method: PaymentMethod;
+    reference: string | null;
+    receivedAt: string;
+    invoiceNumber: string | null;
+    receipt: { id: string; number: string; issuedAt: string; printCount: number } | null;
+  }[];
+  totals: { billedXaf: number; paidXaf: number; balanceXaf: number; creditXaf: number };
+}
+
+export interface Unpaid {
+  rows: {
+    invoiceId: string;
+    number: string;
+    studentId: string;
+    matricule: string;
+    lastName: string;
+    firstName: string;
+    guardianName: string | null;
+    guardianPhone: string | null;
+    classe: { id: string; name: string } | null;
+    totalXaf: number;
+    paidXaf: number;
+    balanceXaf: number;
+    /** What is late RIGHT NOW against the modalité — not the whole balance. */
+    overdueXaf: number;
+    daysLate: number;
+    nextDueOn: string | null;
+    lastPaymentOn: string | null;
+    lastPaymentXaf: number | null;
+    state: "LATE" | "PARTIAL" | "DUE";
+  }[];
+  totals: { count: number; balanceXaf: number; lateXaf: number };
+}
+
+/** One receipt, as the API assembled it. Never recomputed client-side. */
+export interface ReceiptDoc {
+  receipt: { id: string; number: string; issuedAt: string; printCount: number };
+  school: { name: string };
+  student: {
+    id: string; matricule: string; firstName: string; lastName: string; classe: string | null;
+  } | null;
+  year: { label: string } | null;
+  invoice: { number: string; totalXaf: number } | null;
+  payment: {
+    id: string;
+    amountXaf: number;
+    /** The figure written out, which is what makes a slip hard to alter. */
+    amountWords: string;
+    method: PaymentMethod;
+    reference: string | null;
+    receivedAt: string;
+  };
+  standing: {
+    totalXaf: number; paidToDateXaf: number; remainingXaf: number; creditXaf: number;
+  };
+}
 
 // ─── academics ───────────────────────────────────────────────────────────────
 

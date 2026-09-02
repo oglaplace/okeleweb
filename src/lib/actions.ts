@@ -710,18 +710,22 @@ export const ACTIONS: ActionSpec[] = [
     label: "Impayés",
     group: "finances",
     icon: "coins",
-    summary: "Qui doit quoi, filtré par ce que vous avez le droit de voir.",
+    summary: "Qui doit quoi, classé du plus en retard au moins — avec le numéro à appeler.",
     scope: null,
-    planned: "L'endpoint existe ; l'écran de consultation reste à construire.",
+    route: "unpaid",
   },
   {
     id: "record-payment",
     label: "Enregistrer un paiement",
     group: "finances",
     icon: "receipt",
-    summary: "Espèces, MoMo, Airtel Money, virement — avec reçu.",
+    summary: "Espèces, MoMo, Airtel Money, virement — avec reçu imprimable.",
     scope: null,
-    planned: "Nécessite un sélecteur de facture, qui dépend de l'écran Impayés.",
+    // Lands on the debtor list, where the pupil is chosen. There is no
+    // standalone form: a payment is always FOR somebody, and a screen that
+    // opens asking for an invoice number is a screen that sends the operator
+    // away to find one.
+    route: "unpaid",
   },
 ];
 

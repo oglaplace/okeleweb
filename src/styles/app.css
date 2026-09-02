@@ -5248,3 +5248,233 @@ table.data td.c-text {
   font-weight: 600;
   color: var(--ink-2);
 }
+
+/* ============================================================================
+   FINANCES — the échéancier, the worklist, and the reçu.
+   ========================================================================== */
+
+.finance-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+  padding-bottom: var(--s7);
+  min-width: 0;
+}
+.finance-head {
+  display: flex;
+  gap: var(--s5);
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding-bottom: var(--s4);
+  border-bottom: 1px solid var(--line);
+}
+.finance-head .dossier-figures { flex: 1; min-width: 280px; }
+
+.finance-invoice { margin-bottom: var(--s3); }
+.finance-invoice-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  margin-bottom: var(--s1);
+  font-size: var(--t-small);
+}
+.finance-invoice-total { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/* One word per tranche. Colour carries it — the état column is scanned, never
+   read, and "En retard" three rows down has to be findable at a glance. */
+.tranche-tag {
+  display: inline-block;
+  font-size: var(--t-micro);
+  font-weight: 500;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+.tranche-tag.is-paid { background: var(--ok-soft); color: var(--ok); }
+.tranche-tag.is-partial { background: var(--warn-soft); color: var(--warn); }
+.tranche-tag.is-late { background: var(--danger-soft); color: var(--danger); }
+.dossier-table tr.tr-late td:first-child { box-shadow: inset 2px 0 0 var(--danger); }
+
+/* ── the worklist ── */
+.unpaid-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+.unpaid-search {
+  flex: 1;
+  min-width: 180px;
+  max-width: 320px;
+}
+.unpaid-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  font-size: var(--t-small);
+  white-space: nowrap;
+}
+.unpaid-toggle input { width: auto; height: auto; }
+.data tr.is-late td:first-child { box-shadow: inset 2px 0 0 var(--danger); }
+.data td.is-warn { color: var(--warn); font-weight: 600; }
+
+.pay-amount { display: flex; gap: var(--s2); align-items: center; }
+.pay-amount input { flex: 1; min-width: 0; }
+
+/* ── the reçu ──
+   White and black on screen as well as on paper: this is a document, and a
+   document that looks different from its own printout is one nobody trusts. */
+.receipt-modal { max-width: 640px; width: 100%; }
+.receipt-acts { display: flex; gap: var(--s2); }
+
+.receipt {
+  background: #fff;
+  color: #14171f;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--s5);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.receipt-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--s4);
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid #d8d6cf;
+}
+.receipt-school { font-weight: 700; font-size: 15px; }
+.receipt-year { color: #5b6070; font-size: 12px; }
+.receipt-no { text-align: right; }
+.receipt-no-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; color: #5b6070; }
+.receipt-no-value { font-family: var(--mono); font-weight: 700; font-size: 15px; }
+
+.receipt-title {
+  margin: var(--s4) 0 var(--s3);
+  font-size: 17px;
+  font-weight: 600;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+.receipt-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--s2) var(--s4);
+  margin: 0 0 var(--s4);
+}
+.receipt-facts div { min-width: 0; }
+.receipt-facts dt {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #5b6070;
+}
+.receipt-facts dd { margin: 0; overflow-wrap: anywhere; }
+
+/* The figure, then the figure in words — the pair is what makes a slip hard
+   to alter once it has left the guichet. */
+.receipt-amount {
+  border: 1px solid #d8d6cf;
+  border-radius: var(--radius);
+  padding: var(--s3) var(--s4);
+  margin-bottom: var(--s4);
+  background: #faf9f6;
+}
+.receipt-amount-fig {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.receipt-amount-words {
+  font-size: 12px;
+  font-style: italic;
+  color: #3a3f4d;
+  /* NOT `text-transform: lowercase` — that lowercased the acronym too and the
+     slip read "deux cent mille francs cfa". The API already returns the right
+     casing; only the opening letter needs raising. */
+}
+.receipt-amount-words::first-letter { text-transform: uppercase; }
+
+.receipt-standing { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.receipt-standing th {
+  text-align: left;
+  font-weight: 400;
+  color: #3a3f4d;
+  padding: 3px 0;
+}
+.receipt-standing td {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  padding: 3px 0;
+}
+.receipt-standing tr.is-remaining th,
+.receipt-standing tr.is-remaining td,
+.receipt-standing tr.is-credit th,
+.receipt-standing tr.is-credit td {
+  font-weight: 700;
+  border-top: 1px solid #d8d6cf;
+  padding-top: 6px;
+}
+
+.receipt-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s6);
+  margin-top: var(--s6);
+  font-size: 11px;
+  color: #3a3f4d;
+}
+.receipt-sign { display: flex; flex-direction: column; gap: 26px; flex: 1; }
+.receipt-rule { border-bottom: 1px solid #9a978d; }
+
+/* A reprint says so, or two copies of one slip are indistinguishable and both
+   can be presented as the original. */
+.receipt-dup {
+  margin: var(--s3) 0 0;
+  text-align: center;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #9c2d1a;
+}
+
+/* ── printing the overlay prints the SLIP, and only the slip ──
+   By VISIBILITY, not by naming the layout's classes. The first version hid
+   `.console`, `.topbar` and `.rail`, which are the console shell — and the
+   page's own content is none of those, so the printed sheet came out as the
+   whole finance page with the receipt appended underneath it. Hiding the body
+   and re-showing one subtree does not need to know what the page contains. */
+@media print {
+  body:has(.receipt-stage) { visibility: hidden; }
+  body:has(.receipt-stage) .receipt-stage,
+  body:has(.receipt-stage) .receipt-stage * { visibility: visible; }
+
+  body:has(.receipt-stage) .receipt-stage {
+    position: absolute !important;
+    inset: 0 auto auto 0;
+    width: 100%;
+    display: block !important;
+    background: none !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  .receipt-stage .scrim-card {
+    box-shadow: none !important;
+    border: none !important;
+    max-width: none !important;
+    max-height: none !important;
+    padding: 0 !important;
+    background: none !important;
+    overflow: visible !important;
+  }
+  /* The buttons are chrome, and a printed "Fermer" is nonsense. Hidden rather
+     than made invisible, so they take no space on the page either. */
+  .receipt-stage .dialog-head { display: none !important; }
+  .receipt-stage .dialog-body { padding: 0 !important; overflow: visible !important; }
+  .receipt { border: none; padding: 0; }
+}

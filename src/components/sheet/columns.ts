@@ -1,4 +1,7 @@
 import type * as api from "../../lib/api";
+// A value import, not a type one: PAYMENT_METHOD_FR is a runtime table and the
+// finance tab reads it to turn MTN_MOMO into something a parent recognises.
+import { PAYMENT_METHOD_FR } from "../../lib/api";
 
 /**
  * The column sets, declared.
@@ -121,25 +124,9 @@ export function studentTabs(
         { key: "guardianEmail", label: "Email", width: 22 },
       ],
     },
-    {
-      id: "finances",
-      label: "Finances",
-      columns: [
-        ...IDENTITY,
-        { key: "invoiceCount", label: "Factures", type: "number", width: 10 },
-        { key: "billedXaf", label: "Facturé", type: "money", total: true },
-        { key: "paidXaf", label: "Réglé", type: "money", total: true },
-        {
-          key: "balanceXaf",
-          label: "Solde",
-          type: "money",
-          total: true,
-          warnAbove: 1,
-          hint: "Facturé moins réglé. Positif = impayé.",
-        },
-        { key: "lastPaymentOn", label: "Dernier règlement", type: "date", width: 16 },
-      ],
-    },
+    // The Finances tab is built from the ledger, not from this sheet — see
+    // financeTab() below. It needs the modalité de paiement, which the student
+    // sheet knows nothing about.
   ];
 
   /**
@@ -430,6 +417,136 @@ export function flattenStudentRow(row: api.StudentSheetRow): Record<string, unkn
  * first version's mistake — a director opening a school got a staff list and no
  * way down the tree.
  */
+
+/** French for the four words the état column can hold. */
+export const LEDGER_STATE_FR: Record<string, string> = {
+  CLEAR: "À jour",
+  PARTIAL: "En cours",
+  LATE: "En retard",
+  NONE: "Non facturé",
+};
+
+const dueLabel = (iso: string) =>
+  new Date(iso).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
+
+/**
+ * THE FINANCE TAB, built from the modalité de paiement rather than from a
+ * fixed list of columns.
+ *
+ * A school that has declared "payable au trimestre" gets three tranche columns
+ * with the dates it announced; one on ANNUEL gets a single "Année". The point
+ * is that the sheet an économe reads is the same document the parents were
+ * handed at la rentrée — a fixed Facturé/Réglé/Solde triple is a bank
+ * statement, and nobody chases a debt with a bank statement. They chase it with
+ * "la deuxième tranche n'est pas payée".
+ *
+ * Each tranche column shows what is STILL OWED on it, not what was paid: zero
+ * is the good state, the column warns above zero, and the eye goes straight to
+ * the tranches with something in them.
+ */
+export function financeTab(ledger: api.ClasseLedger): SheetTab {
+  const tranches: SheetGroup[] = ledger.tranches.map((t) => ({
+    label: t.label,
+    title: `Échéance du ${new Date(t.dueOn).toLocaleDateString("fr-FR", {
+      day: "2-digit", month: "long", year: "numeric",
+    })}`,
+    /*
+     * ONE COLUMN per tranche, and it is what is STILL OWED.
+     *
+     * The first version had two — "Dû" and "Reste" — and the Dû column was the
+     * same figure sixty times over, because a class shares a grille tarifaire.
+     * It doubled the width of the sheet to repeat a constant, and pushed the
+     * column that actually varies off the right-hand edge. The amount called
+     * per tranche is on the pupil's own page, where the échéancier is laid out
+     * in full and where it differs from the next pupil's if a discount applies.
+     */
+    columns: [
+      {
+        key: `tr_${t.number}_left`,
+        label: `Reste au ${dueLabel(t.dueOn)}`,
+        type: "money",
+        width: 15,
+        warnAbove: 1,
+        total: true,
+        hint: "Ce qu'il manque sur cette tranche. Zéro = tranche soldée.",
+      },
+    ],
+  }));
+
+  return {
+    id: "finances",
+    label: "Finances",
+    frozen: 3,
+    identity: IDENTITY,
+    ...(ledger.policy
+      ? {}
+      : { empty: "Aucune modalité de paiement définie — les tranches ne peuvent pas être calculées." }),
+    groups: [
+      {
+        label: "Situation",
+        columns: [
+          // NOT ...IDENTITY: a grouped tab prepends `identity` itself, and
+          // putting them here too printed matricule/nom/prénom twice — once
+          // frozen and once scrolling beside it.
+          // Plain text, not `pill`: that type renders a boolean as Oui/Non,
+          // which turned "En retard" into "Oui".
+          { key: "stateLabel", label: "État", width: 12 },
+          { key: "billedXaf", label: "Facturé", type: "money", total: true },
+          { key: "paidXaf", label: "Réglé", type: "money", total: true },
+          {
+            key: "balanceXaf",
+            label: "Solde",
+            type: "money",
+            total: true,
+            warnAbove: 1,
+            hint: "Facturé moins réglé. Positif = impayé.",
+          },
+        ],
+      },
+      ...tranches,
+      {
+        label: "Derniers règlements",
+        columns: [
+          { key: "lastPaymentOn", label: "Le", type: "date", width: 13 },
+          { key: "lastPaymentXaf", label: "Montant", type: "money", width: 13 },
+          { key: "lastPaymentLabel", label: "Moyen", width: 13 },
+          {
+            key: "paymentCount",
+            label: "Règlements",
+            type: "number",
+            width: 12,
+            hint: "Ouvrez la fiche de l'élève pour l'historique et les reçus.",
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/** One ledger row flattened into the cells financeTab() asks for. */
+export function flattenLedgerRow(row: api.ClasseLedger["rows"][number]): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    studentId: row.studentId,
+    matricule: row.matricule,
+    lastName: row.lastName,
+    firstName: row.firstName,
+    stateLabel: LEDGER_STATE_FR[row.state] ?? row.state,
+    billedXaf: row.billedXaf,
+    paidXaf: row.paidXaf,
+    balanceXaf: row.balanceXaf,
+    paymentCount: row.paymentCount,
+    // The sheet's `date` cell formats YYYY-MM-DD by reversing on the dash; an
+    // ISO timestamp fed to it comes out as "04T00:00:00.000Z/11/2026".
+    lastPaymentOn: row.lastPaymentOn?.slice(0, 10) ?? null,
+    lastPaymentXaf: row.lastPaymentXaf,
+    lastPaymentLabel: row.lastPaymentMethod
+      ? PAYMENT_METHOD_FR[row.lastPaymentMethod as api.PaymentMethod] ?? row.lastPaymentMethod
+      : null,
+  };
+  for (const t of row.byTranche) out[`tr_${t.number}_left`] = t.balanceXaf;
+  return out;
+}
+
 export function childrenTab(): SheetTab {
   return {
     id: "children",

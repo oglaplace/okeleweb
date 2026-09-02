@@ -69,6 +69,17 @@ const router = createRouter({
          * how often absent. The bulletin is still a click away from here.
          */
         { path: "eleve/:id", name: "student", component: () => import("../pages/console/StudentPage.vue") },
+        /**
+         * ONE PUPIL'S MONEY — the échéancier, the règlements, the reçus.
+         *
+         * Its own route rather than a section of the dossier: this is the
+         * screen open while a parent is at the guichet, and it has to be
+         * reachable in one click from the class finance sheet and printable on
+         * its own.
+         */
+        { path: "eleve/:id/finances", name: "student-finance", component: () => import("../pages/console/StudentFinancePage.vue") },
+        /** Who owes what, across the whole scope the operator can see. */
+        { path: "impayes", name: "unpaid", component: () => import("../pages/console/UnpaidPage.vue") },
       ],
     },
 
