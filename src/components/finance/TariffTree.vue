@@ -63,20 +63,43 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   type: [{ id: string; raw: string }];
-  /** `wholeLevel` is a Cmd/Ctrl-click: take every node at this one's level. */
-  toggle: [{ id: string; wholeLevel: boolean }];
+  /** A plain click on an unlocked node: add or drop it from the selection. */
+  toggle: [string];
+  /**
+   * Cmd/Ctrl-click: OPEN THIS NODE'S LEVEL for pricing.
+   *
+   * The shortcut is about the level pills, not about the selection. Having
+   * only "Département" open and wanting "École" too used to mean going back up
+   * to the bar and finding the right pill; now you point at any école in the
+   * diagram and say "this kind". It therefore has to work on a node that is
+   * currently LOCKED — that is the whole case it exists for.
+   */
+  activateLevel: [OrgUnitKind];
   clear: [string];
+  /** The background was clicked, not dragged: drop the selection. */
+  clearSelection: [];
 }>();
 
 /**
- * The platform's own multi-select modifier.
+ * The platform's own modifier.
  *
  * Meta on a Mac, Control everywhere else. Reading `metaKey || ctrlKey` and
- * being done with it would make Ctrl-click on a Mac — which is the
- * right-click gesture — silently select a whole level.
+ * being done with it would make Ctrl-click on a Mac — which is the right-click
+ * gesture — silently open a level.
  */
 const isApple = typeof navigator !== "undefined" && /Mac|iP(hone|ad|od)/.test(navigator.platform);
-const wholeLevel = (e: MouseEvent) => (isApple ? e.metaKey : e.ctrlKey);
+const withModifier = (e: MouseEvent) => (isApple ? e.metaKey : e.ctrlKey);
+const MODIFIER_LABEL = isApple ? "⌘" : "Ctrl";
+
+function onNodeClick(node: TreeNode, e: MouseEvent) {
+  if (withModifier(e)) {
+    // Locked nodes accept this and nothing else: pointing at one is how you
+    // unlock its level in the first place.
+    if (node.priceable) emit("activateLevel", node.kind);
+    return;
+  }
+  if (node.editable) emit("toggle", node.id);
+}
 
 const XAF = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
 const money = (v: number) => XAF.format(v);
@@ -178,23 +201,59 @@ const viewport = ref<HTMLElement | null>(null);
 const panning = ref(false);
 
 let start = { x: 0, y: 0, tx: 0, ty: 0 };
+/**
+ * How far the pointer may travel and still count as a click.
+ *
+ * The background does two jobs — pan, and clear the selection — and the only
+ * thing separating them is whether the pointer moved. Without a threshold a
+ * trackpad's couple of pixels of jitter would turn every pan into a click and
+ * silently drop a selection the operator spent a minute building.
+ */
+const CLICK_SLOP = 4;
+let moved = false;
 
 function onPointerDown(e: PointerEvent) {
   // Only the background pans. Dragging from a card would fight the input and
   // make selecting text inside a price impossible.
   if ((e.target as HTMLElement).closest(".tgraph-node")) return;
   panning.value = true;
+  moved = false;
   start = { x: e.clientX, y: e.clientY, tx: tx.value, ty: ty.value };
-  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  /*
+   * BEST-EFFORT, and it must stay that way.
+   *
+   * Pointer capture is a nicety — it keeps the drag alive when the cursor
+   * leaves the viewport — and both calls throw when the pointer id is not
+   * live, which happens on a pointer that was already released and on any
+   * synthesised event. An unguarded throw here aborts the handler, and the
+   * handler is also where the "click cleared the selection" decision is made:
+   * a failed capture would silently cost the gesture.
+   */
+  try {
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  } catch {
+    /* the drag still works, it just stops at the viewport edge */
+  }
 }
 function onPointerMove(e: PointerEvent) {
   if (!panning.value) return;
-  tx.value = start.tx + (e.clientX - start.x);
-  ty.value = start.ty + (e.clientY - start.y);
+  const dx = e.clientX - start.x;
+  const dy = e.clientY - start.y;
+  if (Math.abs(dx) > CLICK_SLOP || Math.abs(dy) > CLICK_SLOP) moved = true;
+  tx.value = start.tx + dx;
+  ty.value = start.ty + dy;
 }
 function onPointerUp(e: PointerEvent) {
+  const wasPanning = panning.value;
   panning.value = false;
-  (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+  try {
+    (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+  } catch {
+    /* see onPointerDown — releasing an already-dead pointer is not a failure */
+  }
+  // A press on the empty canvas that did not become a drag is the "never mind"
+  // gesture every canvas has: it drops the selection.
+  if (wasPanning && !moved) emit("clearSelection");
 }
 
 /** Zoom about the cursor, so the thing under the pointer stays under it. */
@@ -288,7 +347,12 @@ onBeforeUnmount(() => { panning.value = false; });
             'is-structure': !n.priceable,
           }"
           :style="{ left: `${n.x}px`, top: `${n.y}px`, width: `${CARD_W}px`, height: `${CARD_H}px` }"
-          @click="n.editable && emit('toggle', { id: n.id, wholeLevel: wholeLevel($event) })"
+          :title="
+            n.priceable
+              ? `${MODIFIER_LABEL}+clic : ouvrir le niveau « ${KIND_FR[n.kind]} » à la tarification`
+              : undefined
+          "
+          @click="onNodeClick(n, $event)"
         >
           <span class="tgraph-name" :title="n.name">{{ n.name }}</span>
           <span class="tgraph-kind">{{ KIND_FR[n.kind] }}</span>

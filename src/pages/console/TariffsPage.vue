@@ -369,30 +369,20 @@ function toggleUnit(id: string) {
 }
 
 /**
- * Cmd/Ctrl-click: take the whole level the clicked node belongs to.
+ * Cmd/Ctrl-click a node: OPEN ITS LEVEL for pricing.
  *
- * The commonest thing anyone does here is price a level — "the 6e, the 5e and
- * the 4e all pay 25 000" — and reaching for the pills, then ticking six boxes,
- * then typing, is three motions for one decision. Clicking one member of the
- * level with the platform's own multi-select modifier takes all of them.
+ * A shortcut to the pills, not to the selection. With only "Département" open
+ * and "École" wanted too, the long way round is to leave the diagram, find the
+ * right pill in the bar, and come back. The short way is to point at any école
+ * on screen and say "this kind" — which is why it has to work on a node that is
+ * currently locked, since that is the only state it will ever be in when you
+ * want it.
+ *
+ * Toggles, so the same gesture closes the level again — the pill's own
+ * behaviour, reached from the other end.
  */
-function pickLevelOf(id: string) {
-  const row = rows.value.find((r) => r.id === id);
-  if (!row) return;
-  const peers = editableRows.value.filter((r) => r.kind === row.kind);
-  const all = peers.every((r) => selected.value.has(r.id));
-  const next = new Set(selected.value);
-  for (const r of peers) {
-    if (all) next.delete(r.id);
-    else next.add(r.id);
-  }
-  selected.value = next;
-}
-
-/** One control for both, so a node click never has to know which was meant. */
-function onNodePick(id: string, wholeLevel: boolean) {
-  if (wholeLevel) pickLevelOf(id);
-  else toggleUnit(id);
+function activateLevel(kind: api.OrgUnitKind) {
+  toggleKind(kind);
 }
 
 /** Closes every level at once — the way out of a wide selection. */
@@ -747,8 +737,10 @@ const pricedCount = computed(
             :selected="selected"
             :show-installments="activeFeeType?.recurrence === 'PER_PERIOD'"
             @type="onType($event.id, $event.raw)"
-            @toggle="onNodePick($event.id, $event.wholeLevel)"
+            @toggle="toggleUnit"
+            @activate-level="activateLevel"
             @clear="clearTariff"
+            @clear-selection="selected = new Set()"
           />
 
           <div v-else class="tarif-tree">
