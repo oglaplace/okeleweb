@@ -63,8 +63,20 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   type: [{ id: string; raw: string }];
-  toggle: [string];
+  /** `wholeLevel` is a Cmd/Ctrl-click: take every node at this one's level. */
+  toggle: [{ id: string; wholeLevel: boolean }];
+  clear: [string];
 }>();
+
+/**
+ * The platform's own multi-select modifier.
+ *
+ * Meta on a Mac, Control everywhere else. Reading `metaKey || ctrlKey` and
+ * being done with it would make Ctrl-click on a Mac — which is the
+ * right-click gesture — silently select a whole level.
+ */
+const isApple = typeof navigator !== "undefined" && /Mac|iP(hone|ad|od)/.test(navigator.platform);
+const wholeLevel = (e: MouseEvent) => (isApple ? e.metaKey : e.ctrlKey);
 
 const XAF = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
 const money = (v: number) => XAF.format(v);
@@ -276,7 +288,7 @@ onBeforeUnmount(() => { panning.value = false; });
             'is-structure': !n.priceable,
           }"
           :style="{ left: `${n.x}px`, top: `${n.y}px`, width: `${CARD_W}px`, height: `${CARD_H}px` }"
-          @click="n.editable && emit('toggle', n.id)"
+          @click="n.editable && emit('toggle', { id: n.id, wholeLevel: wholeLevel($event) })"
         >
           <span class="tgraph-name" :title="n.name">{{ n.name }}</span>
           <span class="tgraph-kind">{{ KIND_FR[n.kind] }}</span>
@@ -300,6 +312,19 @@ onBeforeUnmount(() => { panning.value = false; });
                 @pointerdown.stop
                 @input="emit('type', { id: n.id, raw: ($event.target as HTMLInputElement).value })"
               />
+              <!-- Only where there is something to take away. An empty field
+                   reaches the same null, but the × is what SAYS a price can be
+                   removed at all. -->
+              <button
+                v-if="n.own"
+                class="tgraph-clear"
+                type="button"
+                :title="`Retirer le tarif de ${n.name}`"
+                :aria-label="`Retirer le tarif de ${n.name}`"
+                @click.stop
+                @pointerdown.stop
+                @click="emit('clear', n.id)"
+              >×</button>
             </template>
 
             <!-- Structure carries no price and inherits none: no pupil is

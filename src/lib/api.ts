@@ -1465,6 +1465,26 @@ export const finance = {
     request<TariffGrid>(`/finance/tariffs?academicYearId=${encodeURIComponent(academicYearId)}`),
 
   /**
+   * Releases the grille. `finance.admin` only.
+   *
+   * Not cosmetic: the API resolves BILLING against the released snapshot, so
+   * until this is pressed the prices on screen price nobody — payments are
+   * taken as avances instead.
+   */
+  publishTariffs: (academicYearId: string) =>
+    request<{ version: number; publishedAt: string; units: number }>(
+      "/finance/tariffs/publish",
+      { method: "POST", body: JSON.stringify({ academicYearId }) },
+    ),
+
+  /** Withdraws it. Nothing bills against a withdrawn grille. */
+  unpublishTariffs: (academicYearId: string) =>
+    request<{ removed: number }>("/finance/tariffs/unpublish", {
+      method: "POST",
+      body: JSON.stringify({ academicYearId }),
+    }),
+
+  /**
    * Writes prices onto one unit or many.
    *
    * A null amount REMOVES the line: "we do not charge for the canteen" and
@@ -1674,6 +1694,19 @@ export interface FeeTypeTemplate {
 
 /** The grille tarifaire as a grid: units down, fee types across. */
 export interface TariffGrid {
+  /**
+   * Where publication stands, or null when nothing was ever released.
+   *
+   * `hasUnpublishedChanges` is computed server-side by comparing the draft
+   * against the frozen snapshot — not a stored flag, which would need
+   * maintaining on every write path and would lie the first time one was missed.
+   */
+  publication: {
+    version: number;
+    publishedAt: string;
+    publishedBy: string | null;
+    hasUnpublishedChanges: boolean;
+  } | null;
   feeTypes: { id: string; code: string; name: string; recurrence: string }[];
   /**
    * THE WHOLE TREE, root included — not just the units that can carry a price.

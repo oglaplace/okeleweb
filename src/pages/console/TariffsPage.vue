@@ -5,6 +5,8 @@ import Alert from "../../components/ui/Alert.vue";
 import Icon from "../../components/ui/Icon.vue";
 import { KIND_FR } from "../../components/structure/kinds";
 import TariffTree, { type TreeNode } from "../../components/finance/TariffTree.vue";
+import ConfirmDialog from "../../components/ui/ConfirmDialog.vue";
+import { useAuthStore } from "../../stores/auth";
 
 /**
  * LA GRILLE TARIFAIRE — the organisation, priced.
@@ -32,6 +34,8 @@ import TariffTree, { type TreeNode } from "../../components/finance/TariffTree.v
  * grey. Filtering them out instead — which is what the previous version did —
  * removes the context that makes the numbers mean anything.
  */
+const auth = useAuthStore();
+
 const years = ref<api.AcademicYear[]>([]);
 const yearId = ref<string | null>(null);
 const grid = ref<api.TariffGrid | null>(null);
@@ -250,6 +254,15 @@ const edits = ref(new Map<string, string>());
 const saving = ref(false);
 const savedAt = ref<number | null>(null);
 
+/**
+ * ANY call in flight, not just the autosave.
+ *
+ * The bar is the one place that reports what the screen is doing, so bulk
+ * applies, billing runs and publication all raise it too — otherwise a long
+ * operation looks like a frozen page.
+ */
+const busy = computed(() => saving.value || bulkBusy.value || issuing.value || publishing.value);
+
 const cellKey = (unitId: string) => `${unitId}|${activeFee.value}`;
 
 function cellValue(unitId: string): string {
@@ -301,6 +314,20 @@ async function flush() {
         academicYearId: yearId.value, orgUnitIds: [unitId], items,
       });
     }
+    /*
+     * RELOAD FIRST, THEN CLEAR — and the order is the whole bug.
+     *
+     * It used to clear the pending edits and then fetch. For the width of that
+     * fetch, `cellValue` fell through to `stored`, which was still the grid
+     * from BEFORE the save and had no price for the cell. So the figure you had
+     * just typed blanked out and reappeared a moment later, which reads as the
+     * save having failed and undone itself.
+     *
+     * Fetching first means the fallback is already correct by the time the
+     * override is dropped, and the cell never shows a value it does not have.
+     */
+    const fresh = await api.finance.tariffs(yearId.value);
+    grid.value = fresh;
     // Only the cells that were in flight are cleared: anything typed while the
     // request was out stays pending rather than being silently dropped.
     for (const key of pending.keys()) {
@@ -308,7 +335,6 @@ async function flush() {
     }
     edits.value = new Map(edits.value);
     savedAt.value = Date.now();
-    grid.value = await api.finance.tariffs(yearId.value);
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Enregistrement impossible.";
   } finally {
@@ -340,6 +366,52 @@ function toggleUnit(id: string) {
   if (next.has(id)) next.delete(id);
   else next.add(id);
   selected.value = next;
+}
+
+/**
+ * Cmd/Ctrl-click: take the whole level the clicked node belongs to.
+ *
+ * The commonest thing anyone does here is price a level — "the 6e, the 5e and
+ * the 4e all pay 25 000" — and reaching for the pills, then ticking six boxes,
+ * then typing, is three motions for one decision. Clicking one member of the
+ * level with the platform's own multi-select modifier takes all of them.
+ */
+function pickLevelOf(id: string) {
+  const row = rows.value.find((r) => r.id === id);
+  if (!row) return;
+  const peers = editableRows.value.filter((r) => r.kind === row.kind);
+  const all = peers.every((r) => selected.value.has(r.id));
+  const next = new Set(selected.value);
+  for (const r of peers) {
+    if (all) next.delete(r.id);
+    else next.add(r.id);
+  }
+  selected.value = next;
+}
+
+/** One control for both, so a node click never has to know which was meant. */
+function onNodePick(id: string, wholeLevel: boolean) {
+  if (wholeLevel) pickLevelOf(id);
+  else toggleUnit(id);
+}
+
+/** Closes every level at once — the way out of a wide selection. */
+function clearLevels() {
+  editableKinds.value = new Set();
+  selected.value = new Set();
+}
+
+/**
+ * Removes a price this unit sets itself.
+ *
+ * Distinct from emptying the field, only in that it is discoverable: the ×
+ * says a price CAN be taken away, which an empty box does not. Both end at the
+ * same null, which makes the unit fall back to what it inherits.
+ */
+function clearTariff(id: string) {
+  edits.value.set(cellKey(id), "");
+  edits.value = new Map(edits.value);
+  scheduleFlush();
 }
 
 async function applyToSelection() {
@@ -393,6 +465,39 @@ async function issueInvoices() {
     error.value = e instanceof api.ApiError ? e.message : "Émission impossible.";
   } finally {
     issuing.value = false;
+  }
+}
+
+// ── publication ─────────────────────────────────────────────────────────────
+
+/**
+ * A grille is a draft until somebody with `finance.admin` releases it.
+ *
+ * Same rule the timetable already follows, and for the same reason: every
+ * intermediate state of a price list is wrong, and a facture issued against one
+ * has charged a family a number the school never agreed. The API resolves
+ * billing against the released snapshot, so what this button does is not
+ * cosmetic — before it is pressed, nothing here prices anybody.
+ */
+const publishing = ref(false);
+const confirmingPublish = ref(false);
+
+const publication = computed(() => grid.value?.publication ?? null);
+const canPublish = computed(() => auth.can("finance.admin"));
+
+async function publish() {
+  if (!yearId.value) return;
+  publishing.value = true;
+  confirmingPublish.value = false;
+  error.value = null;
+  try {
+    const r = await api.finance.publishTariffs(yearId.value);
+    notice.value = `Grille publiée — version ${r.version}, ${r.units} unité(s) tarifée(s).`;
+    grid.value = await api.finance.tariffs(yearId.value);
+  } catch (e) {
+    error.value = e instanceof api.ApiError ? e.message : "Publication impossible.";
+  } finally {
+    publishing.value = false;
   }
 }
 
@@ -466,13 +571,21 @@ const pricedCount = computed(
 
 <template>
   <div class="tarif-page">
-    <div class="page-head">
-      <div>
+    <!--
+      DELIBERATELY TERSE. The page used to explain itself in two sentences of
+      prose and repeat the same idea in a hint under the bulk bar. An operator
+      reads that once; after that it is 60px of the screen spent saying nothing
+      they do not already know. What is left is the state that changes: which
+      version is live, and whether the draft has moved since.
+    -->
+    <div class="page-head is-tight">
+      <div class="tarif-title">
         <h1 class="page-title">Grille tarifaire</h1>
-        <div class="page-sub">
-          Toute l'organisation, prix par prix. Choisissez les niveaux à tarifer —
-          les autres restent visibles, en gris, pour situer ceux qui le sont.
-        </div>
+        <span v-if="publication" class="tarif-pub" :class="{ 'is-stale': publication.hasUnpublishedChanges }">
+          v{{ publication.version }}
+          <template v-if="publication.hasUnpublishedChanges"> · brouillon modifié</template>
+        </span>
+        <span v-else-if="grid" class="tarif-pub is-draft">Brouillon — ne facture personne</span>
       </div>
       <div class="page-actions">
         <!-- Two renderings of one screen. Everything else — tabs, levels,
@@ -500,7 +613,18 @@ const pricedCount = computed(
             <option v-for="y in years" :key="y.id" :value="y.id">{{ y.label }}</option>
           </select>
         </label>
-        <button class="btn" type="button" @click="openCatalogue">Types de frais</button>
+        <button class="btn sm ghost" type="button" @click="openCatalogue">Types de frais</button>
+        <button
+          v-if="canPublish && grid"
+          class="btn primary"
+          :class="{ 'is-attn': !publication || publication.hasUnpublishedChanges }"
+          type="button"
+          :disabled="publishing"
+          @click="confirmingPublish = true"
+        >
+          <span v-if="publishing" class="btn-spin" aria-hidden="true" />
+          Publier
+        </button>
       </div>
     </div>
 
@@ -560,12 +684,23 @@ const pricedCount = computed(
               <Icon :name="editableKinds.has(k) ? 'check' : 'chevronRight'" :size="12" />
               {{ KIND_FR[k] }}
             </button>
+            <button
+              v-if="editableKinds.size"
+              class="tarif-level is-clear"
+              type="button"
+              title="Fermer tous les niveaux"
+              @click="clearLevels"
+            >Tout fermer</button>
+
+            <!-- THE ONE PLACE that says what the screen is doing. Every call
+                 raises it — autosave, bulk apply, billing, publication — so a
+                 slow operation never looks like a frozen page. -->
             <span class="marksave" style="margin-left: auto">
-              <span v-if="saving" class="btn-spin" aria-hidden="true" />
+              <span v-if="busy" class="btn-spin" aria-hidden="true" />
               {{
-                saving ? "Enregistrement…"
-                : edits.size ? `${edits.size} modification(s)`
-                : savedAt ? "Enregistré" : `${pricedCount} unité(s) tarifée(s)`
+                busy ? "Enregistrement…"
+                : edits.size ? `${edits.size} en attente`
+                : savedAt ? "Enregistré" : `${pricedCount} tarifé(s)`
               }}
             </span>
           </div>
@@ -601,7 +736,6 @@ const pricedCount = computed(
               Facturer {{ billable.length }} classe(s)
             </button>
             <button class="btn sm ghost" type="button" @click="selected = new Set()">Désélectionner</button>
-            <span class="hint">Montant vide = la ligne est retirée (l'unité hérite alors du parent).</span>
           </div>
 
           <!-- THE DIAGRAM. Same tabs above it, same level pills, same
@@ -613,7 +747,8 @@ const pricedCount = computed(
             :selected="selected"
             :show-installments="activeFeeType?.recurrence === 'PER_PERIOD'"
             @type="onType($event.id, $event.raw)"
-            @toggle="toggleUnit"
+            @toggle="onNodePick($event.id, $event.wholeLevel)"
+            @clear="clearTariff"
           />
 
           <div v-else class="tarif-tree">
@@ -701,6 +836,35 @@ const pricedCount = computed(
         </div>
       </template>
     </template>
+
+    <!--
+      PUBLICATION IS THE ONE ACT HERE THAT LEAVES THE OFFICE. It states what
+      becomes true and for whom rather than asking "are you sure?".
+    -->
+    <ConfirmDialog
+      v-if="confirmingPublish"
+      title="Publier la grille tarifaire"
+      :subtitle="years.find((y) => y.id === yearId)?.label"
+      confirm-label="Publier"
+      :busy="publishing"
+      @close="confirmingPublish = false"
+      @confirm="publish"
+    >
+      <p>
+        Les prix affichés deviendront ceux appliqués par le système :
+        <strong>toute facture émise après cette publication</strong> utilisera cette
+        grille.
+      </p>
+      <p v-if="publication">
+        Elle remplacera la version {{ publication.version }}, publiée le
+        {{ new Date(publication.publishedAt).toLocaleDateString("fr-FR") }}.
+        Les factures déjà émises ne changent pas.
+      </p>
+      <p v-else>
+        Aucune grille n'est publiée pour le moment : tant qu'elle ne l'est pas,
+        aucun élève n'est facturé et les paiements reçus sont portés en avance.
+      </p>
+    </ConfirmDialog>
 
     <!-- The catalogue: an offer, never an installation. -->
     <div v-if="pickingTypes" class="scrim" @click.self="pickingTypes = false">

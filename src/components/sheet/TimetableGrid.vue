@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import * as api from "../../lib/api";
 import { useBusyStore } from "../../stores/busy";
 import DialogShell from "../ui/DialogShell.vue";
+import ConfirmDialog from "../ui/ConfirmDialog.vue";
 import Alert from "../ui/Alert.vue";
 
 /**
@@ -502,8 +503,25 @@ async function removeSlots(slots: api.TimetableSlot[]) {
  * Monday morning needs to take the grid down in one click, not file a request.
  */
 const publishing = ref(false);
+/**
+ * Asked before the week leaves the office.
+ *
+ * Publishing is the one act on this grid that changes what OTHER people see —
+ * a teacher plans around it, a parent reads it — and it cannot be taken back
+ * quietly: the correction is itself a new public version. Every other edit here
+ * is private until this button is pressed, which is exactly why this button is
+ * the one that asks.
+ *
+ * Withdrawing asks too, and for the sharper reason: it takes a published week
+ * away from people who are already using it.
+ */
+const confirming = ref(false);
+/** True when pressing it would WITHDRAW rather than release. */
+const willUnpublish = computed(() => props.published && !pending.value);
+
 async function togglePublished() {
   if (props.readonly) return;
+  confirming.value = false;
   publishing.value = true;
   error.value = null;
   try {
@@ -666,7 +684,7 @@ const label = computed(() => {
               ? 'Remplace la version que voient les élèves par celle-ci'
               : undefined
         "
-        @click="togglePublished"
+        @click="confirming = true"
       >
         <span v-if="publishing" class="btn-spin" aria-hidden="true" />
         {{ pending ? "Publier les modifications" : published ? "Dépublier" : "Publier" }}
@@ -967,4 +985,35 @@ const label = computed(() => {
       </div>
     </DialogShell>
   </div>
+
+  <!-- The only act on this grid that reaches people outside the office. -->
+  <ConfirmDialog
+    v-if="confirming"
+    :title="willUnpublish ? 'Dépublier l\'emploi du temps' : 'Publier l\'emploi du temps'"
+    :confirm-label="willUnpublish ? 'Dépublier' : 'Publier'"
+    :danger="willUnpublish"
+    :busy="publishing"
+    @close="confirming = false"
+    @confirm="togglePublished"
+  >
+    <template v-if="willUnpublish">
+      <p>
+        <strong>Les élèves et les enseignants ne verront plus d'emploi du temps</strong>
+        pour cette classe, jusqu'à une nouvelle publication.
+      </p>
+    </template>
+    <template v-else-if="pending">
+      <p>
+        La semaine que voient les élèves sera <strong>remplacée par celle-ci</strong>.
+        Publiée le {{ publishedOn }}, elle passera en version suivante.
+      </p>
+    </template>
+    <template v-else>
+      <p>
+        Cette semaine deviendra <strong>visible par les élèves et les enseignants</strong>.
+        Les modifications ultérieures resteront en brouillon jusqu'à la prochaine
+        publication.
+      </p>
+    </template>
+  </ConfirmDialog>
 </template>
