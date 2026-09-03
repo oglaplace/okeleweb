@@ -915,6 +915,8 @@ export interface TimetableGrid {
    * deleting a lesson and drawing an identical one does not raise it.
    */
   hasUnpublishedChanges: boolean;
+  /** Line by line, so the confirmation can say what a week is becoming. */
+  diff: WeekDiff;
   slots: TimetableSlot[];
 }
 
@@ -1692,6 +1694,39 @@ export interface FeeTypeTemplate {
   id: string | null;
 }
 
+/** One line of "what would change if this were published now". */
+export interface TariffDiff {
+  /** Never released: everything is new, so an empty diff is still publishable. */
+  firstPublication: boolean;
+  entries: {
+    kind: "ADDED" | "CHANGED" | "REMOVED";
+    unit: string;
+    feeType: string;
+    from: number | null;
+    to: number | null;
+    fromInstallments: number | null;
+    toInstallments: number | null;
+  }[];
+  added: number;
+  changed: number;
+  removed: number;
+}
+
+/** The same shape for a week: where on the grid, and what it becomes. */
+export interface WeekDiff {
+  firstPublication: boolean;
+  entries: {
+    kind: "ADDED" | "CHANGED" | "REMOVED";
+    /** "Mardi 08:00–10:00" — where on the grid, in the operator's terms. */
+    when: string;
+    from: string | null;
+    to: string | null;
+  }[];
+  added: number;
+  changed: number;
+  removed: number;
+}
+
 /** The grille tarifaire as a grid: units down, fee types across. */
 export interface TariffGrid {
   /**
@@ -1707,6 +1742,14 @@ export interface TariffGrid {
     publishedBy: string | null;
     hasUnpublishedChanges: boolean;
   } | null;
+  /**
+   * WHAT PUBLISHING WOULD CHANGE — the question in front of the button.
+   *
+   * An empty `entries` on a grille that has been published before means there
+   * is nothing to release, and the API refuses that too: a version number is
+   * quoted to parents, and a bump that changes no price makes it lie.
+   */
+  diff: TariffDiff;
   feeTypes: { id: string; code: string; name: string; recurrence: string }[];
   /**
    * THE WHOLE TREE, root included — not just the units that can carry a price.

@@ -34,6 +34,8 @@ const props = defineProps<{
   /** Which release the public is reading, and whether the draft has moved on. */
   version: number | null;
   hasUnpublishedChanges: boolean;
+  /** What publishing would change, line by line. See WeekDiff. */
+  diff?: api.WeekDiff | null;
   readonly?: boolean;
 }>();
 const emit = defineEmits<{
@@ -519,6 +521,21 @@ const confirming = ref(false);
 /** True when pressing it would WITHDRAW rather than release. */
 const willUnpublish = computed(() => props.published && !pending.value);
 
+/**
+ * There is something to release.
+ *
+ * A version number is what the office says out loud — "on a publié la v3
+ * jeudi" — and a bump that changes no lesson makes it lie about how often the
+ * week was revised. The API refuses an empty publish; this stops anyone
+ * reaching for the button in the first place.
+ */
+const hasSomethingToPublish = computed(() => {
+  if (willUnpublish.value) return true;
+  const d = props.diff;
+  if (!d) return rows.value.length > 0;
+  return d.firstPublication ? rows.value.length > 0 : d.entries.length > 0;
+});
+
 async function togglePublished() {
   if (props.readonly) return;
   confirming.value = false;
@@ -676,13 +693,15 @@ const label = computed(() => {
         class="btn sm"
         :class="published && !pending ? 'ghost' : 'primary'"
         type="button"
-        :disabled="publishing || (!published && !rows.length)"
+        :disabled="publishing || !hasSomethingToPublish"
         :title="
           !published && !rows.length
             ? 'Un emploi du temps vide ne peut pas être publié'
-            : pending
-              ? 'Remplace la version que voient les élèves par celle-ci'
-              : undefined
+            : !hasSomethingToPublish
+              ? 'Aucun changement depuis la dernière publication'
+              : pending
+                ? 'Remplace la version que voient les élèves par celle-ci'
+                : undefined
         "
         @click="confirming = true"
       >
@@ -1007,6 +1026,24 @@ const label = computed(() => {
         La semaine que voient les élèves sera <strong>remplacée par celle-ci</strong>.
         Publiée le {{ publishedOn }}, elle passera en version suivante.
       </p>
+      <!-- What moves, listed. A censeur who has spent an hour on Thursday
+           deserves to see Thursday in the confirmation. -->
+      <div v-if="diff && diff.entries.length" class="diffbox">
+        <div class="diffbox-head">
+          {{ diff.added }} ajout(s) · {{ diff.changed }} modification(s) ·
+          {{ diff.removed }} retrait(s)
+        </div>
+        <ul class="difflist">
+          <li v-for="(e, i) in diff.entries" :key="i" :class="`is-${e.kind.toLowerCase()}`">
+            <span class="diff-what">{{ e.when }}</span>
+            <span class="diff-move">
+              <template v-if="e.kind === 'ADDED'">{{ e.to }}</template>
+              <template v-else-if="e.kind === 'REMOVED'">retiré ({{ e.from }})</template>
+              <template v-else>{{ e.from }} → {{ e.to }}</template>
+            </span>
+          </li>
+        </ul>
+      </div>
     </template>
     <template v-else>
       <p>

@@ -64,6 +64,9 @@ const gridPublishedAt = ref<string | null>(null);
 /** Which release the public reads, and whether the draft has moved past it. */
 const gridVersion = ref<number | null>(null);
 const gridPending = ref(false);
+/** What publishing the week would change — drives the confirmation and the
+ *  disabled state of the publish button. */
+const gridDiff = ref<api.WeekDiff | null>(null);
 /** True when the API handed us a week nobody else can see — i.e. we may edit it. */
 const gridIsDraft = ref(false);
 const offerings = ref<{ id: string; subject: { id: string; code: string; name: string } }[]>([]);
@@ -136,6 +139,7 @@ async function loadSheet() {
     gridIsDraft.value = g?.isDraft ?? false;
     gridVersion.value = g?.version ?? null;
     gridPending.value = g?.hasUnpublishedChanges ?? false;
+    gridDiff.value = g?.diff ?? null;
     await loadBuilderOptions();
     return;
   }
@@ -976,6 +980,7 @@ const totalDue = computed(() =>
           :published-at="gridPublishedAt"
           :version="gridVersion"
           :has-unpublished-changes="gridPending"
+          :diff="gridDiff"
           :readonly="!gridPublished && !gridIsDraft"
           @changed="(slots) => (grid = slots)"
           @published="

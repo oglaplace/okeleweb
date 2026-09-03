@@ -5979,3 +5979,144 @@ table.data td.c-text {
 .tgraph-clear:hover { background: var(--danger-soft); color: var(--danger); }
 /* Keyboard users never hover, so it must be reachable without one. */
 .tgraph-clear:focus-visible { opacity: 1; outline: 2px solid var(--primary); }
+
+/* ── what publishing would change ──
+   A list of the prices about to move, in the confirmation. "Are you sure?"
+   tells nobody anything; this is the thing worth reading twice. */
+.diffbox {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.diffbox-head {
+  padding: var(--s2) var(--s3);
+  background: var(--surface-2);
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-3);
+}
+.difflist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 34vh;
+  overflow-y: auto;
+  font-size: var(--t-small);
+}
+.difflist li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: 4px var(--s3);
+  border-top: 1px solid var(--line-soft);
+}
+.difflist li:first-child { border-top: none; }
+/* The kind is carried by a rule down the left, not by colouring the text: a
+   removed price still has to be readable. */
+.difflist li.is-added { box-shadow: inset 2px 0 0 var(--ok); }
+.difflist li.is-changed { box-shadow: inset 2px 0 0 var(--warn); }
+.difflist li.is-removed { box-shadow: inset 2px 0 0 var(--danger); }
+.diff-what { color: var(--ink-2); min-width: 0; overflow-wrap: anywhere; }
+.diff-move { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 500; }
+
+/* ── the grille as a printed document ──
+   RESOLVED: every unit shows what it would actually be billed, inheritance
+   included, across all fee types at once. The screen is a working surface; a
+   family reads one table. */
+.print-modal { max-width: 900px; width: 100%; }
+
+.tarifdoc {
+  background: #fff;
+  color: #14171f;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--s5);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.tarifdoc-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--s4);
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid #d8d6cf;
+}
+.tarifdoc-school { font-weight: 700; font-size: 15px; }
+.tarifdoc-sub { color: #5b6070; font-size: 12px; }
+.tarifdoc-meta {
+  text-align: right;
+  font-size: 11px;
+  color: #5b6070;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+/* A draft says so on its face: a price list handed to a parent that nothing is
+   billing against would be a quotation the school cannot honour. */
+.tarifdoc-warn {
+  margin: var(--s3) 0 0;
+  padding: var(--s2) var(--s3);
+  border-left: 2px solid #9c2d1a;
+  background: #f8e5e1;
+  font-size: 11.5px;
+}
+.tarifdoc-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: var(--s4);
+}
+.tarifdoc-table th {
+  text-align: left;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #5b6070;
+  padding: var(--s2) var(--s2);
+  border-bottom: 1px solid #d8d6cf;
+}
+.tarifdoc-table th.c-num,
+.tarifdoc-table td.c-num { text-align: right; font-variant-numeric: tabular-nums; }
+.tarifdoc-table td {
+  padding: 5px var(--s2);
+  border-bottom: 1px solid #eae8e2;
+}
+.tarifdoc-table small { color: #5b6070; }
+.tarifdoc-name { font-weight: 600; }
+.tarifdoc-kind { color: #5b6070; font-size: 10px; margin-left: 6px; text-transform: uppercase; }
+.tarifdoc-total { font-weight: 700; }
+.tarifdoc-foot { margin-top: var(--s4); font-size: 10.5px; color: #5b6070; }
+
+/* Printing the preview prints the SHEET. Same visibility trick as the reçu:
+   naming the layout's classes would miss the page's own content. */
+@media print {
+  body:has(.print-stage) { visibility: hidden; }
+  body:has(.print-stage) .print-stage,
+  body:has(.print-stage) .print-stage * { visibility: visible; }
+  body:has(.print-stage) .print-stage {
+    position: absolute !important;
+    inset: 0 auto auto 0;
+    width: 100%;
+    display: block !important;
+    background: none !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  .print-stage .scrim-card {
+    box-shadow: none !important;
+    border: none !important;
+    max-width: none !important;
+    max-height: none !important;
+    padding: 0 !important;
+    background: none !important;
+    overflow: visible !important;
+  }
+  .print-stage .dialog-head { display: none !important; }
+  .print-stage .dialog-body { padding: 0 !important; overflow: visible !important; }
+  .tarifdoc { border: none; padding: 0; }
+  /* A long price list has to break across pages without cutting a row. */
+  .tarifdoc-table tr { break-inside: avoid; }
+  .tarifdoc-table thead { display: table-header-group; }
+}
