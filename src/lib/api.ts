@@ -1479,6 +1479,44 @@ export const finance = {
       { method: "POST", body: JSON.stringify({ academicYearId }) },
     ),
 
+  /** The reduction rules this complex has declared. */
+  discounts: () => request<Discount[]>("/finance/discounts"),
+
+  createDiscount: (body: {
+    code: string; name: string;
+    percentBps?: number | null; amountXaf?: number | null; maxAmountXaf?: number | null;
+    priority?: number; stackable?: boolean;
+  }) =>
+    request<Discount>("/finance/discounts", { method: "POST", body: JSON.stringify(body) }),
+
+  /** The awards one pupil holds for one year. */
+  waivers: (studentId: string, academicYearId: string) =>
+    request<FeeWaiver[]>(
+      `/finance/waivers?studentId=${encodeURIComponent(studentId)}` +
+        `&academicYearId=${encodeURIComponent(academicYearId)}`,
+    ),
+
+  /**
+   * Grants a reduction. `finance.admin` only.
+   *
+   * Answers `creditedXaf`: zero when there is no facture yet (the award simply
+   * waits and is read at billing time), non-zero when one existed and was
+   * credited with an avoir rather than rewritten.
+   */
+  grantWaiver: (body: {
+    studentId: string; discountId: string; academicYearId: string;
+    feeTypeId?: string | null; reason?: string;
+  }) =>
+    request<{ waiver: FeeWaiver; creditedXaf: number }>("/finance/waivers", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  revokeWaiver: (id: string) =>
+    request<{ revoked: boolean }>(`/finance/waivers/${encodeURIComponent(id)}/revoke`, {
+      method: "POST",
+    }),
+
   /** Withdraws it. Nothing bills against a withdrawn grille. */
   unpublishTariffs: (academicYearId: string) =>
     request<{ removed: number }>("/finance/tariffs/unpublish", {
@@ -1680,6 +1718,17 @@ export interface StudentLedger {
   needsInvoice: boolean;
   /** Whether one could be issued now — false when no grille applies. */
   canIssueInvoice: boolean;
+  /**
+   * The reductions this pupil holds.
+   *
+   * A facture whose total is below the grille has to explain itself, or the
+   * first person to check the arithmetic assumes a mistake.
+   */
+  waivers: {
+    id: string; name: string; code: string;
+    percentBps: number | null; amountXaf: number | null;
+    feeType: string | null; reason: string | null; grantedAt: string;
+  }[];
 }
 
 /** One entry of the shipped fee-type catalogue. */
@@ -1692,6 +1741,36 @@ export interface FeeTypeTemplate {
   installed: boolean;
   /** The tenant's own FeeType id, once installed. */
   id: string | null;
+}
+
+/** A reusable reduction rule: fratrie, bourse d'État, cas social. */
+export interface Discount {
+  id: string;
+  code: string;
+  name: string;
+  /** Basis points, so 12.5% needs no float. */
+  percentBps: number | null;
+  amountXaf: number | null;
+  /** Ceiling on what a percentage may take off one line. */
+  maxAmountXaf: number | null;
+  priority: number;
+  stackable: boolean;
+}
+
+/** The award: this pupil, this year, this rule, decided by this person. */
+export interface FeeWaiver {
+  id: string;
+  studentId: string;
+  discountId: string;
+  academicYearId: string;
+  /** Null = every line. Set = only that kind of fee. */
+  feeTypeId: string | null;
+  grantedBy: string | null;
+  grantedAt: string;
+  reason: string | null;
+  revokedAt: string | null;
+  discount: Discount;
+  feeType: { id: string; name: string } | null;
 }
 
 /** One line of "what would change if this were published now". */

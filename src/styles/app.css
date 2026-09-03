@@ -6024,7 +6024,6 @@ table.data td.c-text {
    RESOLVED: every unit shows what it would actually be billed, inheritance
    included, across all fee types at once. The screen is a working surface; a
    family reads one table. */
-.print-modal { max-width: 900px; width: 100%; }
 
 .tarifdoc {
   background: #fff;
@@ -6088,35 +6087,32 @@ table.data td.c-text {
 .tarifdoc-total { font-weight: 700; }
 .tarifdoc-foot { margin-top: var(--s4); font-size: 10.5px; color: #5b6070; }
 
-/* Printing the preview prints the SHEET. Same visibility trick as the reçu:
-   naming the layout's classes would miss the page's own content. */
+/* The printed grille is now a PAGE, so isolation is simpler: hide the shell,
+   show the sheet. Same visibility trick as the reçu — naming the layout's own
+   classes would miss the page's content. */
+.printpage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  padding-bottom: var(--s7);
+}
+.printpage-bar { flex-wrap: wrap; }
+.printpage .tarifdoc { max-width: 960px; }
+
 @media print {
-  body:has(.print-stage) { visibility: hidden; }
-  body:has(.print-stage) .print-stage,
-  body:has(.print-stage) .print-stage * { visibility: visible; }
-  body:has(.print-stage) .print-stage {
-    position: absolute !important;
+  body:has(.printpage) { visibility: hidden; }
+  body:has(.printpage) .tarifdoc,
+  body:has(.printpage) .tarifdoc * { visibility: visible; }
+  body:has(.printpage) .tarifdoc {
+    position: absolute;
     inset: 0 auto auto 0;
     width: 100%;
-    display: block !important;
-    background: none !important;
-    backdrop-filter: none !important;
-    padding: 0 !important;
-    overflow: visible !important;
+    max-width: none;
+    border: none;
+    padding: 0;
   }
-  .print-stage .scrim-card {
-    box-shadow: none !important;
-    border: none !important;
-    max-width: none !important;
-    max-height: none !important;
-    padding: 0 !important;
-    background: none !important;
-    overflow: visible !important;
-  }
-  .print-stage .dialog-head { display: none !important; }
-  .print-stage .dialog-body { padding: 0 !important; overflow: visible !important; }
-  .tarifdoc { border: none; padding: 0; }
-  /* A long price list has to break across pages without cutting a row. */
+  /* A long price list has to break across pages without cutting a row, and the
+     header has to repeat or page two is a wall of unlabelled figures. */
   .tarifdoc-table tr { break-inside: avoid; }
   .tarifdoc-table thead { display: table-header-group; }
 }

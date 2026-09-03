@@ -97,6 +97,14 @@ const router = createRouter({
          * and the same shape.
          */
         { path: "tarifs", name: "tariffs", component: () => import("../pages/console/TariffsPage.vue") },
+        /**
+         * THE PRINTED GRILLE — its own address.
+         *
+         * A price list is printed, handed over, pinned to a wall and linked to;
+         * all of those want a URL. As a modal it had none, so it could not be
+         * reloaded or sent. The scope travels in the query for the same reason.
+         */
+        { path: "tarifs/imprimer", name: "tariffs-print", component: () => import("../pages/console/TariffPrintPage.vue") },
       ],
     },
 

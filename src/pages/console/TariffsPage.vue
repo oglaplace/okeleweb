@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import * as api from "../../lib/api";
 import Alert from "../../components/ui/Alert.vue";
 import Icon from "../../components/ui/Icon.vue";
@@ -35,6 +36,7 @@ import { useAuthStore } from "../../stores/auth";
  * removes the context that makes the numbers mean anything.
  */
 const auth = useAuthStore();
+const router = useRouter();
 
 const years = ref<api.AcademicYear[]>([]);
 const yearId = ref<string | null>(null);
@@ -507,66 +509,22 @@ async function publish() {
 // ── printing ────────────────────────────────────────────────────────────────
 
 /**
- * THE GRILLE AS A DOCUMENT — what a parent is handed at the rentrée.
+ * NAVIGATES rather than opening a dialog.
  *
- * The screen is a working surface: tabs, one fee type at a time, prices that
- * live on a niveau and are inherited by its classes. None of that is what a
- * family reads. They read one table: this is what your child's class costs,
- * broken down, with a total.
- *
- * So the printed version RESOLVES: every unit shows what it would actually be
- * billed, inherited figures included, across all fee types at once. Anything
- * else would be a document that disagrees with the invoice.
+ * The printed grille is a document — printed, handed over, pinned to a wall,
+ * linked to — and all of those want an address. As a modal it had none: it
+ * could not be reloaded or sent to anybody. The scope rides in the query for
+ * the same reason, so the sheet somebody opens is the sheet you meant.
  */
-const printing = ref(false);
-
-/** Which units go on the sheet. Empty = whatever is selected, else everything. */
-const printScope = ref<"selection" | "all">("all");
-
 function openPrint() {
-  // Defaults to the selection when there is one: choosing rows and then being
-  // asked which rows is a question already answered.
-  printScope.value = selected.value.size ? "selection" : "all";
-  printing.value = true;
-}
-
-/** One row per unit, one column per fee type, resolved through inheritance. */
-const printRows = computed(() => {
-  const wanted =
-    printScope.value === "selection" && selected.value.size
-      ? rows.value.filter((r) => selected.value.has(r.id))
-      : rows.value.filter((r) => r.priceable);
-
-  return wanted.map((r) => {
-    const cells = feeTypes.value.map((f) => {
-      const own = stored.value.get(r.id)?.get(f.id);
-      if (own) return { feeTypeId: f.id, amountXaf: own.amountXaf, installments: own.installments, own: true };
-      const inh = inherited(r.id, f.id);
-      return inh
-        ? { feeTypeId: f.id, amountXaf: inh.amountXaf, installments: 1, own: false }
-        : { feeTypeId: f.id, amountXaf: null, installments: 1, own: false };
-    });
-    return {
-      id: r.id,
-      name: r.name,
-      kind: r.kind,
-      cells,
-      total: cells.reduce((sum, c) => sum + (c.amountXaf ?? 0), 0),
-    };
+  void router.push({
+    name: "tariffs-print",
+    query: {
+      ...(yearId.value ? { year: yearId.value } : {}),
+      ...(selected.value.size ? { units: [...selected.value].join(",") } : {}),
+    },
   });
-});
-
-/** Rows with nothing at all are noise on a price list. */
-const printableRows = computed(() => printRows.value.filter((r) => r.total > 0));
-
-/** `window` is not in template scope; the call belongs in the script anyway. */
-function printSheet() {
-  window.print();
 }
-
-const printedOn = new Date().toLocaleDateString("fr-FR", {
-  day: "2-digit", month: "long", year: "numeric",
-});
 
 // ── the catalogue ───────────────────────────────────────────────────────────
 const catalogue = ref<api.FeeTypeTemplate[]>([]);
@@ -913,88 +871,6 @@ const pricedCount = computed(
         </div>
       </template>
     </template>
-
-    <!--
-      THE GRILLE AS A DOCUMENT. Resolved, so what a family reads is what the
-      facture will say — a preview of exactly what comes out of the printer.
-    -->
-    <div v-if="printing" class="scrim print-stage" @click.self="printing = false">
-      <div class="scrim-card dialog is-wide print-modal" role="dialog" aria-modal="true">
-        <div class="dialog-head">
-          <div class="dialog-title"><span>Grille tarifaire — aperçu</span></div>
-          <div class="receipt-acts">
-            <label class="unpaid-toggle">
-              <input v-model="printScope" type="radio" value="all" />
-              <span>Toutes les unités</span>
-            </label>
-            <label v-if="selected.size" class="unpaid-toggle">
-              <input v-model="printScope" type="radio" value="selection" />
-              <span>Sélection ({{ selected.size }})</span>
-            </label>
-            <button class="btn sm primary" type="button" @click="printSheet">Imprimer / PDF</button>
-            <button class="btn sm ghost" type="button" @click="printing = false">Fermer</button>
-          </div>
-        </div>
-        <div class="dialog-body">
-          <article class="tarifdoc">
-            <header class="tarifdoc-head">
-              <div>
-                <div class="tarifdoc-school">{{ auth.profile?.complexName ?? "" }}</div>
-                <div class="tarifdoc-sub">
-                  Grille tarifaire · {{ years.find((y) => y.id === yearId)?.label }}
-                </div>
-              </div>
-              <div class="tarifdoc-meta">
-                <template v-if="publication">Version {{ publication.version }}</template>
-                <template v-else>Brouillon — non publiée</template>
-                <span>Éditée le {{ printedOn }}</span>
-              </div>
-            </header>
-
-            <!-- A draft says so on its face. A price list handed to a parent
-                 that nothing is billing against would be a quotation the
-                 school cannot honour. -->
-            <p v-if="!publication" class="tarifdoc-warn">
-              Cette grille n'est pas publiée : aucune facture n'est émise sur cette
-              base pour le moment.
-            </p>
-
-            <table v-if="printableRows.length" class="tarifdoc-table">
-              <thead>
-                <tr>
-                  <th>Unité</th>
-                  <th v-for="f in feeTypes" :key="f.id" class="c-num">{{ f.name }}</th>
-                  <th class="c-num">Total année</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="r in printableRows" :key="r.id">
-                  <td>
-                    <span class="tarifdoc-name">{{ r.name }}</span>
-                    <span class="tarifdoc-kind">{{ KIND_FR[r.kind] }}</span>
-                  </td>
-                  <td v-for="c in r.cells" :key="c.feeTypeId" class="c-num">
-                    <template v-if="c.amountXaf !== null">
-                      {{ money(c.amountXaf) }}
-                      <small v-if="c.installments > 1">×{{ c.installments }}</small>
-                    </template>
-                    <template v-else>—</template>
-                  </td>
-                  <td class="c-num tarifdoc-total">{{ money(r.total) }}</td>
-                </tr>
-              </tbody>
-            </table>
-            <p v-else class="tarifdoc-warn">
-              Aucune unité tarifée dans cette sélection.
-            </p>
-
-            <footer class="tarifdoc-foot">
-              Montants en francs CFA. « ×3 » indique un montant réparti en 3 tranches.
-            </footer>
-          </article>
-        </div>
-      </div>
-    </div>
 
     <!--
       PUBLICATION IS THE ONE ACT HERE THAT LEAVES THE OFFICE. It states what
