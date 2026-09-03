@@ -5496,77 +5496,192 @@ table.data td.c-text {
 }
 
 /* ============================================================================
-   GRILLE TARIFAIRE — the price list as a grid you type into.
+   GRILLE TARIFAIRE — the organisation, priced.
    ----------------------------------------------------------------------------
-   Same shape as the mark sheet, because it is the same job: a table of numbers
-   somebody fills in and checks against its neighbours.
+   A tree rather than a spreadsheet, because a school's prices are not a flat
+   list: they are a decision taken at one level and inherited by everything
+   under it. The whole hierarchy is drawn, and the level checkboxes decide what
+   is EDITABLE — white and typeable — while everything else stays visible in
+   grey to place it. Filtering the rest out removes the context that makes the
+   numbers mean anything.
    ========================================================================== */
 
-/* The bar that applies one figure to everything ticked. Above the table, not
-   below it: the selection is made in the table and acted on here, and a strip
-   under six hundred rows is a strip nobody scrolls back to. */
-.tariff-bulk { margin-bottom: var(--s4); }
-.tariff-bulk-row {
+/* ── one tab per type de frais ── */
+.tarif-tabs {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: -1px;
+  padding-bottom: 0;
+}
+.tarif-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: var(--s2) var(--s4);
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tarif-tab:hover { background: var(--surface-2); }
+.tarif-tab.is-active {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--ink);
+  /* Sits on top of the panel's own border so the two read as one sheet. */
+  position: relative;
+  z-index: 1;
+}
+.tarif-tab-name { font-size: var(--t-body); font-weight: 600; }
+.tarif-tab-sub { font-size: var(--t-micro); color: var(--ink-3); }
+
+.tarif-panel { border-top-left-radius: 0; }
+
+/* ── which levels may be priced ── */
+.tarif-levels {
   display: flex;
   align-items: center;
   gap: var(--s2);
   flex-wrap: wrap;
 }
-.tariff-bulk-lead {
+.tarif-levels-lead {
   font-size: var(--t-small);
-  color: var(--ink-2);
-  white-space: nowrap;
-  margin-right: var(--s2);
+  color: var(--ink-3);
+  margin-right: var(--s1);
 }
-.tariff-bulk-row input { max-width: 170px; }
-.tariff-bulk-row select { max-width: 220px; }
-.tariff-bulk .hint { display: block; margin-top: var(--s2); }
+.tarif-level {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink-3);
+  font: inherit;
+  font-size: var(--t-small);
+  cursor: pointer;
+}
+.tarif-level:hover { border-color: var(--line-strong); color: var(--ink); }
+/* On = these rows go white. The pill carries the same colour as the rows it
+   unlocks, so the connection is visible rather than remembered. */
+.tarif-level.is-on {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-ink);
+  font-weight: 500;
+}
 
-.tariff-tools {
+/* ── the bulk bar, only while something is selected ── */
+.tarif-bulk {
   display: flex;
   align-items: center;
-  gap: var(--s3);
+  gap: var(--s2);
   flex-wrap: wrap;
+  padding: var(--s3) var(--s4);
+  background: var(--primary-soft);
+  border-bottom: 1px solid var(--line);
 }
+.tarif-bulk-lead { font-size: var(--t-small); color: var(--primary-soft-ink); white-space: nowrap; }
+.tarif-bulk input { max-width: 150px; }
+.tarif-bulk .hint { flex-basis: 100%; }
 
-.tariff-pick { width: 34px; text-align: center; }
-.tariff-pick input { width: auto; height: auto; }
-/* A ticked row has to be visible while the eye is up in the bulk bar. */
-.data tr.is-picked { background: var(--primary-soft); }
-.data tr.is-picked td:first-child { box-shadow: inset 2px 0 0 var(--primary); }
+/* ── the tree ── */
+.tarif-tree { display: flex; flex-direction: column; }
 
-.tariff-head { white-space: nowrap; }
-.tariff-head-sub {
-  display: block;
-  font-weight: 400;
-  text-transform: none;
-  letter-spacing: 0;
+.tarif-row {
+  display: grid;
+  grid-template-columns: 34px 1fr 190px;
+  align-items: center;
+  gap: var(--s2);
+  padding: 0 var(--s3);
+  min-height: 34px;
+  border-bottom: 1px solid var(--line-soft);
+  /* GREY BY DEFAULT: a row you cannot price should not look like one you can. */
+  background: var(--surface-2);
+  color: var(--ink-3);
+}
+.tarif-row:last-child { border-bottom: none; }
+
+.tarif-row.is-head {
+  background: var(--surface-3);
   color: var(--ink-3);
   font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  min-height: 30px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
-/* Input and its tranche marker as ONE object, right-aligned together.
-   Absolutely positioning the marker at the cell's left edge put it halfway to
-   the previous column, where it read as that column's annotation. */
-.tariff-cell { padding: 2px 4px; }
-.tariff-cell-box {
+/* WHITE = MODIFIABLE. The whole convention of this screen, in one rule. */
+.tarif-row.is-editable {
+  background: var(--surface);
+  color: var(--ink);
+}
+.tarif-row.is-editable:hover { background: var(--surface); }
+.tarif-row.is-picked {
+  background: var(--primary-soft);
+  box-shadow: inset 2px 0 0 var(--primary);
+}
+
+.tarif-cell-pick { display: flex; justify-content: center; }
+.tarif-cell-pick input { width: auto; height: auto; }
+
+.tarif-cell-name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  min-width: 0;
+  font-size: var(--t-small);
+}
+.tarif-twig {
+  color: var(--line-strong);
+  font-family: var(--mono);
+  margin-right: -4px;
+  flex: none;
+}
+.tarif-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tarif-row.is-editable .tarif-name { font-weight: 500; }
+.tarif-kind {
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+  white-space: nowrap;
+  flex: none;
+}
+
+.tarif-cell-amount {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 4px;
+  gap: var(--s1);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--t-small);
 }
-.tariff-cell .mark-input { width: 96px; text-align: right; }
-/* How many tranches this fee is split into — shown only where it means
-   something, which is a PER_PERIOD fee that actually has a price. */
-.tariff-inst {
-  font-size: var(--t-micro);
-  color: var(--ink-3);
-  white-space: nowrap;
-  pointer-events: none;
-}
-.tariff-total { font-weight: 600; font-variant-numeric: tabular-nums; }
+.tarif-cell-amount .mark-input { width: 118px; text-align: right; }
+.tarif-inst { font-size: var(--t-micro); color: var(--ink-3); white-space: nowrap; }
+/* A price this unit sets itself, on a row that is currently locked. */
+.tarif-own { font-weight: 600; color: var(--ink-2); }
+/* What it WOULD be billed, found by walking up the way the biller does. */
+.tarif-inherit { color: var(--ink-3); }
+.tarif-inherit em { font-style: normal; font-size: var(--t-micro); opacity: 0.75; }
+.tarif-none { color: var(--line-strong); }
 
-/* ── the catalogue, as a list of offers ── */
+@media (max-width: 720px) {
+  .tarif-row { grid-template-columns: 28px 1fr 130px; }
+  .tarif-cell-amount .mark-input { width: 84px; }
+  .tarif-kind { display: none; }
+}
+
 .catalogue-list {
   display: flex;
   flex-direction: column;

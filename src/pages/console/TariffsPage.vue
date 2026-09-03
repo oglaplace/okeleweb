@@ -2,27 +2,34 @@
 import { computed, onMounted, ref, watch } from "vue";
 import * as api from "../../lib/api";
 import Alert from "../../components/ui/Alert.vue";
+import Icon from "../../components/ui/Icon.vue";
 import { KIND_FR } from "../../components/structure/kinds";
 
 /**
- * LA GRILLE TARIFAIRE, as a grid you type into.
+ * LA GRILLE TARIFAIRE — the organisation, priced.
  *
- * It used to be a form: pick a unit, pick a fee type, type one amount, submit,
- * repeat. A collège with six niveaux and five fee types is thirty passes
- * through that form, with no way to see what you already entered — which is
- * how a school ends up charging the 5e more than the 4e by accident. And the
- * form could only ever CREATE: correcting a price collided with the unique
- * index and the save just failed.
+ * Two rewrites got here, and the second one is the point. The first turned a
+ * one-field-at-a-time form into a spreadsheet: units down, every fee type
+ * across, amounts in the cells. That fixed the arithmetic problem and left the
+ * real one — it was a flat list. A school's prices are not a flat list. They
+ * are a decision taken at one level of a hierarchy and inherited by everything
+ * under it, and a table that hides the hierarchy cannot show you that.
  *
- * So it is the same shape as the mark sheet and the timetable, because it is
- * the same job — a table of numbers somebody fills in and checks against its
- * neighbours. Units down, fee types across, amounts in the cells, saved shortly
- * after the typing stops.
+ * So this draws the whole tree, fully expanded, and prices ONE fee type at a
+ * time in tabs. Three consequences, all of them the point:
  *
- * The selection column is the other half of the ask. A school decides "the
- * inscription is 25 000 for the whole collège" once; making them type it six
- * times is six chances to type it differently. Tick the rows, type one figure,
- * apply.
+ *   · Siblings sit next to each other. "Why does the 5e cost more than the 4e"
+ *     is a question you can only ask when they are one line apart.
+ *   · Inheritance is visible. A classe with no price of its own shows what it
+ *     inherits, in grey, from wherever up the tree the price actually lives —
+ *     which is exactly what applicableSchedule will find at billing time.
+ *   · One column instead of eight. A tab per fee type is the difference
+ *     between reading a price and hunting for it.
+ *
+ * The level checkboxes decide what is EDITABLE, not what is visible. Rows at a
+ * chosen level are white and take a figure; every other row stays and stays
+ * grey. Filtering them out instead — which is what the previous version did —
+ * removes the context that makes the numbers mean anything.
  */
 const years = ref<api.AcademicYear[]>([]);
 const yearId = ref<string | null>(null);
@@ -33,6 +40,8 @@ const notice = ref<string | null>(null);
 
 const XAF = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
 const money = (v: number) => XAF.format(v);
+/** Digits only: a thousands separator typed by hand must not become a price. */
+const clean = (raw: string) => raw.replace(/\D/g, "");
 
 onMounted(async () => {
   try {
@@ -52,6 +61,9 @@ async function load() {
     grid.value = await api.finance.tariffs(yearId.value);
     edits.value.clear();
     selected.value.clear();
+    if (!feeTypes.value.some((f) => f.id === activeFee.value)) {
+      activeFee.value = feeTypes.value[0]?.id ?? "";
+    }
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Grille indisponible.";
     grid.value = null;
@@ -61,29 +73,65 @@ async function load() {
 }
 watch(yearId, load);
 
-/**
- * Which units are worth showing.
- *
- * A grille prices a level of study, and in practice that is the niveau: "ce
- * que coûte la 6e". Classes are offered too because some schools price 6e A
- * differently from 6e B, but they are off by default — sixty rows of the same
- * figure is not a grille, it is a wall.
- */
-const KINDS = ["SCHOOL", "CYCLE", "NIVEAU", "CLASSE", "FACULTY", "DEPARTMENT"] as const;
-const showKinds = ref<Set<string>>(new Set(["NIVEAU", "FACULTY", "DEPARTMENT"]));
-
-const units = computed(() =>
-  (grid.value?.units ?? []).filter((u) => showKinds.value.has(u.kind)),
-);
 const feeTypes = computed(() => grid.value?.feeTypes ?? []);
+/** One tab at a time: eight columns of figures is a wall, not a grille. */
+const activeFee = ref("");
 
-/** unitId → feeTypeId → what is stored. */
+// ── the tree ────────────────────────────────────────────────────────────────
+
+interface Row {
+  id: string;
+  name: string;
+  kind: api.OrgUnitKind;
+  depth: number;
+  priceable: boolean;
+  /** Last child at its depth — draws the elbow rather than the tee. */
+  last: boolean;
+}
+
+/**
+ * The tree flattened into rows, depth-first, parents before children.
+ *
+ * Fully expanded on purpose. A collapsed tree makes you click to find out
+ * whether a niveau is priced, and the whole reason to draw the hierarchy is to
+ * see the answer for all of them at once.
+ */
+const rows = computed<Row[]>(() => {
+  const units = grid.value?.units ?? [];
+  if (!units.length) return [];
+
+  const children = new Map<string | null, typeof units>();
+  const ids = new Set(units.map((u) => u.id));
+  for (const u of units) {
+    // A parent outside the caller's scope makes its child a root here — which
+    // is right: a censeur scoped to the collège sees the collège as the top.
+    const key = u.parentId && ids.has(u.parentId) ? u.parentId : null;
+    const list = children.get(key) ?? [];
+    list.push(u);
+    children.set(key, list);
+  }
+
+  const out: Row[] = [];
+  const walk = (parent: string | null, depth: number) => {
+    const list = children.get(parent) ?? [];
+    list.forEach((u, i) => {
+      out.push({
+        id: u.id, name: u.name, kind: u.kind, depth,
+        priceable: u.priceable, last: i === list.length - 1,
+      });
+      walk(u.id, depth + 1);
+    });
+  };
+  walk(null, 0);
+  return out;
+});
+
+/** unitId → feeTypeId → what is stored, general grille only. */
 const stored = computed(() => {
   const map = new Map<string, Map<string, { amountXaf: number; installments: number }>>();
   for (const sch of grid.value?.schedules ?? []) {
-    // The general grille only. Série-specific prices are a second axis this
-    // screen does not draw yet, and silently folding them into the same cell
-    // would show a Terminale D price on the Terminale A row.
+    // Série-specific prices are a second axis this screen does not draw. Folding
+    // them into the same cell would show a Terminale D price on the D-less row.
     if (sch.serieId) continue;
     const row = map.get(sch.orgUnitId) ?? new Map();
     for (const item of sch.items) row.set(item.feeTypeId, item);
@@ -92,38 +140,105 @@ const stored = computed(() => {
   return map;
 });
 
+const parentOf = computed(() => {
+  const map = new Map<string, string | null>();
+  for (const u of grid.value?.units ?? []) map.set(u.id, u.parentId);
+  return map;
+});
+
+/**
+ * What a unit would actually be billed, and where the figure comes from.
+ *
+ * Walks UP exactly the way `applicableSchedule` does at billing time, so what
+ * this screen shows in grey is what the API will find when it issues the
+ * facture. A price displayed here that the biller would not use would be worse
+ * than showing nothing.
+ */
+function inherited(unitId: string, feeTypeId: string): { amountXaf: number; from: string } | null {
+  let cursor = parentOf.value.get(unitId) ?? null;
+  const names = new Map((grid.value?.units ?? []).map((u) => [u.id, u.name]));
+  while (cursor) {
+    const item = stored.value.get(cursor)?.get(feeTypeId);
+    if (item) return { amountXaf: item.amountXaf, from: names.get(cursor) ?? "" };
+    cursor = parentOf.value.get(cursor) ?? null;
+  }
+  return null;
+}
+
+// ── which levels may be priced ──────────────────────────────────────────────
+
+/**
+ * The kinds present in THIS complex, in tree order.
+ *
+ * Offering "Faculté" to a collège or "Cycle" to a university is offering a
+ * control that does nothing. The list is what the tree actually contains.
+ */
+const levels = computed(() => {
+  const seen = new Map<api.OrgUnitKind, number>();
+  for (const r of rows.value) {
+    if (!r.priceable) continue;
+    if (!seen.has(r.kind)) seen.set(r.kind, r.depth);
+  }
+  return [...seen.entries()].sort((a, b) => a[1] - b[1]).map(([kind]) => kind);
+});
+
+/** Which levels are open for pricing. Everything else is grey. */
+const editableKinds = ref<Set<string>>(new Set());
+
+watch(levels, (list) => {
+  if (editableKinds.value.size || !list.length) return;
+  // Opens on the niveau, which is where a grille normally lives — "ce que
+  // coûte la 6e" — falling back to whatever the deepest level is.
+  const start = list.includes("NIVEAU") ? "NIVEAU" : list[list.length - 1]!;
+  editableKinds.value = new Set([start]);
+});
+
+const isEditable = (r: Row) => r.priceable && editableKinds.value.has(r.kind);
+
+function toggleKind(kind: string) {
+  const next = new Set(editableKinds.value);
+  if (next.has(kind)) next.delete(kind);
+  else next.add(kind);
+  editableKinds.value = next;
+  // A row that is no longer editable cannot stay selected: applying a figure
+  // to it would write a price the operator can no longer see.
+  const keep = new Set(
+    [...selected.value].filter((id) => {
+      const row = rows.value.find((r) => r.id === id);
+      return row && isEditable(row);
+    }),
+  );
+  selected.value = keep;
+}
+
+// ── typing a price ──────────────────────────────────────────────────────────
+
 /** What has been typed and not yet saved. Key is `unitId|feeTypeId`. */
 const edits = ref(new Map<string, string>());
 const saving = ref(false);
 const savedAt = ref<number | null>(null);
 
-const cellKey = (unitId: string, feeTypeId: string) => `${unitId}|${feeTypeId}`;
+const cellKey = (unitId: string) => `${unitId}|${activeFee.value}`;
 
-function cellValue(unitId: string, feeTypeId: string): string {
-  const key = cellKey(unitId, feeTypeId);
+function cellValue(unitId: string): string {
+  const key = cellKey(unitId);
   if (edits.value.has(key)) return edits.value.get(key)!;
-  const item = stored.value.get(unitId)?.get(feeTypeId);
+  const item = stored.value.get(unitId)?.get(activeFee.value);
   return item ? String(item.amountXaf) : "";
 }
 
-function installmentsOf(unitId: string, feeTypeId: string): number {
-  return stored.value.get(unitId)?.get(feeTypeId)?.installments ?? 1;
-}
+const installmentsOf = (unitId: string) =>
+  stored.value.get(unitId)?.get(activeFee.value)?.installments ?? 1;
 
-/** Digits only: a thousands separator typed by hand must not become a price. */
-const clean = (raw: string) => raw.replace(/\D/g, "");
-
-function onType(unitId: string, feeTypeId: string, raw: string) {
-  edits.value.set(cellKey(unitId, feeTypeId), clean(raw));
+function onType(unitId: string, raw: string) {
+  edits.value.set(cellKey(unitId), clean(raw));
   edits.value = new Map(edits.value);
   scheduleFlush();
 }
 
 /**
- * Saved shortly after the typing stops, never on a button.
- *
- * The same bargain the mark sheet makes: nobody presses save, the writes go
- * out when the keystrokes stop, and the strip above says where they got to.
+ * Saved shortly after the typing stops, never on a button — the same bargain
+ * the mark sheet makes.
  */
 let timer: ReturnType<typeof setTimeout> | null = null;
 function scheduleFlush() {
@@ -134,15 +249,13 @@ function scheduleFlush() {
 async function flush() {
   if (!yearId.value || !edits.value.size || saving.value) return;
 
-  // One request per unit's worth of changes would be six requests to price a
-  // cycle. Grouped by the set of items so a whole row goes in one call.
   const byUnit = new Map<string, { feeTypeId: string; amountXaf: number | null }[]>();
   for (const [key, raw] of edits.value) {
     const [unitId, feeTypeId] = key.split("|");
     if (!unitId || !feeTypeId) continue;
     const list = byUnit.get(unitId) ?? [];
-    // An emptied cell means "we do not charge this", which is a removal and
-    // not a zero — see setTariffs.
+    // An emptied cell means "we do not charge this here", which is a removal
+    // and not a zero — and it makes the row fall back to what it inherits.
     list.push({ feeTypeId, amountXaf: raw === "" ? null : Number(raw) });
     byUnit.set(unitId, list);
   }
@@ -153,9 +266,7 @@ async function flush() {
   try {
     for (const [unitId, items] of byUnit) {
       await api.finance.setTariffs({
-        academicYearId: yearId.value,
-        orgUnitIds: [unitId],
-        items,
+        academicYearId: yearId.value, orgUnitIds: [unitId], items,
       });
     }
     // Only the cells that were in flight are cleared: anything typed while the
@@ -174,21 +285,21 @@ async function flush() {
   }
 }
 
-// ── applying one figure to many units ───────────────────────────────────────
+// ── one figure, many units ──────────────────────────────────────────────────
 const selected = ref<Set<string>>(new Set());
-const bulkFeeTypeId = ref("");
 const bulkAmount = ref("");
 const bulkInstallments = ref("");
 const bulkBusy = ref(false);
 
-const allShownSelected = computed(
-  () => units.value.length > 0 && units.value.every((u) => selected.value.has(u.id)),
+const editableRows = computed(() => rows.value.filter(isEditable));
+const allSelected = computed(
+  () => editableRows.value.length > 0 && editableRows.value.every((r) => selected.value.has(r.id)),
 );
 
 function toggleAll() {
   const next = new Set(selected.value);
-  if (allShownSelected.value) units.value.forEach((u) => next.delete(u.id));
-  else units.value.forEach((u) => next.add(u.id));
+  if (allSelected.value) editableRows.value.forEach((r) => next.delete(r.id));
+  else editableRows.value.forEach((r) => next.add(r.id));
   selected.value = next;
 }
 
@@ -199,12 +310,8 @@ function toggleUnit(id: string) {
   selected.value = next;
 }
 
-const canApply = computed(
-  () => selected.value.size > 0 && bulkFeeTypeId.value !== "" && !bulkBusy.value,
-);
-
 async function applyToSelection() {
-  if (!canApply.value || !yearId.value) return;
+  if (!selected.value.size || !activeFee.value || !yearId.value || bulkBusy.value) return;
   bulkBusy.value = true;
   error.value = null;
   try {
@@ -214,7 +321,7 @@ async function applyToSelection() {
       academicYearId: yearId.value,
       orgUnitIds: [...selected.value],
       items: [{
-        feeTypeId: bulkFeeTypeId.value,
+        feeTypeId: activeFee.value,
         amountXaf: amount === "" ? null : Number(amount),
         ...(inst ? { installments: Number(inst) } : {}),
       }],
@@ -236,22 +343,18 @@ const issuing = ref(false);
 
 /** Only classes can be billed: a facture belongs to a pupil, and pupils sit in
  *  classes. Selecting a niveau here would bill nobody. */
-const billableSelection = computed(() =>
-  (grid.value?.units ?? []).filter((u) => selected.value.has(u.id) && u.kind === "CLASSE"),
+const billable = computed(() =>
+  rows.value.filter((r) => selected.value.has(r.id) && r.kind === "CLASSE"),
 );
 
 async function issueInvoices() {
-  if (!yearId.value || !billableSelection.value.length) return;
+  if (!yearId.value || !billable.value.length) return;
   issuing.value = true;
   error.value = null;
   try {
-    const r = await api.finance.issueInvoices(
-      yearId.value,
-      billableSelection.value.map((u) => u.id),
-    );
+    const r = await api.finance.issueInvoices(yearId.value, billable.value.map((u) => u.id));
     notice.value =
-      `${r.pupils} élève(s) : ${r.issued} facture(s) émise(s), ` +
-      `${r.alreadyBilled} déjà facturé(s)` +
+      `${r.pupils} élève(s) : ${r.issued} facture(s) émise(s), ${r.alreadyBilled} déjà facturé(s)` +
       (r.noSchedule ? `, ${r.noSchedule} sans grille` : "") +
       (r.failed ? `, ${r.failed} en échec` : "") + ".";
   } catch (e) {
@@ -294,15 +397,12 @@ const RECURRENCE_FR: Record<string, string> = {
   MONTHLY: "par mois",
 };
 
-/** What a unit costs in total for the year — the figure a parent asks for. */
-function totalFor(unitId: string): number {
-  let sum = 0;
-  for (const f of feeTypes.value) {
-    const raw = cellValue(unitId, f.id);
-    if (raw) sum += Number(raw);
-  }
-  return sum;
-}
+const activeFeeType = computed(() => feeTypes.value.find((f) => f.id === activeFee.value) ?? null);
+
+/** How many units carry a price for the fee type on screen. */
+const pricedCount = computed(
+  () => rows.value.filter((r) => stored.value.get(r.id)?.has(activeFee.value)).length,
+);
 </script>
 
 <template>
@@ -311,8 +411,8 @@ function totalFor(unitId: string): number {
       <div>
         <h1 class="page-title">Grille tarifaire</h1>
         <div class="page-sub">
-          Ce que coûte une année, unité par unité. Tapez dans les cases : rien à
-          enregistrer, les prix partent tout seuls.
+          Toute l'organisation, prix par prix. Choisissez les niveaux à tarifer —
+          les autres restent visibles, en gris, pour situer ceux qui le sont.
         </div>
       </div>
       <div class="page-actions">
@@ -348,134 +448,165 @@ function totalFor(unitId: string): number {
       </div>
 
       <template v-else>
-        <!-- The one figure, applied to everything ticked. -->
-        <div class="card tariff-bulk">
-          <div class="card-body">
-            <div class="tariff-bulk-row">
-              <span class="tariff-bulk-lead">
-                <strong>{{ selected.size }}</strong> unité(s) sélectionnée(s)
-              </span>
-              <select v-model="bulkFeeTypeId" aria-label="Type de frais">
-                <option value="">Type de frais…</option>
-                <option v-for="f in feeTypes" :key="f.id" :value="f.id">{{ f.name }}</option>
-              </select>
-              <input
-                v-model="bulkAmount"
-                inputmode="numeric"
-                placeholder="Montant (XAF)"
-                aria-label="Montant à appliquer"
-              />
-              <input
-                v-model="bulkInstallments"
-                inputmode="numeric"
-                placeholder="Tranches"
-                aria-label="Tranches"
-                style="max-width: 100px"
-              />
-              <button class="btn primary" type="button" :disabled="!canApply" @click="applyToSelection">
-                <span v-if="bulkBusy" class="btn-spin" aria-hidden="true" />
-                Appliquer
-              </button>
-              <button
-                v-if="billableSelection.length"
-                class="btn"
-                type="button"
-                :disabled="issuing"
-                @click="issueInvoices"
-              >
-                <span v-if="issuing" class="btn-spin" aria-hidden="true" />
-                Facturer {{ billableSelection.length }} classe(s)
-              </button>
-            </div>
-            <!-- Says what an empty amount does, before somebody discovers it. -->
-            <span class="hint">
-              Montant vide = la ligne est retirée de ces unités (« nous ne facturons pas ça »),
-              ce qui n'est pas la même chose qu'un prix de zéro.
-            </span>
-          </div>
+        <!-- One fee type at a time. Eight columns of figures is a wall. -->
+        <div class="tarif-tabs" role="tablist">
+          <button
+            v-for="f in feeTypes"
+            :key="f.id"
+            class="tarif-tab"
+            :class="{ 'is-active': f.id === activeFee }"
+            type="button"
+            role="tab"
+            :aria-selected="f.id === activeFee"
+            @click="activeFee = f.id"
+          >
+            <span class="tarif-tab-name">{{ f.name }}</span>
+            <span class="tarif-tab-sub">{{ RECURRENCE_FR[f.recurrence] ?? f.recurrence }}</span>
+          </button>
         </div>
 
-        <div class="card">
-          <div class="card-head tariff-tools">
-            <span class="hint">Afficher</span>
-            <label v-for="k in KINDS" :key="k" class="unpaid-toggle">
-              <input
-                type="checkbox"
-                :checked="showKinds.has(k)"
-                @change="showKinds.has(k) ? showKinds.delete(k) : showKinds.add(k);
-                         showKinds = new Set(showKinds)"
-              />
-              <span>{{ KIND_FR[k] }}</span>
-            </label>
+        <div class="card tarif-panel">
+          <!-- WHICH LEVELS MAY BE PRICED. Not a visibility filter: the tree
+               stays whole, and these decide which rows go white. -->
+          <div class="card-head tarif-levels">
+            <span class="tarif-levels-lead">Niveaux tarifables</span>
+            <button
+              v-for="k in levels"
+              :key="k"
+              class="tarif-level"
+              :class="{ 'is-on': editableKinds.has(k) }"
+              type="button"
+              :aria-pressed="editableKinds.has(k)"
+              @click="toggleKind(k)"
+            >
+              <Icon :name="editableKinds.has(k) ? 'check' : 'chevronRight'" :size="12" />
+              {{ KIND_FR[k] }}
+            </button>
             <span class="marksave" style="margin-left: auto">
               <span v-if="saving" class="btn-spin" aria-hidden="true" />
-              {{ saving ? "Enregistrement…" : edits.size ? `${edits.size} modification(s)` : savedAt ? "Enregistré" : "" }}
+              {{
+                saving ? "Enregistrement…"
+                : edits.size ? `${edits.size} modification(s)`
+                : savedAt ? "Enregistré" : `${pricedCount} unité(s) tarifée(s)`
+              }}
             </span>
           </div>
 
-          <div v-if="!units.length" class="empty">
-            <div class="empty-title">Aucune unité affichée</div>
-            <div>Cochez un type d'unité ci-dessus.</div>
+          <!-- The bulk bar appears only with a selection: an always-present
+               strip of disabled controls is furniture. -->
+          <div v-if="selected.size" class="tarif-bulk">
+            <span class="tarif-bulk-lead">
+              <strong>{{ selected.size }}</strong> sélectionné(s) ·
+              {{ activeFeeType?.name }}
+            </span>
+            <input v-model="bulkAmount" inputmode="numeric" placeholder="Montant (XAF)" aria-label="Montant" />
+            <input
+              v-if="activeFeeType?.recurrence === 'PER_PERIOD'"
+              v-model="bulkInstallments"
+              inputmode="numeric"
+              placeholder="Tranches"
+              aria-label="Tranches"
+              style="max-width: 96px"
+            />
+            <button class="btn primary sm" type="button" :disabled="bulkBusy" @click="applyToSelection">
+              <span v-if="bulkBusy" class="btn-spin" aria-hidden="true" />
+              Appliquer
+            </button>
+            <button
+              v-if="billable.length"
+              class="btn sm"
+              type="button"
+              :disabled="issuing"
+              @click="issueInvoices"
+            >
+              <span v-if="issuing" class="btn-spin" aria-hidden="true" />
+              Facturer {{ billable.length }} classe(s)
+            </button>
+            <button class="btn sm ghost" type="button" @click="selected = new Set()">Désélectionner</button>
+            <span class="hint">Montant vide = la ligne est retirée (l'unité hérite alors du parent).</span>
           </div>
 
-          <div v-else class="table-wrap">
-            <table class="data tariff-grid">
-              <thead>
-                <tr>
-                  <th class="tariff-pick">
-                    <input
-                      type="checkbox"
-                      :checked="allShownSelected"
-                      aria-label="Tout sélectionner"
-                      @change="toggleAll"
-                    />
-                  </th>
-                  <th class="c-name">Unité</th>
-                  <th v-for="f in feeTypes" :key="f.id" class="c-num tariff-head">
-                    {{ f.name }}
-                    <!-- The périodicité is what turns a price into an
-                         échéancier, so it belongs on the column that sets it. -->
-                    <span class="tariff-head-sub">{{ RECURRENCE_FR[f.recurrence] ?? f.recurrence }}</span>
-                  </th>
-                  <th class="c-num">Total année</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="u in units" :key="u.id" :class="{ 'is-picked': selected.has(u.id) }">
-                  <td class="tariff-pick">
-                    <input
-                      type="checkbox"
-                      :checked="selected.has(u.id)"
-                      :aria-label="`Sélectionner ${u.name}`"
-                      @change="toggleUnit(u.id)"
-                    />
-                  </td>
-                  <td class="c-name">
-                    <span class="cell-strong">{{ u.name }}</span>
-                    <span class="cell-sub">{{ KIND_FR[u.kind] }}</span>
-                  </td>
-                  <td v-for="f in feeTypes" :key="f.id" class="c-num tariff-cell">
-                    <span class="tariff-cell-box">
-                      <span
-                        v-if="f.recurrence === 'PER_PERIOD' && cellValue(u.id, f.id)"
-                        class="tariff-inst"
-                        :title="`Réparti en ${installmentsOf(u.id, f.id)} tranche(s)`"
-                      >×{{ installmentsOf(u.id, f.id) }}</span>
-                      <input
-                        class="mark-input"
-                        inputmode="numeric"
-                        :value="cellValue(u.id, f.id)"
-                        :aria-label="`${f.name} — ${u.name}`"
-                        @input="onType(u.id, f.id, ($event.target as HTMLInputElement).value)"
-                      />
-                    </span>
-                  </td>
-                  <td class="c-num tariff-total">
-                    {{ totalFor(u.id) ? money(totalFor(u.id)) : "—" }}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <div class="tarif-tree">
+            <div class="tarif-row is-head">
+              <span class="tarif-cell-pick">
+                <input
+                  type="checkbox"
+                  :checked="allSelected"
+                  :disabled="!editableRows.length"
+                  aria-label="Tout sélectionner"
+                  @change="toggleAll"
+                />
+              </span>
+              <span class="tarif-cell-name">Organisation</span>
+              <span class="tarif-cell-amount">Montant</span>
+            </div>
+
+            <div
+              v-for="r in rows"
+              :key="r.id"
+              class="tarif-row"
+              :class="{
+                'is-editable': isEditable(r),
+                'is-picked': selected.has(r.id),
+              }"
+            >
+              <span class="tarif-cell-pick">
+                <input
+                  v-if="isEditable(r)"
+                  type="checkbox"
+                  :checked="selected.has(r.id)"
+                  :aria-label="`Sélectionner ${r.name}`"
+                  @change="toggleUnit(r.id)"
+                />
+              </span>
+
+              <span class="tarif-cell-name" :style="{ paddingLeft: `${r.depth * 20}px` }">
+                <!-- The elbow, so depth is readable without counting pixels. -->
+                <span v-if="r.depth" class="tarif-twig" aria-hidden="true">{{ r.last ? "└" : "├" }}</span>
+                <span class="tarif-name">{{ r.name }}</span>
+                <span class="tarif-kind">{{ KIND_FR[r.kind] }}</span>
+              </span>
+
+              <span class="tarif-cell-amount">
+                <template v-if="isEditable(r)">
+                  <span
+                    v-if="activeFeeType?.recurrence === 'PER_PERIOD' && cellValue(r.id)"
+                    class="tarif-inst"
+                    :title="`Réparti en ${installmentsOf(r.id)} tranche(s)`"
+                  >×{{ installmentsOf(r.id) }}</span>
+                  <input
+                    class="mark-input"
+                    inputmode="numeric"
+                    :value="cellValue(r.id)"
+                    :aria-label="`${activeFeeType?.name} — ${r.name}`"
+                    :placeholder="inherited(r.id, activeFee) ? String(inherited(r.id, activeFee)!.amountXaf) : '—'"
+                    @input="onType(r.id, ($event.target as HTMLInputElement).value)"
+                  />
+                </template>
+
+                <!-- Locked, but priceable: show what it is, or what it would
+                     inherit. The inherited figure is found by walking up
+                     exactly the way applicableSchedule does, so what is shown
+                     here in grey is what the biller will actually use.
+
+                     NOT priceable — the direction, the comptabilité — shows
+                     nothing at all. Those units never carry a grille and never
+                     inherit one either: no pupil is enrolled in the
+                     comptabilité, so "25 000 hérité" beside it was a figure
+                     that would never be charged to anybody. -->
+                <template v-else-if="!r.priceable" />
+                <template v-else-if="stored.get(r.id)?.get(activeFee)">
+                  <span class="tarif-own">{{ money(stored.get(r.id)!.get(activeFee)!.amountXaf) }}</span>
+                </template>
+                <template v-else-if="inherited(r.id, activeFee)">
+                  <span class="tarif-inherit" :title="`Hérité de ${inherited(r.id, activeFee)!.from}`">
+                    {{ money(inherited(r.id, activeFee)!.amountXaf) }}
+                    <em>hérité</em>
+                  </span>
+                </template>
+                <span v-else class="tarif-none">—</span>
+              </span>
+            </div>
           </div>
         </div>
       </template>

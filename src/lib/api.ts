@@ -1675,7 +1675,21 @@ export interface FeeTypeTemplate {
 /** The grille tarifaire as a grid: units down, fee types across. */
 export interface TariffGrid {
   feeTypes: { id: string; code: string; name: string; recurrence: string }[];
-  units: { id: string; name: string; kind: OrgUnitKind; parentId: string | null; code: string | null }[];
+  /**
+   * THE WHOLE TREE, root included — not just the units that can carry a price.
+   *
+   * You cannot see that the 6e costs more than the 5e without seeing they are
+   * siblings, and you cannot see that at all unless the hierarchy is drawn.
+   * `priceable` says which rows may take a figure; the rest place them.
+   */
+  units: {
+    id: string;
+    name: string;
+    kind: OrgUnitKind;
+    parentId: string | null;
+    code: string | null;
+    priceable: boolean;
+  }[];
   series: { id: string; code: string; name: string }[];
   schedules: {
     id: string;
