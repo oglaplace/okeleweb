@@ -5710,3 +5710,203 @@ table.data td.c-text {
   font-weight: 500;
 }
 .catalogue-detail { font-size: var(--t-small); color: var(--ink-3); }
+
+/* ── the grille as a canvas ──
+   `is-fluid` gives the column its width back; this gives it the height. The
+   page becomes a flex column whose tree pane takes whatever is left, so the
+   diagram fills the window instead of sitting in a 400px box with the rest of
+   the screen empty beneath it. */
+.tarif-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  gap: 0;
+}
+.tarif-page .page-head { flex: none; }
+.tarif-page .tarif-tabs { flex: none; }
+.tarif-page .tarif-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+}
+.tarif-page .tarif-panel > .tarif-tree { overflow-y: auto; flex: 1; min-height: 0; }
+
+/* Two renderings of one screen, chosen with one control. A segmented pair
+   rather than two buttons: they are mutually exclusive and the shape should
+   say so. */
+.viewswitch {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+}
+.viewswitch-btn {
+  border: none;
+  background: none;
+  padding: 0 var(--s3);
+  height: var(--control-h);
+  font: inherit;
+  font-size: var(--t-small);
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.viewswitch-btn + .viewswitch-btn { border-left: 1px solid var(--line); }
+.viewswitch-btn:hover { background: var(--surface-2); color: var(--ink); }
+.viewswitch-btn.is-on {
+  background: var(--primary);
+  color: var(--primary-ink);
+  font-weight: 500;
+}
+
+/* ============================================================================
+   THE ORGANISATION AS A DIAGRAM.
+   ----------------------------------------------------------------------------
+   Edges are SVG under HTML cards. Deliberate: curves want a path, and a price
+   wants a real <input> that focuses, takes a keyboard and inherits the
+   console's own field styling — which foreignObject would put out of reach.
+   ========================================================================== */
+
+.tgraph {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background:
+    /* A faint grid, so panning has something to move against — an empty plane
+       gives no feedback that the drag did anything. */
+    radial-gradient(circle, var(--line) 1px, transparent 1px) 0 0 / 22px 22px,
+    var(--surface-2);
+}
+
+.tgraph-tools {
+  position: absolute;
+  top: var(--s3);
+  right: var(--s3);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+}
+.tgraph-zoom {
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+  min-width: 44px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.tgraph-viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+}
+.tgraph-viewport.is-panning { cursor: grabbing; }
+
+.tgraph-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  /* No transition: a transform that animates makes a drag feel like it is on
+     a rubber band. */
+}
+
+.tgraph-edges { position: absolute; top: 0; left: 0; overflow: visible; }
+.tgraph-edge {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+}
+/* A branch leading somewhere the operator can price. Draws the eye down the
+   part of the tree they are actually working in. */
+.tgraph-edge.is-lit { stroke: var(--primary); stroke-width: 2; opacity: 0.75; }
+
+.tgraph-node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding: 6px var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  /* GREY = LOCKED, the same convention as the list. */
+  background: var(--surface-2);
+  color: var(--ink-3);
+  box-shadow: var(--shadow-xs);
+  box-sizing: border-box;
+}
+/* WHITE = MODIFIABLE. */
+.tgraph-node.is-editable {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line-strong);
+  cursor: pointer;
+}
+.tgraph-node.is-picked {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-soft), var(--shadow-xs);
+}
+/* Structure — the direction, the comptabilité. Never priced, and drawn as the
+   scaffolding it is rather than as a unit somebody forgot to fill in. */
+.tgraph-node.is-structure {
+  border-style: dashed;
+  background: none;
+}
+
+/* `flex: none` is not decoration. `overflow: hidden` on a flex item switches
+   its automatic minimum size off, so in a column too short for its contents
+   this collapsed to zero height and every card rendered with the KIND and the
+   price but no NAME — a diagram of an organisation with nothing named in it. */
+.tgraph-name {
+  flex: none;
+  font-size: var(--t-small);
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tgraph-kind {
+  flex: none;
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  line-height: 1.2;
+}
+.tgraph-price {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  font-size: var(--t-small);
+  font-variant-numeric: tabular-nums;
+  min-height: 22px;
+}
+.tgraph-price .mark-input {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  text-align: right;
+  font-size: var(--t-small);
+}
+.tgraph-inst { font-size: var(--t-micro); color: var(--ink-3); }
+.tgraph-own { font-weight: 600; color: var(--ink); }
+.tgraph-inherit { color: var(--ink-3); }
+.tgraph-inherit em { font-style: normal; font-size: var(--t-micro); opacity: 0.75; }
+.tgraph-none { color: var(--line-strong); }

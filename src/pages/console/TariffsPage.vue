@@ -4,6 +4,7 @@ import * as api from "../../lib/api";
 import Alert from "../../components/ui/Alert.vue";
 import Icon from "../../components/ui/Icon.vue";
 import { KIND_FR } from "../../components/structure/kinds";
+import TariffTree, { type TreeNode } from "../../components/finance/TariffTree.vue";
 
 /**
  * LA GRILLE TARIFAIRE — the organisation, priced.
@@ -76,6 +77,37 @@ watch(yearId, load);
 const feeTypes = computed(() => grid.value?.feeTypes ?? []);
 /** One tab at a time: eight columns of figures is a wall, not a grille. */
 const activeFee = ref("");
+
+/**
+ * TWO PICTURES OF THE SAME DATA, and the operator chooses.
+ *
+ * The list answers "what does each unit cost" — dense, scannable, one line per
+ * row, the shape you want when you are checking forty figures against each
+ * other. The graph answers "what does this complex look like, and where do the
+ * prices live in it" — the shape you want when you are deciding WHERE a price
+ * belongs rather than what it is.
+ *
+ * Everything else is shared: the same tabs, the same level pills, the same
+ * selection, the same pending edits. Switching view mid-edit keeps the typing,
+ * because they are two renderings of one screen and not two screens.
+ *
+ * Remembered, because whichever one a given person thinks in is not something
+ * they should have to re-choose every morning.
+ */
+type ViewMode = "list" | "graph";
+const VIEW_KEY = "teya.tariffs.view";
+const view = ref<ViewMode>(
+  (localStorage.getItem(VIEW_KEY) as ViewMode | null) ?? "list",
+);
+const treeRef = ref<InstanceType<typeof TariffTree> | null>(null);
+
+function setView(next: ViewMode) {
+  view.value = next;
+  localStorage.setItem(VIEW_KEY, next);
+  // The graph opens fitted to the window rather than at whatever pan the last
+  // visit left behind.
+  if (next === "graph") requestAnimationFrame(() => treeRef.value?.fit());
+}
 
 // ── the tree ────────────────────────────────────────────────────────────────
 
@@ -399,6 +431,33 @@ const RECURRENCE_FR: Record<string, string> = {
 
 const activeFeeType = computed(() => feeTypes.value.find((f) => f.id === activeFee.value) ?? null);
 
+/**
+ * The same rows, prepared for the diagram.
+ *
+ * Computed HERE rather than in the graph component so both views are fed by one
+ * source of truth: an inherited figure the list showed and the graph did not
+ * would be two answers to the same question.
+ */
+const treeNodes = computed<TreeNode[]>(() =>
+  rows.value.map((r) => {
+    const own = stored.value.get(r.id)?.get(activeFee.value);
+    const inh = own ? null : inherited(r.id, activeFee.value);
+    return {
+      id: r.id,
+      name: r.name,
+      kind: r.kind,
+      parentId: (grid.value?.units ?? []).find((u) => u.id === r.id)?.parentId ?? null,
+      editable: isEditable(r),
+      priceable: r.priceable,
+      value: cellValue(r.id),
+      inherited: inh?.amountXaf ?? null,
+      inheritedFrom: inh?.from ?? null,
+      installments: installmentsOf(r.id),
+      own: !!own,
+    };
+  }),
+);
+
 /** How many units carry a price for the fee type on screen. */
 const pricedCount = computed(
   () => rows.value.filter((r) => stored.value.get(r.id)?.has(activeFee.value)).length,
@@ -406,7 +465,7 @@ const pricedCount = computed(
 </script>
 
 <template>
-  <div>
+  <div class="tarif-page">
     <div class="page-head">
       <div>
         <h1 class="page-title">Grille tarifaire</h1>
@@ -416,6 +475,25 @@ const pricedCount = computed(
         </div>
       </div>
       <div class="page-actions">
+        <!-- Two renderings of one screen. Everything else — tabs, levels,
+             selection, pending edits — is shared, so switching mid-edit keeps
+             the typing. -->
+        <div class="viewswitch" role="group" aria-label="Présentation">
+          <button
+            class="viewswitch-btn"
+            :class="{ 'is-on': view === 'list' }"
+            type="button"
+            :aria-pressed="view === 'list'"
+            @click="setView('list')"
+          >Liste</button>
+          <button
+            class="viewswitch-btn"
+            :class="{ 'is-on': view === 'graph' }"
+            type="button"
+            :aria-pressed="view === 'graph'"
+            @click="setView('graph')"
+          >Graphe</button>
+        </div>
         <label class="sheet-pick">
           <span>Année</span>
           <select v-model="yearId" aria-label="Année scolaire">
@@ -526,7 +604,19 @@ const pricedCount = computed(
             <span class="hint">Montant vide = la ligne est retirée (l'unité hérite alors du parent).</span>
           </div>
 
-          <div class="tarif-tree">
+          <!-- THE DIAGRAM. Same tabs above it, same level pills, same
+               selection — only the picture changes. -->
+          <TariffTree
+            v-if="view === 'graph'"
+            ref="treeRef"
+            :nodes="treeNodes"
+            :selected="selected"
+            :show-installments="activeFeeType?.recurrence === 'PER_PERIOD'"
+            @type="onType($event.id, $event.raw)"
+            @toggle="toggleUnit"
+          />
+
+          <div v-else class="tarif-tree">
             <div class="tarif-row is-head">
               <span class="tarif-cell-pick">
                 <input

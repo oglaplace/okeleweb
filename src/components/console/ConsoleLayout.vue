@@ -113,7 +113,15 @@ function toggleRail() {
 const selected = computed(() => scopeOf(route));
 
 /** Screens whose content is a grid rather than prose. */
-const FLUID_ROUTES = new Set(["unit", "marks", "classe"]);
+/*
+ * Screens that are a canvas rather than a document.
+ *
+ * The 1080px reading width is right for prose and forms and wrong for anything
+ * you scan across: a spreadsheet capped at reading width is half a spreadsheet
+ * behind a scrollbar, and a node-link diagram of a whole complex capped at
+ * reading width is a diagram of a third of it.
+ */
+const FLUID_ROUTES = new Set(["unit", "marks", "classe", "tariffs"]);
 const fluid = computed(() => FLUID_ROUTES.has(String(route.name)));
 
 /** The action being run, when the route is a generic action page. */
