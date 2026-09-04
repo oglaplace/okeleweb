@@ -424,6 +424,9 @@ export const LEDGER_STATE_FR: Record<string, string> = {
   PARTIAL: "En cours",
   LATE: "En retard",
   NONE: "Non facturé",
+  // Not "non facturé": the sheet now says what they will owe, so the word has
+  // to name a figure that is real but not yet a document.
+  FORECAST: "Prévision",
 };
 
 const dueLabel = (iso: string) =>
@@ -491,15 +494,33 @@ export function financeTab(ledger: api.ClasseLedger): SheetTab {
           // Plain text, not `pill`: that type renders a boolean as Oui/Non,
           // which turned "En retard" into "Oui".
           { key: "stateLabel", label: "État", width: 12 },
-          { key: "billedXaf", label: "Facturé", type: "money", total: true },
+          {
+            key: "expectedXaf",
+            label: "À payer",
+            type: "money",
+            total: true,
+            hint:
+              "Ce que coûte l'année pour cet élève. Pour un élève pas encore " +
+              "facturé, c'est la prévision tirée de la grille publiée — aucune " +
+              "facture n'a besoin d'être émise pour la lire.",
+          },
           { key: "paidXaf", label: "Réglé", type: "money", total: true },
           {
-            key: "balanceXaf",
-            label: "Solde",
+            key: "dueNowXaf",
+            label: "Exigible",
             type: "money",
             total: true,
             warnAbove: 1,
-            hint: "Facturé moins réglé. Positif = impayé.",
+            hint:
+              "Ce qui aurait dû être réglé à ce jour. La facture couvre l'année " +
+              "entière ; ceci ne compte que les tranches déjà échues.",
+          },
+          {
+            key: "balanceXaf",
+            label: "Reste sur l'année",
+            type: "money",
+            total: true,
+            hint: "À payer moins réglé, toutes tranches confondues.",
           },
         ],
       },
@@ -531,8 +552,11 @@ export function flattenLedgerRow(row: api.ClasseLedger["rows"][number]): Record<
     lastName: row.lastName,
     firstName: row.firstName,
     stateLabel: LEDGER_STATE_FR[row.state] ?? row.state,
-    billedXaf: row.billedXaf,
+    // Billed where a facture exists, projected where it does not — one column
+    // that always answers "what does this pupil owe for the year".
+    expectedXaf: row.projectedXaf ?? row.billedXaf,
     paidXaf: row.paidXaf,
+    dueNowXaf: row.dueNowXaf,
     balanceXaf: row.balanceXaf,
     paymentCount: row.paymentCount,
     // The sheet's `date` cell formats YYYY-MM-DD by reversing on the dash; an

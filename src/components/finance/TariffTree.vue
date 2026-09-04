@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref } from "vue";
 import { KIND_FR } from "../structure/kinds";
 import type { OrgUnitKind } from "../../lib/api";
+import { MODIFIER_LABEL, withModifier } from "../../lib/platform";
 
 /**
  * THE ORGANISATION AS A DIAGRAM, priced.
@@ -80,16 +81,6 @@ const emit = defineEmits<{
   clearSelection: [];
 }>();
 
-/**
- * The platform's own modifier.
- *
- * Meta on a Mac, Control everywhere else. Reading `metaKey || ctrlKey` and
- * being done with it would make Ctrl-click on a Mac — which is the right-click
- * gesture — silently open a level.
- */
-const isApple = typeof navigator !== "undefined" && /Mac|iP(hone|ad|od)/.test(navigator.platform);
-const withModifier = (e: MouseEvent) => (isApple ? e.metaKey : e.ctrlKey);
-const MODIFIER_LABEL = isApple ? "⌘" : "Ctrl";
 
 function onNodeClick(node: TreeNode, e: MouseEvent) {
   if (withModifier(e)) {
@@ -307,6 +298,12 @@ onBeforeUnmount(() => { panning.value = false; });
       <span class="tgraph-zoom">{{ Math.round(scale * 100) }} %</span>
       <button class="btn sm ghost" type="button" aria-label="Zoomer" @click="zoomBy(1.18)">+</button>
     </div>
+
+    <!-- The shortcut said out loud, in the key THIS keyboard has. It lived in
+         a tooltip, which is where you find something you already knew about. -->
+    <p class="tgraph-legend">
+      Clic : sélectionner · <kbd>{{ MODIFIER_LABEL }}</kbd> + clic : ouvrir un niveau
+    </p>
 
     <div
       ref="viewport"

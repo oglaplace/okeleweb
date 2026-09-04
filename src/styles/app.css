@@ -6151,3 +6151,29 @@ table.data td.c-text {
 /* Type / valeur / plafond on one line — they are one sentence. */
 .grant-row { display: flex; gap: var(--s3); flex-wrap: wrap; }
 .grant-row .field { flex: 1 1 8rem; min-width: 0; }
+
+/* The graph's shortcut legend. Bottom-left, out of the way of the toolbar and
+   of the first column of cards, and it names the modifier this keyboard has. */
+.tgraph-legend {
+  position: absolute;
+  left: var(--s3);
+  bottom: var(--s3);
+  z-index: 3;
+  margin: 0;
+  padding: 4px var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+  pointer-events: none;
+}
+.tgraph-legend kbd {
+  font: inherit;
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+}

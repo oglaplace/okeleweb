@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue";
 import * as api from "../../lib/api";
 import { useBusyStore } from "../../stores/busy";
+import { MODIFIER_LABEL } from "../../lib/platform";
 import DialogShell from "../ui/DialogShell.vue";
 import ConfirmDialog from "../ui/ConfirmDialog.vue";
 import Alert from "../ui/Alert.vue";
@@ -734,7 +735,7 @@ const label = computed(() => {
         Copier une semaine
       </button>
       <span v-if="!readonly && !selected.size" class="hint">
-        Clic pour placer · Maj ou ⌘ pour sélectionner plusieurs
+        Clic pour placer · Maj ou {{ MODIFIER_LABEL }} pour sélectionner plusieurs
       </span>
     </div>
 

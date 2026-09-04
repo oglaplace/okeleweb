@@ -1688,14 +1688,25 @@ export interface ClasseLedger {
     billedXaf: number;
     paidXaf: number;
     balanceXaf: number;
+    /** What a facture WOULD say, for a pupil who has none yet. Null once billed. */
+    projectedXaf: number | null;
+    /** What should have been paid by today — never the whole year. */
+    dueNowXaf: number;
     paymentCount: number;
     lastPaymentOn: string | null;
     lastPaymentXaf: number | null;
     lastPaymentMethod: string | null;
     byTranche: Tranche[];
-    state: "CLEAR" | "PARTIAL" | "LATE" | "NONE";
+    state: "CLEAR" | "PARTIAL" | "LATE" | "NONE" | "FORECAST";
   }[];
-  totals: { billedXaf: number; paidXaf: number; balanceXaf: number; lateCount: number };
+  totals: {
+    billedXaf: number; paidXaf: number; balanceXaf: number;
+    /** Facturé plus prévision — what the classe is worth for the year. */
+    expectedXaf: number;
+    dueNowXaf: number;
+    lateCount: number;
+    forecastCount: number;
+  };
 }
 
 export interface StudentLedger {
