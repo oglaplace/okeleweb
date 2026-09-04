@@ -538,6 +538,31 @@ async function openCatalogue() {
   catalogue.value = await api.finance.feeCatalogue().catch(() => []);
 }
 
+/**
+ * Removes one added by mistake.
+ *
+ * Only offered where the API says it is removable — a button that looks live
+ * and then refuses is worse than one that explains itself first. The refusal
+ * still arrives as a message if something changed since the list was read.
+ */
+const removing = ref<string | null>(null);
+
+async function removeFeeType(t: api.FeeTypeTemplate) {
+  if (!t.id || !t.removable) return;
+  removing.value = t.code;
+  error.value = null;
+  try {
+    await api.finance.deleteFeeType(t.id);
+    notice.value = `« ${t.name} » retiré.`;
+    catalogue.value = await api.finance.feeCatalogue().catch(() => catalogue.value);
+    await load();
+  } catch (e) {
+    error.value = e instanceof api.ApiError ? e.message : "Suppression impossible.";
+  } finally {
+    removing.value = null;
+  }
+}
+
 async function install() {
   if (!wanted.value.size) return;
   installing.value = true;
@@ -934,28 +959,48 @@ const pricedCount = computed(
             vous n'assurez pas est une grille qui ment.
           </p>
           <div class="catalogue-list">
-            <label
+            <div
               v-for="t in catalogue"
               :key="t.code"
               class="catalogue-item"
               :class="{ 'is-installed': t.installed }"
             >
-              <input
-                type="checkbox"
-                :disabled="t.installed"
-                :checked="t.installed || wanted.has(t.code)"
-                @change="wanted.has(t.code) ? wanted.delete(t.code) : wanted.add(t.code);
-                         wanted = new Set(wanted)"
-              />
-              <span class="catalogue-text">
-                <span class="catalogue-name">
-                  {{ t.name }}
-                  <span class="tranche-tag">{{ RECURRENCE_FR[t.recurrence] }}</span>
-                  <span v-if="t.installed" class="tranche-tag is-clear">déjà là</span>
+              <label class="catalogue-pick">
+                <input
+                  type="checkbox"
+                  :disabled="t.installed"
+                  :checked="t.installed || wanted.has(t.code)"
+                  @change="wanted.has(t.code) ? wanted.delete(t.code) : wanted.add(t.code);
+                           wanted = new Set(wanted)"
+                />
+                <span class="catalogue-text">
+                  <span class="catalogue-name">
+                    {{ t.name }}
+                    <span class="tranche-tag">{{ RECURRENCE_FR[t.recurrence] }}</span>
+                    <span v-if="t.installed" class="tranche-tag is-clear">déjà là</span>
+                  </span>
+                  <span class="catalogue-detail">{{ t.detail }}</span>
                 </span>
-                <span class="catalogue-detail">{{ t.detail }}</span>
+              </label>
+
+              <!-- Added by mistake has to be undoable in one click. Offered
+                   only where nothing cites it; where something does, the row
+                   says what, instead of a button that refuses when pressed. -->
+              <button
+                v-if="t.installed && t.removable"
+                class="catalogue-rm"
+                type="button"
+                :disabled="removing === t.code"
+                :title="`Retirer « ${t.name} »`"
+                @click="removeFeeType(t)"
+              >
+                <span v-if="removing === t.code" class="btn-spin" aria-hidden="true" />
+                <template v-else>Retirer</template>
+              </button>
+              <span v-else-if="t.installed" class="catalogue-locked" title="Utilisé dans la grille ou par un règlement">
+                utilisé
               </span>
-            </label>
+            </div>
           </div>
         </div>
         <div class="dialog-actions" style="padding: 0 var(--s5) var(--s4)">

@@ -1455,6 +1455,20 @@ export const finance = {
       "/finance/fee-types/catalogue" + (stage ? `?stage=${stage}` : ""),
     ),
 
+  /**
+   * Removes a fee type added by mistake.
+   *
+   * Refused with a message naming what depends on it when a grille line, a
+   * règlement or a bourse still cites it — deleting then would leave both
+   * pointing at nothing. The catalogue reports `removable` so the console can
+   * say so before the button is pressed.
+   */
+  deleteFeeType: (id: string) =>
+    request<{ deleted: boolean; name: string }>(
+      `/finance/fee-types/${encodeURIComponent(id)}`,
+      { method: "DELETE" },
+    ),
+
   /** Installs catalogue entries by code. Idempotent; never overwrites. */
   installFeeTypes: (codes: string[]) =>
     request<{ installed: number; skipped: number }>("/finance/fee-types/install", {
@@ -1713,6 +1727,13 @@ export interface StudentLedger {
     billedXaf: number; paidXaf: number; balanceXaf: number; creditXaf: number;
     /** Received with no facture against it. Zero once one is issued. */
     advanceXaf: number;
+    /**
+     * What has actually fallen due, as distinct from what the year costs.
+     *
+     * A parent in November owes the tranches that have come due, not the June
+     * one; the annual figure answers a question nobody at the guichet asks.
+     */
+    dueNowXaf: number;
   };
   /** No facture at all for the year. */
   needsInvoice: boolean;
@@ -1729,6 +1750,24 @@ export interface StudentLedger {
     percentBps: number | null; amountXaf: number | null;
     feeType: string | null; reason: string | null; grantedAt: string;
   }[];
+  /**
+   * WHAT THIS PUPIL WILL OWE, before anybody issues anything.
+   *
+   * Null once a facture exists. The question is answerable the moment the
+   * grille, the modalité and the fee types are set, so it is answered —
+   * issuing stays a deliberate act, but the information is never withheld.
+   */
+  projection: {
+    totalXaf: number;
+    grossXaf: number;
+    waivedXaf: number;
+    lines: {
+      feeTypeId: string; feeType: string;
+      grossXaf: number; waivedXaf: number; amountXaf: number;
+      installments: number; perTrancheXaf: number[];
+    }[];
+    tranches: { number: number; label: string; dueOn: string }[];
+  } | null;
 }
 
 /** One entry of the shipped fee-type catalogue. */
@@ -1741,6 +1780,8 @@ export interface FeeTypeTemplate {
   installed: boolean;
   /** The tenant's own FeeType id, once installed. */
   id: string | null;
+  /** False when a grille line, a règlement or a bourse cites it. */
+  removable: boolean;
 }
 
 /** A reusable reduction rule: fratrie, bourse d'État, cas social. */

@@ -6116,3 +6116,38 @@ table.data td.c-text {
   .tarifdoc-table tr { break-inside: avoid; }
   .tarifdoc-table thead { display: table-header-group; }
 }
+
+/* ── the fee-type catalogue gains a remove control ──
+   Added by mistake has to be undoable in one click. Offered only where nothing
+   cites the type; where something does, the row says "utilisé" rather than
+   presenting a button that refuses when pressed. */
+.catalogue-item { justify-content: space-between; }
+.catalogue-pick {
+  display: flex;
+  gap: var(--s3);
+  align-items: flex-start;
+  min-width: 0;
+  cursor: pointer;
+}
+.catalogue-item.is-installed .catalogue-pick { cursor: default; }
+.catalogue-rm {
+  flex: none;
+  border: none;
+  background: none;
+  padding: 2px var(--s2);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.catalogue-rm:hover { background: var(--danger-soft); color: var(--danger); }
+.catalogue-locked {
+  flex: none;
+  font-size: var(--t-micro);
+  color: var(--line-strong);
+}
+
+/* Type / valeur / plafond on one line — they are one sentence. */
+.grant-row { display: flex; gap: var(--s3); flex-wrap: wrap; }
+.grant-row .field { flex: 1 1 8rem; min-width: 0; }
