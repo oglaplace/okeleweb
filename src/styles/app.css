@@ -6177,3 +6177,15 @@ table.data td.c-text {
   background: var(--surface-2);
   color: var(--ink-2);
 }
+
+/* A row with money already due.
+   Tinted, not shouted: sixty rows in solid red is a screen nobody can read, and
+   the point is to find the four lines that need a phone call this morning. The
+   frozen identity cells carry it too, or the name scrolls away from its own
+   warning. */
+.sheet-table tbody tr.is-danger > td { background: var(--danger-soft); }
+.sheet-table tbody tr.is-danger > td.is-frozen { background: var(--danger-soft); }
+.sheet-table tbody tr.is-danger:hover > td { background: color-mix(in srgb, var(--danger) 14%, var(--surface)); }
+.sheet-table tbody tr.is-danger.is-selected > td {
+  background: color-mix(in srgb, var(--danger) 18%, var(--surface));
+}

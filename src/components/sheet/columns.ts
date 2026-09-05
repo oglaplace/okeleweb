@@ -93,6 +93,13 @@ export interface SheetTab {
   groups?: SheetGroup[];
   /** Shown under the tab strip when the set is empty for a structural reason. */
   empty?: string;
+  /**
+   * Numeric cell that puts the whole ROW in the red when it is above zero.
+   *
+   * Declarative rather than a predicate: the flag has to mean the same thing
+   * as the column it names, and a function here would let the two drift.
+   */
+  dangerKey?: string;
 }
 
 /** The two columns that identify a row, present on every tab. */
@@ -481,6 +488,10 @@ export function financeTab(ledger: api.ClasseLedger): SheetTab {
     label: "Finances",
     frozen: 3,
     identity: IDENTITY,
+    // A pupil with something already due is read across the whole line — the
+    // name matters as much as the figure, because the next action is a phone
+    // call to their guardian.
+    dangerKey: "dueNowXaf",
     ...(ledger.policy
       ? {}
       : { empty: "Aucune modalité de paiement définie — les tranches ne peuvent pas être calculées." }),

@@ -470,7 +470,10 @@ defineExpose({ exportCsv });
           <tr
             v-for="row in viewRows"
             :key="String(row[rowKey])"
-            :class="{ 'is-selected': selected === row[rowKey] }"
+            :class="{
+              'is-selected': selected === row[rowKey],
+              'is-danger': tab.dangerKey ? Number(row[tab.dangerKey] ?? 0) > 0 : false,
+            }"
             @click="emit('pick', row)"
           >
             <td

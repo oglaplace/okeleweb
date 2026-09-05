@@ -805,10 +805,28 @@ const assessmentPrefill = ref<Record<string, string>>({});
 const XAF = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
 const moneyFmt = (v: number) => XAF.format(v);
 
-/** What the class owes, which is the number an économe opens this page for. */
+/**
+ * What the class owes over the year, and what it owes TODAY.
+ *
+ * Two different questions and the bar used to answer only the first, in red —
+ * which put a 27 million franc figure on screen in octobre and coloured it like
+ * an emergency, when almost none of it had fallen due. The red belongs on
+ * "exigible": that is the part somebody is actually late on, and it is the
+ * number the économe works from. Impayés stays neutral — it is the size of the
+ * year, not a problem.
+ *
+ * Read from the ledger when the Finances tab has loaded it, because that one
+ * knows the tranches and the pupils nobody has billed yet; the roster's own
+ * totals are the fallback and count only issued factures.
+ */
 const totalDue = computed(() =>
-  (sheet.value?.rows ?? []).reduce((sum, r) => sum + Math.max(0, r.balanceXaf), 0),
+  ledger.value
+    ? ledger.value.totals.balanceXaf
+    : (sheet.value?.rows ?? []).reduce((sum, r) => sum + Math.max(0, r.balanceXaf), 0),
 );
+
+/** Null until the finance tab has been opened — the roster cannot answer it. */
+const dueNow = computed(() => ledger.value?.totals.dueNowXaf ?? null);
 </script>
 
 <template>
@@ -862,8 +880,14 @@ const totalDue = computed(() =>
           </div>
           <div v-if="sheet" class="statbar-item">
             <span class="statbar-label">Impayés</span>
-            <span class="statbar-value" :class="{ 'is-warn': totalDue > 0 }">
-              {{ moneyFmt(totalDue) }} XAF
+            <span class="statbar-value">{{ moneyFmt(totalDue) }} XAF</span>
+          </div>
+          <!-- The one red figure on the page: what should already have been
+               paid. Everything else here is the size of the year. -->
+          <div v-if="dueNow !== null" class="statbar-item">
+            <span class="statbar-label">Exigible</span>
+            <span class="statbar-value" :class="{ 'is-warn': dueNow > 0 }">
+              {{ moneyFmt(dueNow) }} XAF
             </span>
           </div>
           <div v-if="unit.capacity" class="statbar-item">
