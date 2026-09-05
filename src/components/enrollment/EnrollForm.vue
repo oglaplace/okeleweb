@@ -68,6 +68,73 @@ const form = ref({
   guardians: [blankGuardian()] as GuardianRow[],
 });
 
+/*
+ * ── THE SECOND STEP ────────────────────────────────────────────────────────
+ *
+ * An inscription and the money handed over with it are one act at the desk, so
+ * the form asks for both and sends them together. The API treats the pair as
+ * atomic: a refused payment undoes the enrolment rather than leaving a child on
+ * the roll whose family believes they have paid.
+ *
+ * The payment is OPTIONAL — plenty of inscriptions are recorded before anything
+ * is paid — but it is ASKED, because "later" is how a school ends up with a
+ * register and a till that disagree.
+ */
+const step = ref<1 | 2>(1);
+
+const pay = ref({ amount: "", method: "CASH" as api.PaymentMethod, feeTypeId: "", note: "", reference: "" });
+const feeTypes = ref<{ id: string; name: string }[]>([]);
+const OTHER = "__other__";
+
+/** Only these carry one; the rest would print an empty box on every slip. */
+const NEEDS_REFERENCE: api.PaymentMethod[] = ["MTN_MOMO", "AIRTEL_MONEY", "BANK_TRANSFER", "CHEQUE"];
+const REFERENCE_LABEL: Partial<Record<api.PaymentMethod, string>> = {
+  MTN_MOMO: "N° de transaction MoMo",
+  AIRTEL_MONEY: "N° de transaction Airtel",
+  BANK_TRANSFER: "Référence du virement",
+  CHEQUE: "N° du chèque",
+};
+
+/** Digits only: a thousands separator typed by hand must not become an amount. */
+const amountXaf = computed(() => Number(pay.value.amount.replace(/\D/g, "")) || 0);
+
+/**
+ * The échéancier of the class they are joining.
+ *
+ * Not a total — a bourse this pupil has not been granted yet would make any
+ * figure shown here wrong — but the modalité and the first échéance, which is
+ * the question actually asked across the desk: "c'est payable quand".
+ */
+const schedule = ref<{ modality: string; tranches: { label: string; dueOn: string }[] } | null>(null);
+
+async function goToPayment() {
+  if (!canSubmit.value) return;
+  step.value = 2;
+  error.value = null;
+  if (!feeTypes.value.length) {
+    // Both optional to the point of invisible: without them the step still
+    // works, it just has fewer words on it.
+    feeTypes.value = await api.finance.feeTypes().catch(() => []);
+  }
+  if (!schedule.value && form.value.classeId && form.value.academicYearId) {
+    const led = await api.finance
+      .classeLedger(form.value.classeId, form.value.academicYearId)
+      .catch(() => null);
+    if (led?.policy) {
+      schedule.value = {
+        modality: api.PAYMENT_MODALITY_FR[led.policy.modality] ?? led.policy.modality,
+        tranches: led.tranches.map((t) => ({ label: t.label, dueOn: t.dueOn })),
+      };
+    }
+  }
+}
+
+const XAF = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
+const money = (v: number) => `${XAF.format(v)} XAF`;
+
+const day = (iso: string) =>
+  new Date(iso).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
+
 /** The portrait, as a data URL, or nothing at all. See PhotoInput. */
 const photo = ref<string | null>(null);
 /** Enrolled, but the photo did not go up — a warning, never an error. */
@@ -143,6 +210,27 @@ async function submit() {
           academicYearId: form.value.academicYearId,
           classeId: form.value.classeId,
           isRepeating: form.value.isRepeating,
+          /*
+           * SENT WITH THE ENROLMENT, not after it. Two calls could half-happen;
+           * the API undoes the inscription if the règlement is refused.
+           */
+          ...(amountXaf.value > 0
+            ? {
+                payment: {
+                  amountXaf: amountXaf.value,
+                  method: pay.value.method,
+                  ...(pay.value.feeTypeId && pay.value.feeTypeId !== OTHER
+                    ? { feeTypeId: pay.value.feeTypeId }
+                    : {}),
+                  ...(pay.value.feeTypeId === OTHER && pay.value.note.trim()
+                    ? { purposeNote: pay.value.note.trim() }
+                    : {}),
+                  ...(NEEDS_REFERENCE.includes(pay.value.method) && pay.value.reference.trim()
+                    ? { reference: pay.value.reference.trim() }
+                    : {}),
+                },
+              }
+            : {}),
           ...(namedGuardians.value.length
             ? {
                 guardians: namedGuardians.value.map((g) => ({
@@ -155,7 +243,12 @@ async function submit() {
               }
             : {}),
         }),
-      { title: "Inscription", detail: "Création de l'élève et de son inscription." },
+      {
+        title: "Inscription",
+        detail: amountXaf.value > 0
+          ? "Création de l'élève, de son inscription et du règlement."
+          : "Création de l'élève et de son inscription.",
+      },
     );
     /*
      * THE PHOTO IS SENT AFTER, AND ITS FAILURE IS NOT THE ENROLMENT'S.
@@ -178,7 +271,9 @@ async function submit() {
       }
     }
 
-    notice.value = `${fullName} inscrit(e).`;
+    notice.value = created.receipt
+      ? `${fullName} inscrit(e) · ${money(created.payment?.amountXaf ?? 0)} encaissé(s) · reçu ${created.receipt.number}.`
+      : `${fullName} inscrit(e).`;
     // The classe and the year stay: a secretary enrols a whole list in one
     // sitting, and re-picking the same class forty times is the work.
     form.value.firstName = "";
@@ -189,6 +284,8 @@ async function submit() {
     form.value.isRepeating = false;
     photo.value = null;
     form.value.guardians = [blankGuardian()];
+    pay.value = { amount: "", method: "CASH", feeTypeId: "", note: "", reference: "" };
+    step.value = 1;
     emit("enrolled", { name: fullName, classeId: form.value.classeId });
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Inscription impossible.";
@@ -233,7 +330,20 @@ defineExpose({ submit });
     <Alert v-if="error" kind="error" @close="error = null">{{ error }}</Alert>
     <Alert v-if="photoWarning" kind="warn" @close="photoWarning = null">{{ photoWarning }}</Alert>
 
-    <fieldset class="fieldset">
+    <!-- Two steps, both visible from the start: the operator has to know the
+         payment is coming before they start typing names, or they will look
+         for it afterwards and not find it. -->
+    <ol class="steps">
+      <li :class="{ 'is-on': step === 1, 'is-done': step === 2 }">
+        <span class="steps-n">1</span> Élève
+      </li>
+      <li :class="{ 'is-on': step === 2 }">
+        <span class="steps-n">2</span> Règlement
+        <span class="steps-note">facultatif</span>
+      </li>
+    </ol>
+
+    <fieldset v-show="step === 1" class="fieldset">
       <legend>Élève</legend>
       <div class="field-row">
         <div class="field">
@@ -273,7 +383,7 @@ defineExpose({ submit });
       Later never comes: the number is needed the first time the child is absent
       or a tranche is unpaid, and by then whoever knew it has gone home.
     -->
-    <fieldset class="fieldset">
+    <fieldset v-show="step === 1" class="fieldset">
       <legend>Tuteurs</legend>
       <p class="fieldset-note">
         Le premier tuteur est le contact principal et le destinataire des
@@ -336,7 +446,7 @@ defineExpose({ submit });
       </button>
     </fieldset>
 
-    <fieldset class="fieldset" style="margin-bottom: 0">
+    <fieldset v-show="step === 1" class="fieldset" style="margin-bottom: 0">
       <legend>Inscription</legend>
       <div class="field-row">
         <!-- Stated, not asked, when the form was opened from the class. -->
@@ -372,12 +482,85 @@ defineExpose({ submit });
       </label>
     </fieldset>
 
+    <fieldset v-if="step === 2" class="fieldset" style="margin-bottom: 0">
+      <legend>Règlement</legend>
+      <p class="fieldset-note">
+        Ce qui est versé maintenant, au guichet. Laissez le montant vide si la
+        famille ne paie rien aujourd'hui — l'inscription se fait quand même.
+        <template v-if="schedule">
+          <br />
+          <strong>{{ schedule.modality }}</strong>
+          <template v-if="schedule.tranches[0]">
+            · première échéance le {{ day(schedule.tranches[0].dueOn) }}
+          </template>
+        </template>
+      </p>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="p-amt">Montant (XAF)</label>
+          <input id="p-amt" v-model="pay.amount" inputmode="numeric" autocomplete="off"
+                 placeholder="0" />
+          <span v-if="amountXaf > 0" class="hint">{{ money(amountXaf) }}</span>
+        </div>
+        <div class="field">
+          <label for="p-met">Moyen</label>
+          <select id="p-met" v-model="pay.method">
+            <option v-for="(label, code) in api.PAYMENT_METHOD_FR" :key="code" :value="code">
+              {{ label }}
+            </option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="p-mot">Motif</label>
+          <select id="p-mot" v-model="pay.feeTypeId">
+            <option value="">—</option>
+            <option v-for="f in feeTypes" :key="f.id" :value="f.id">{{ f.name }}</option>
+            <option :value="OTHER">Autre…</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div v-if="pay.feeTypeId === OTHER" class="field">
+          <label for="p-note">Préciser</label>
+          <input id="p-note" v-model="pay.note" maxlength="120" autocomplete="off"
+                 placeholder="Carte perdue, contribution…" />
+        </div>
+        <!-- Only for the methods that have one: a "référence" for cash is a box
+             nobody fills. -->
+        <div v-if="NEEDS_REFERENCE.includes(pay.method)" class="field">
+          <label for="p-ref">{{ REFERENCE_LABEL[pay.method] ?? "Référence" }}</label>
+          <input id="p-ref" v-model="pay.reference" autocomplete="off" />
+        </div>
+      </div>
+
+      <p v-if="amountXaf > 0" class="hint">
+        L'inscription et le règlement partent ensemble : si le règlement est
+        refusé, l'inscription n'est pas créée non plus.
+      </p>
+    </fieldset>
+
     <div class="form-actions">
       <slot name="cancel" />
-      <button class="btn primary" type="submit" :disabled="!canSubmit">
-        <span v-if="working" class="btn-spin" aria-hidden="true" />
-        {{ working ? "Inscription…" : "Inscrire" }}
-      </button>
+      <template v-if="step === 1">
+        <button class="btn primary" type="button" :disabled="!canSubmit" @click="goToPayment">
+          Continuer
+        </button>
+      </template>
+      <template v-else>
+        <button class="btn ghost" type="button" :disabled="working" @click="step = 1">
+          Retour
+        </button>
+        <button class="btn primary" type="submit" :disabled="!canSubmit">
+          <span v-if="working" class="btn-spin" aria-hidden="true" />
+          {{
+            working ? "Inscription…"
+            : amountXaf > 0 ? `Inscrire et encaisser ${money(amountXaf)}`
+            : "Inscrire sans règlement"
+          }}
+        </button>
+      </template>
     </div>
   </form>
 </template>

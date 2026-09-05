@@ -1258,7 +1258,7 @@ const dueNow = computed(() => ledger.value?.totals.dueNowXaf ?? null);
         v-if="inlineForm === 'enroll'"
         title="Inscrire un élève"
         :subtitle="`${KIND_FR[unit.kind]} · ${unit.name}`"
-        detail="L'élève, ses tuteurs et son inscription sont créés ensemble."
+        detail="L'élève, ses tuteurs, son inscription et le règlement du jour partent ensemble."
         icon="userPlus"
         wide
         @close="inlineForm = null"

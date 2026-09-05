@@ -6216,3 +6216,35 @@ table.data td.c-text {
 .sheet-table tbody tr.is-danger.is-selected > td {
   background: color-mix(in srgb, var(--danger) 18%, var(--surface));
 }
+
+/* ── the enrolment stepper ──
+   Both steps named up front: an operator who does not know the payment step is
+   coming looks for it after saving and does not find it. */
+.steps {
+  display: flex;
+  gap: var(--s4);
+  margin: 0 0 var(--s4);
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-small);
+  color: var(--ink-3);
+}
+.steps li { display: flex; align-items: center; gap: var(--s2); }
+.steps-n {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  font-size: var(--t-micro);
+  font-weight: 650;
+}
+.steps li.is-on { color: var(--ink); font-weight: 600; }
+.steps li.is-on .steps-n {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-ink);
+}
+.steps li.is-done .steps-n { border-color: var(--primary); color: var(--primary); }
+.steps-note { font-size: var(--t-micro); color: var(--line-strong); }

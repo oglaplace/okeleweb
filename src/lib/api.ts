@@ -1068,10 +1068,35 @@ export const enrollment = {
     classeId: string;
     serieId?: string | null;
     isRepeating?: boolean;
+    /**
+     * The money handed over at the same desk, if any.
+     *
+     * Sent WITH the enrolment rather than after it: the API treats the pair as
+     * one act, and a refused payment undoes the inscription instead of leaving
+     * a pupil on the roll whose family believes they paid. Requires
+     * `finance.write` — without it the call is refused rather than silently
+     * enrolling and dropping the money.
+     */
+    payment?: {
+      amountXaf: number;
+      method: PaymentMethod;
+      feeTypeId?: string;
+      purposeNote?: string;
+      reference?: string;
+    };
   }) =>
     /* `personId` comes back so the caller can attach the portrait without
        walking student → person for a field the API already had in hand. */
-    request<{ id: string; studentId: string; personId: string }>("/enrollment", {
+    request<{
+      id: string; studentId: string; personId: string;
+      /** All null when no payment was sent — see `payment` above. */
+      payment: { id: string; amountXaf: number; receivedAt: string } | null;
+      receipt: { id: string; number: string } | null;
+      invoice: {
+        id: string | null; number: string | null; status: string;
+        totalXaf: number; paidXaf: number; balanceXaf: number; creditXaf: number;
+      } | null;
+    }>("/enrollment", {
       method: "POST",
       body: JSON.stringify(body),
     }),
