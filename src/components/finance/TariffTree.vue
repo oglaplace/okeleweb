@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from "vue";
-import { KIND_FR } from "../structure/kinds";
+import { KIND_FR, type TariffKind } from "../structure/kinds";
 import type { OrgUnitKind } from "../../lib/api";
 import { MODIFIER_LABEL, withModifier } from "../../lib/platform";
 
@@ -40,7 +40,7 @@ import { MODIFIER_LABEL, withModifier } from "../../lib/platform";
 export interface TreeNode {
   id: string;
   name: string;
-  kind: OrgUnitKind;
+  kind: TariffKind;
   parentId: string | null;
   /** May this row take a price, given the levels the operator opened? */
   editable: boolean;
@@ -75,7 +75,7 @@ const emit = defineEmits<{
    * diagram and say "this kind". It therefore has to work on a node that is
    * currently LOCKED — that is the whole case it exists for.
    */
-  activateLevel: [OrgUnitKind];
+  activateLevel: [TariffKind];
   clear: [string];
   /** The background was clicked, not dragged: drop the selection. */
   clearSelection: [];

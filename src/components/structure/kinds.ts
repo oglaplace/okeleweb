@@ -1,7 +1,18 @@
 import type { OrgUnitKind } from "../../lib/api";
 
+/**
+ * A kind, plus the one row in the grille tarifaire that is not an OrgUnit.
+ *
+ * "STAFF" never comes out of the structure endpoints — only the tariff grid
+ * emits it, for the single row that prices what employees pay. It lives in the
+ * same map so every screen that labels a kind labels that row too.
+ */
+export type TariffKind = OrgUnitKind | "STAFF";
+
 /** The buyer's word for each kind. */
-export const KIND_FR: Record<OrgUnitKind, string> = {
+export const KIND_FR: Record<TariffKind, string> = {
+  // The row is named "Employés"; the KIND is what sort of row it is.
+  STAFF: "Personnel",
   COMPLEX: "Complexe",
   ORG_DIVISION: "Direction",
   DEPARTMENT: "Département",

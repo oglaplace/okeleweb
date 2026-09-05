@@ -1488,7 +1488,14 @@ export const finance = {
    * taken as avances instead.
    */
   publishTariffs: (academicYearId: string) =>
-    request<{ version: number; publishedAt: string; units: number }>(
+    request<{
+      version: number; publishedAt: string; units: number;
+      /** Pupils who had none and now do — publishing is what bills a class. */
+      invoicesIssued: number;
+      /** And the ones already billed, brought back in line with the new prices. */
+      invoicesRepriced: number;
+      revisionXaf: number;
+    }>(
       "/finance/tariffs/publish",
       { method: "POST", body: JSON.stringify({ academicYearId }) },
     ),
@@ -1545,13 +1552,29 @@ export const finance = {
    * "the canteen is free" are different statements, and only one of them
    * belongs on a facture.
    */
+  /**
+   * The staff row: what the complex charges its own employees.
+   *
+   * Its own endpoint because it hangs off no OrgUnit, and `finance.admin`
+   * rather than a unit scope — one price for every employee of the complex is
+   * a complex-wide decision.
+   */
+  setStaffTariff: (body: {
+    academicYearId: string;
+    items: { feeTypeId: string; amountXaf: number | null; installments?: number }[];
+  }) =>
+    request<{ units: number; items: number; cleared: number }>("/finance/tariffs/staff", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   setTariffs: (body: {
     academicYearId: string;
     orgUnitIds: string[];
     serieId?: string | null;
     items: { feeTypeId: string; amountXaf: number | null; installments?: number }[];
   }) =>
-    request<{ units: number; items: number }>("/finance/tariffs", {
+    request<{ units: number; items: number; cleared: number }>("/finance/tariffs", {
       method: "POST",
       body: JSON.stringify(body),
     }),
@@ -1859,6 +1882,15 @@ export interface WeekDiff {
 }
 
 /** The grille tarifaire as a grid: units down, fee types across. */
+/**
+ * The id the staff tariff carries on the wire.
+ *
+ * It is not an OrgUnit: the row belongs to no level of study, and the API
+ * stores it with no unit at all. Writes for it go to `setStaffTariff`, never to
+ * `setTariffs` — the scope guard there resolves ids to units and would refuse.
+ */
+export const STAFF_UNIT_ID = "employees";
+
 export interface TariffGrid {
   /**
    * Where publication stands, or null when nothing was ever released.
@@ -1892,7 +1924,12 @@ export interface TariffGrid {
   units: {
     id: string;
     name: string;
-    kind: OrgUnitKind;
+    /**
+     * "STAFF" is the one row that is not an OrgUnit — see STAFF_UNIT_ID. The
+     * API filters the rest down to the path a pupil sits on, so a direction or
+     * a comptabilité never appears here.
+     */
+    kind: OrgUnitKind | "STAFF";
     parentId: string | null;
     code: string | null;
     priceable: boolean;

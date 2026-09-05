@@ -4,7 +4,7 @@ import { useRouter } from "vue-router";
 import * as api from "../../lib/api";
 import Alert from "../../components/ui/Alert.vue";
 import Icon from "../../components/ui/Icon.vue";
-import { KIND_FR } from "../../components/structure/kinds";
+import { KIND_FR, type TariffKind } from "../../components/structure/kinds";
 import TariffTree, { type TreeNode } from "../../components/finance/TariffTree.vue";
 import ConfirmDialog from "../../components/ui/ConfirmDialog.vue";
 import { useAuthStore } from "../../stores/auth";
@@ -120,7 +120,7 @@ function setView(next: ViewMode) {
 interface Row {
   id: string;
   name: string;
-  kind: api.OrgUnitKind;
+  kind: TariffKind;
   depth: number;
   priceable: boolean;
   /** Last child at its depth — draws the elbow rather than the tee. */
@@ -212,7 +212,7 @@ function inherited(unitId: string, feeTypeId: string): { amountXaf: number; from
  * control that does nothing. The list is what the tree actually contains.
  */
 const levels = computed(() => {
-  const seen = new Map<api.OrgUnitKind, number>();
+  const seen = new Map<TariffKind, number>();
   for (const r of rows.value) {
     if (!r.priceable) continue;
     if (!seen.has(r.kind)) seen.set(r.kind, r.depth);
@@ -293,6 +293,29 @@ function scheduleFlush() {
   timer = setTimeout(() => void flush(), 900);
 }
 
+/**
+ * ONE WRITER for both kinds of row.
+ *
+ * The staff tariff hangs off no OrgUnit, so it goes to its own endpoint — and
+ * that has to be decided in one place. Two call sites each remembering to check
+ * is one call site that eventually does not.
+ */
+function writeTariffs(
+  unitIds: string[],
+  items: { feeTypeId: string; amountXaf: number | null; installments?: number }[],
+) {
+  const year = yearId.value!;
+  const staff = unitIds.includes(api.STAFF_UNIT_ID);
+  const units = unitIds.filter((id) => id !== api.STAFF_UNIT_ID);
+  return Promise.all([
+    units.length ? api.finance.setTariffs({ academicYearId: year, orgUnitIds: units, items }) : null,
+    staff ? api.finance.setStaffTariff({ academicYearId: year, items }) : null,
+  ]).then(([a, b]) => ({
+    units: (a?.units ?? 0) + (b?.units ?? 0),
+    cleared: (a?.cleared ?? 0) + (b?.cleared ?? 0),
+  }));
+}
+
 async function flush() {
   if (!yearId.value || !edits.value.size || saving.value) return;
 
@@ -311,10 +334,14 @@ async function flush() {
   error.value = null;
   const pending = new Map(edits.value);
   try {
+    let cleared = 0;
     for (const [unitId, items] of byUnit) {
-      await api.finance.setTariffs({
-        academicYearId: yearId.value, orgUnitIds: [unitId], items,
-      });
+      cleared += (await writeTariffs([unitId], items)).cleared;
+    }
+    // Said out loud, because it is the surprising half: a price typed on a
+    // parent takes the exceptions below it away.
+    if (cleared) {
+      notice.value = `${cleared} prix plus bas remplacé(s) par celui du niveau supérieur.`;
     }
     /*
      * RELOAD FIRST, THEN CLEAR — and the order is the whole bug.
@@ -383,7 +410,7 @@ function toggleUnit(id: string) {
  * Toggles, so the same gesture closes the level again — the pill's own
  * behaviour, reached from the other end.
  */
-function activateLevel(kind: api.OrgUnitKind) {
+function activateLevel(kind: TariffKind) {
   toggleKind(kind);
 }
 
@@ -413,19 +440,18 @@ async function applyToSelection() {
   try {
     const amount = clean(bulkAmount.value);
     const inst = clean(bulkInstallments.value);
-    const res = await api.finance.setTariffs({
-      academicYearId: yearId.value,
-      orgUnitIds: [...selected.value],
-      items: [{
-        feeTypeId: activeFee.value,
-        amountXaf: amount === "" ? null : Number(amount),
-        ...(inst ? { installments: Number(inst) } : {}),
-      }],
-    });
+    const res = await writeTariffs([...selected.value], [{
+      feeTypeId: activeFee.value,
+      amountXaf: amount === "" ? null : Number(amount),
+      ...(inst ? { installments: Number(inst) } : {}),
+    }]);
+    const below = res.cleared
+      ? ` · ${res.cleared} prix plus bas remplacé(s)`
+      : "";
     notice.value =
       amount === ""
-        ? `Ligne retirée de ${res.units} unité(s).`
-        : `${money(Number(amount))} XAF appliqué à ${res.units} unité(s).`;
+        ? `Ligne retirée de ${res.units} unité(s).${below}`
+        : `${money(Number(amount))} XAF appliqué à ${res.units} unité(s).${below}`;
     grid.value = await api.finance.tariffs(yearId.value);
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Application impossible.";
@@ -497,7 +523,10 @@ async function publish() {
   error.value = null;
   try {
     const r = await api.finance.publishTariffs(yearId.value);
-    notice.value = `Grille publiée — version ${r.version}, ${r.units} unité(s) tarifée(s).`;
+    const billed = r.invoicesIssued ? ` · ${r.invoicesIssued} facture(s) émise(s)` : "";
+    const moved = r.invoicesRepriced ? ` · ${r.invoicesRepriced} facture(s) révisée(s)` : "";
+    notice.value =
+      `Grille publiée — version ${r.version}, ${r.units} unité(s) tarifée(s)${billed}${moved}.`;
     grid.value = await api.finance.tariffs(yearId.value);
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Publication impossible.";
@@ -539,27 +568,40 @@ async function openCatalogue() {
 }
 
 /**
- * Removes one added by mistake.
+ * Removes one added by mistake — from the catalogue or from the tab strip.
  *
- * Only offered where the API says it is removable — a button that looks live
- * and then refuses is worse than one that explains itself first. The refusal
- * still arrives as a message if something changed since the list was read.
+ * Offered in two places and answered in one: both raise the same confirmation,
+ * because the × sits a few pixels from the tab you meant to click and undoing a
+ * removal means finding the type in the catalogue again. The API refuses
+ * anyway once a price, a règlement or a bourse cites it, and that refusal
+ * arrives as a message if something changed since the list was read.
  */
-const removing = ref<string | null>(null);
+const removing = ref<{ id: string; name: string } | null>(null);
+const removeBusy = ref(false);
 
-async function removeFeeType(t: api.FeeTypeTemplate) {
-  if (!t.id || !t.removable) return;
-  removing.value = t.code;
+function askRemove(t: { id: string | null; name: string }) {
+  if (!t.id) return;
+  removing.value = { id: t.id, name: t.name };
+}
+
+async function removeFeeType() {
+  const target = removing.value;
+  if (!target || removeBusy.value) return;
+  removeBusy.value = true;
   error.value = null;
   try {
-    await api.finance.deleteFeeType(t.id);
-    notice.value = `« ${t.name} » retiré.`;
-    catalogue.value = await api.finance.feeCatalogue().catch(() => catalogue.value);
+    await api.finance.deleteFeeType(target.id);
+    notice.value = `« ${target.name} » retiré.`;
+    removing.value = null;
+    if (activeFee.value === target.id) activeFee.value = "";
+    if (pickingTypes.value) {
+      catalogue.value = await api.finance.feeCatalogue().catch(() => catalogue.value);
+    }
     await load();
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Suppression impossible.";
   } finally {
-    removing.value = null;
+    removeBusy.value = false;
   }
 }
 
@@ -612,6 +654,22 @@ const treeNodes = computed<TreeNode[]>(() =>
     };
   }),
 );
+
+/**
+ * Which fee types carry a price anywhere in the grid.
+ *
+ * Drives the × on the tab: a type with figures behind it is not removed by
+ * accident, and the API refuses it anyway once anything cites it. Counted over
+ * the DRAFT, which is what the screen is editing.
+ */
+const pricedTypes = computed(() => {
+  const set = new Set<string>();
+  for (const sch of grid.value?.schedules ?? []) {
+    for (const item of sch.items) set.add(item.feeTypeId);
+  }
+  return set;
+});
+const pricedIn = (feeTypeId: string) => pricedTypes.value.has(feeTypeId);
 
 /** How many units carry a price for the fee type on screen. */
 const pricedCount = computed(
@@ -710,19 +768,36 @@ const pricedCount = computed(
       <template v-else>
         <!-- One fee type at a time. Eight columns of figures is a wall. -->
         <div class="tarif-tabs" role="tablist">
-          <button
+          <div
             v-for="f in feeTypes"
             :key="f.id"
             class="tarif-tab"
             :class="{ 'is-active': f.id === activeFee }"
-            type="button"
-            role="tab"
-            :aria-selected="f.id === activeFee"
-            @click="activeFee = f.id"
           >
-            <span class="tarif-tab-name">{{ f.name }}</span>
-            <span class="tarif-tab-sub">{{ RECURRENCE_FR[f.recurrence] ?? f.recurrence }}</span>
-          </button>
+            <button
+              class="tarif-tab-pick"
+              type="button"
+              role="tab"
+              :aria-selected="f.id === activeFee"
+              @click="activeFee = f.id"
+            >
+              <span class="tarif-tab-name">{{ f.name }}</span>
+              <span class="tarif-tab-sub">{{ RECURRENCE_FR[f.recurrence] ?? f.recurrence }}</span>
+            </button>
+            <!-- Offered only where the column is empty: a type carrying prices
+                 is removed by clearing them first, which is a decision about
+                 money and not about a tab. -->
+            <button
+              v-if="!pricedIn(f.id)"
+              class="tarif-tab-x"
+              type="button"
+              :aria-label="`Retirer « ${f.name} »`"
+              :title="`Retirer « ${f.name} »`"
+              @click.stop="askRemove(f)"
+            >
+              <Icon name="x" :size="12" />
+            </button>
+          </div>
         </div>
 
         <div class="card tarif-panel">
@@ -901,6 +976,24 @@ const pricedCount = computed(
       PUBLICATION IS THE ONE ACT HERE THAT LEAVES THE OFFICE. It states what
       becomes true and for whom rather than asking "are you sure?".
     -->
+    <!-- Removal is cheap to do and annoying to undo, so it asks once. -->
+    <ConfirmDialog
+      v-if="removing"
+      title="Retirer ce type de frais ?"
+      :subtitle="removing.name"
+      confirm-label="Retirer"
+      :busy="removeBusy"
+      danger
+      @close="removing = null"
+      @confirm="removeFeeType"
+    >
+      <p class="hint" style="margin: 0">
+        Aucun tarif n'est fixé pour « {{ removing.name }} » : le retirer ne change
+        aucun prix. Il disparaît de la grille et des factures à venir, et peut être
+        rajouté depuis le catalogue.
+      </p>
+    </ConfirmDialog>
+
     <ConfirmDialog
       v-if="confirmingPublish"
       title="Publier la grille tarifaire"
@@ -918,7 +1011,11 @@ const pricedCount = computed(
       <p v-if="publication">
         Elle remplacera la version {{ publication.version }}, publiée le
         {{ new Date(publication.publishedAt).toLocaleDateString("fr-FR") }}.
-        Les factures déjà émises ne changent pas.
+        <strong>Les factures déjà émises seront mises à jour</strong> : chaque
+        changement ci-dessous est porté en une ligne de révision datée sur la
+        facture de l'élève concerné, et l'écriture correspondante passe au
+        journal. Une facture n'est jamais réécrite — son numéro a été remis aux
+        familles.
       </p>
 
       <!-- WHAT CHANGES, listed. "Are you sure?" tells nobody anything; a list
@@ -990,13 +1087,9 @@ const pricedCount = computed(
                 v-if="t.installed && t.removable"
                 class="catalogue-rm"
                 type="button"
-                :disabled="removing === t.code"
                 :title="`Retirer « ${t.name} »`"
-                @click="removeFeeType(t)"
-              >
-                <span v-if="removing === t.code" class="btn-spin" aria-hidden="true" />
-                <template v-else>Retirer</template>
-              </button>
+                @click="askRemove(t)"
+              >Retirer</button>
               <span v-else-if="t.installed" class="catalogue-locked" title="Utilisé dans la grille ou par un règlement">
                 utilisé
               </span>

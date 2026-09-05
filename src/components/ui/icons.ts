@@ -11,6 +11,7 @@ export const ICON_NAMES = [
   "layers", "plus", "search", "chevronRight", "chevronLeft", "chevronDown", "dots", "arrowLeft",
   "settings", "clock",
   "bulb",
+  "x",
 ] as const;
 
 export type IconName = (typeof ICON_NAMES)[number];

@@ -5515,21 +5515,48 @@ table.data td.c-text {
   margin-bottom: -1px;
   padding-bottom: 0;
 }
+/* The tab is a row now — the label picks the fee type, the × removes it. */
 .tarif-tab {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 var(--s2) 0 0;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.tarif-tab-pick {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 1px;
-  padding: var(--s2) var(--s4);
-  border: 1px solid transparent;
-  border-bottom: none;
-  border-radius: var(--radius) var(--radius) 0 0;
+  padding: var(--s2) var(--s3) var(--s2) var(--s4);
+  border: none;
   background: none;
-  color: var(--ink-2);
+  color: inherit;
   font: inherit;
   cursor: pointer;
-  white-space: nowrap;
 }
+/* Only on the tab under the pointer or in use: an × on every tab all the time
+   is six invitations to delete something above a grid of prices. */
+.tarif-tab-x {
+  display: flex;
+  align-items: center;
+  padding: 3px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--line-strong);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 90ms linear;
+}
+.tarif-tab:hover .tarif-tab-x,
+.tarif-tab.is-active .tarif-tab-x,
+.tarif-tab-x:focus-visible { opacity: 1; }
+.tarif-tab-x:hover { background: var(--danger-soft); color: var(--danger); }
 .tarif-tab:hover { background: var(--surface-2); }
 .tarif-tab.is-active {
   background: var(--surface);
