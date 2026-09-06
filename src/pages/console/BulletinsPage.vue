@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { useRoute } from "vue-router";
+import { RouterLink, useRoute } from "vue-router";
 import * as api from "../../lib/api";
 import BulletinSheet from "../../components/bulletin/BulletinSheet.vue";
 
@@ -58,13 +58,37 @@ async function load() {
   }
 }
 
+/**
+ * THE PERIOD A SCHOOL IS ACTUALLY IN, not the first of the year.
+ *
+ * THE BUG THIS FIXES. This page opened on `periods[0]` — the 1er trimestre —
+ * whatever the date. A council held in février issues the 2e trimestre's
+ * bulletins, and the print screen then showed an empty 1er trimestre: bulletins
+ * existed, the operator could see them one at a time from a pupil's own page,
+ * and this screen said there were none. The one place the whole run is printed
+ * from was the one place they were invisible.
+ *
+ * So: the période containing today, else the last one already started, else the
+ * first. Bulletins are printed while the term is on or just after it.
+ */
+function currentPeriod(list: api.Period[]): string | null {
+  if (!list.length) return null;
+  const today = Date.now();
+  const holdingToday = list.find(
+    (p) => new Date(p.startsOn).getTime() <= today && today <= new Date(p.endsOn).getTime(),
+  );
+  if (holdingToday) return holdingToday.id;
+  const started = list.filter((p) => new Date(p.startsOn).getTime() <= today);
+  return (started[started.length - 1] ?? list[0])?.id ?? null;
+}
+
 async function loadPeriods() {
   sheets.value = [];
   periodId.value = null;
   if (!yearId.value || !cycleId.value) return;
   try {
     periods.value = await api.academics.periods(cycleId.value, yearId.value);
-    periodId.value = periods.value[0]?.id ?? null;
+    periodId.value = currentPeriod(periods.value);
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Chargement impossible.";
   }
@@ -128,9 +152,17 @@ watch(periodId, () => void loadSheets());
 
     <div v-else-if="!sheets.length" class="card no-print">
       <div class="empty">
-        Aucun bulletin publié pour cette période.
-        <br />
-        Passez par le conseil de classe, puis publiez.
+        <div class="empty-title">Aucun bulletin figé pour cette période</div>
+        <div>
+          Les bulletins d'une période sont figés par le conseil de classe. Ceux
+          d'une autre période sont peut-être prêts — le sélecteur ci-dessus les
+          montre.
+        </div>
+        <div class="empty-actions">
+          <RouterLink class="btn primary" :to="{ name: 'classe', params: { id: classeId } }">
+            Ouvrir le conseil de classe
+          </RouterLink>
+        </div>
       </div>
     </div>
 

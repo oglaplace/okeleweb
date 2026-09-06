@@ -6368,3 +6368,60 @@ table.data td.is-muted {
   font-size: var(--t-small);
 }
 .verify-foot { margin-bottom: 0; }
+
+/* ── le conseil de classe, as three steps ──
+   The meeting has an order and the screen says it: marks, deliberation, freeze.
+   Before this the page was a row of equal-looking buttons and the council
+   itself read as one more link beside "Saisie des notes". */
+.council {
+  display: flex;
+  align-items: center;
+  gap: var(--s5);
+  flex-wrap: wrap;
+  padding: var(--s4);
+  margin-bottom: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.council-step { display: flex; align-items: center; gap: var(--s3); }
+.council-step > div { display: flex; flex-direction: column; }
+.council-step strong { font-size: var(--t-body); font-weight: 600; }
+.council-step span:not(.council-n) { font-size: var(--t-small); color: var(--ink-3); }
+.council-n {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  font-size: var(--t-micro);
+  font-weight: 700;
+  color: var(--ink-3);
+}
+.council-step.is-on .council-n { border-color: var(--primary); color: var(--primary); }
+.council-step.is-done .council-n {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-ink);
+}
+.council-go { margin-left: auto; }
+
+/* ── fin d'année et rentrée ── */
+.rentree-pick { display: flex; gap: var(--s5); align-items: flex-end; flex-wrap: wrap; }
+.rentree-pick .field { flex: 1 1 12rem; }
+.rentree-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+  padding: var(--s3) var(--s4);
+  margin-bottom: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: var(--t-small);
+}
+.rentree-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s4); }
+.rentree-apply { display: flex; align-items: center; gap: var(--s2); font-size: var(--t-small); }

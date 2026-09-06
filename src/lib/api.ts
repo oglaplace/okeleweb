@@ -1073,6 +1073,29 @@ export interface PublicBulletin {
   appreciation: string | null;
 }
 
+export interface RolloverPlan {
+  from: { id: string; label: string; closedAt: string | null };
+  to: { id: string; label: string };
+  classes: {
+    from: { id: string; name: string };
+    /** The destination proposed for most of the cohort. */
+    toClasseId: string | null;
+    pupils: {
+      studentId: string;
+      matricule: string;
+      lastName: string;
+      firstName: string;
+      fromClasse: { id: string; name: string };
+      decision: string;
+      alreadyEnrolled: boolean;
+      isRepeating: boolean;
+      toClasseId: string | null;
+      /** Why this pupil is not proposed for a move. */
+      blocked: "EXCLU" | "NO_DECISION" | null;
+    }[];
+  }[];
+}
+
 export const enrollment = {
   /** Creates the Person, the Student and the Enrolment in one call. */
   enroll: (body: {
@@ -1201,6 +1224,8 @@ export interface MarkSheetLine {
 
 export interface MarkSheet {
   id: string;
+  /** Who it belongs to — the council screen marks the roster from it. */
+  studentId: string;
   version: number;
   status: "DRAFT" | "ISSUED" | "SUPERSEDED";
   average: string | null;
@@ -1380,8 +1405,15 @@ export const grading = {
       `/grading/preview?classeId=${encodeURIComponent(classeId)}` +
         `&periodId=${encodeURIComponent(periodId)}`,
     ),
+  /**
+   * Freezes the bulletins of a période.
+   *
+   * Pupils already frozen are SKIPPED, not refused: a council that re-runs the
+   * issue after two late marks arrived gets "2 new, 28 already frozen" rather
+   * than an error naming an internal function.
+   */
   issue: (classeId: string, periodId: string, appreciations?: Record<string, string>) =>
-    request<{ issued: number }>("/grading/issue", {
+    request<{ issued: number; alreadyIssued: number }>("/grading/issue", {
       method: "POST",
       body: JSON.stringify({ classeId, periodId, appreciations }),
     }),
@@ -2171,6 +2203,8 @@ export interface AcademicYear {
   startsOn: string;
   endsOn: string;
   isCurrent: boolean;
+  /** Set once the year is over — see closeYear. Null while it is running. */
+  closedAt?: string | null;
 }
 
 export interface CourseOffering {
@@ -2201,6 +2235,32 @@ export interface Serie {
 
 export const academics = {
   years: () => request<AcademicYear[]>("/academics/years"),
+  /**
+   * Ends a year: no longer current, marks final.
+   *
+   * Refused while a période is still open — marks that can still change are
+   * not a year anybody can close.
+   */
+  closeYear: (id: string) =>
+    request<AcademicYear>(`/academics/years/${encodeURIComponent(id)}/close`, { method: "POST" }),
+
+  /** What the rentrée would look like. Computed, nothing written. */
+  rolloverPlan: (fromYearId: string, toYearId: string) =>
+    request<RolloverPlan>(
+      `/academics/years/${encodeURIComponent(fromYearId)}/rollover` +
+        `?toYearId=${encodeURIComponent(toYearId)}`,
+    ),
+
+  /** And writes it, exactly as it was approved on screen. */
+  rollover: (
+    toYearId: string,
+    moves: { studentId: string; toClasseId: string; isRepeating?: boolean }[],
+  ) =>
+    request<{ enrolled: number; alreadyEnrolled: number; failed: number }>(
+      `/academics/years/${encodeURIComponent(toYearId)}/rollover`,
+      { method: "POST", body: JSON.stringify({ moves }) },
+    ),
+
   createYear: (body: {
     label: string;
     startsOn: string;

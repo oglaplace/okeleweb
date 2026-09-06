@@ -52,6 +52,11 @@ const router = createRouter({
         { path: "personnel", name: "staff", component: () => import("../pages/console/StaffPage.vue") },
         { path: "import", name: "import", component: () => import("../pages/console/ImportPage.vue") },
         /**
+         * The end of one year and the start of the next — the two acts a school
+         * performs once a year and had no screen for at all.
+         */
+        { path: "rentree", name: "rentree", component: () => import("../pages/console/RentreePage.vue") },
+        /**
          * One route for every declarative action — see lib/actions.ts. Actions
          * with a screen of their own keep their route above; this serves the
          * rest, which are all "pick a node, fill a form".

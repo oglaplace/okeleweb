@@ -5,11 +5,23 @@ import * as api from "../../lib/api";
 import Alert from "../../components/ui/Alert.vue";
 
 /**
- * One classe: the roster, and the conseil de classe preview.
+ * LE CONSEIL DE CLASSE — the meeting, as a screen.
  *
- * The preview is a READ — it computes every pupil and writes nothing, which is
- * exactly what a council needs before it freezes anything. Issuing is a
- * separate, deliberate action.
+ * It used to be a page with five equal-looking buttons where the council was
+ * one of them, disabled until a période was picked, and nothing said what state
+ * anything was in. An operator who clicked "Conseil de classe" in the menu
+ * arrived here, saw "Saisie des notes" and left: the council itself looked like
+ * one more link rather than the thing the screen is for.
+ *
+ * So the screen states where the council IS, in order:
+ *   1. the marks — how many are in, what is still a teacher's draft
+ *   2. the deliberation — every pupil's average, rank and mention, computed on
+ *      demand, writing nothing
+ *   3. the freeze — bulletins issued, and how many were already frozen
+ *
+ * The preview is still a READ, and issuing is still a separate act with legal
+ * weight. What changed is that the sequence is visible and the next step is
+ * always the obvious control on the page.
  */
 const route = useRoute();
 const classeId = computed(() => String(route.params.id));
@@ -27,8 +39,11 @@ const periodId = ref<string | null>(null);
 const loading = ref(true);
 const previewing = ref(false);
 const issuing = ref(false);
-const issued = ref<number | null>(null);
+const issued = ref<{ issued: number; alreadyIssued: number } | null>(null);
 const error = ref<string | null>(null);
+
+/** Bulletins already frozen for the période on screen — the council's state. */
+const frozen = ref<api.MarkSheet[]>([]);
 
 /** Periods hang off the cycle, not the classe — walk up to find it. */
 const cycleId = computed(
@@ -82,11 +97,51 @@ async function loadYearScoped() {
     ]);
     roster.value = rosterRows;
     periods.value = periodList;
-    periodId.value = periodList[0]?.id ?? null;
+    /*
+     * The période a school is actually IN, not the first of the year — the
+     * same fix as the print run. A council held in février opens on the 2e
+     * trimestre; opening on the 1er showed an empty screen for a term that
+     * was over and deliberated.
+     */
+    periodId.value = currentPeriod(periodList);
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Chargement impossible.";
   }
 }
+
+function currentPeriod(list: api.Period[]): string | null {
+  if (!list.length) return null;
+  const today = Date.now();
+  const holding = list.find(
+    (p) => new Date(p.startsOn).getTime() <= today && today <= new Date(p.endsOn).getTime(),
+  );
+  if (holding) return holding.id;
+  const started = list.filter((p) => new Date(p.startsOn).getTime() <= today);
+  return (started[started.length - 1] ?? list[0])?.id ?? null;
+}
+
+/** What is already frozen for this période — read on every period change. */
+async function loadFrozen() {
+  frozen.value = periodId.value
+    ? await api.grading.sheetsForClasse(classeId.value, periodId.value).catch(() => [])
+    : [];
+}
+
+/** Who has a frozen bulletin, so the roster can say so pupil by pupil. */
+const frozenBy = computed(() => new Set(frozen.value.map((s) => s.studentId)));
+
+/** The council's own summary line: what is done and what is left. */
+const state = computed(() => {
+  const total = roster.value.length;
+  const done = frozen.value.length;
+  return {
+    total,
+    done,
+    left: Math.max(0, total - done),
+    complete: total > 0 && done >= total,
+    started: done > 0,
+  };
+});
 
 async function runPreview() {
   if (!periodId.value) return;
@@ -116,10 +171,9 @@ async function issue() {
   error.value = null;
   try {
     const res = await api.grading.issue(classeId.value, periodId.value);
-    issued.value = res.issued;
+    issued.value = { issued: res.issued, alreadyIssued: res.alreadyIssued ?? 0 };
+    await Promise.all([loadFrozen(), runPreview()]);
   } catch (e) {
-    // SHEET_ISSUED is the common one and it is actionable — the API says to
-    // correct via reissue rather than publishing twice.
     error.value = e instanceof api.ApiError ? e.message : "Publication impossible.";
   } finally {
     issuing.value = false;
@@ -128,6 +182,17 @@ async function issue() {
 
 onMounted(load);
 watch(yearId, () => void loadYearScoped());
+/*
+ * The council opens ready. Computing on arrival rather than behind a button:
+ * the numbers are a READ, the meeting exists to look at them, and a screen that
+ * shows nothing until you find the right control is a screen people leave.
+ */
+watch(periodId, async () => {
+  preview.value = null;
+  issued.value = null;
+  await loadFrozen();
+  await runPreview();
+});
 </script>
 
 <template>
@@ -150,30 +215,86 @@ watch(yearId, () => void loadYearScoped());
           Saisie des notes
         </RouterLink>
         <button class="btn" type="button" :disabled="!periodId || previewing" @click="runPreview">
-          {{ previewing ? "Calcul…" : "Conseil de classe" }}
-        </button>
-        <button
-          v-if="preview"
-          class="btn primary"
-          type="button"
-          :disabled="issuing"
-          @click="issue"
-        >
-          {{ issuing ? "Publication…" : "Publier les bulletins" }}
+          {{ previewing ? "Calcul…" : "Recalculer" }}
         </button>
         <RouterLink
-          v-if="periodId"
+          v-if="state.started"
           class="btn"
           :to="{ name: 'bulletins', params: { id: classeId } }"
         >
-          Bulletins
+          Imprimer les bulletins
         </RouterLink>
       </div>
     </div>
 
+    <!--
+      WHERE THE COUNCIL IS, said before anything else.
+
+      Three states, and each names its own next step. The old page showed a row
+      of equal buttons and left the operator to work out which one the meeting
+      needed — which is how "Conseil de classe" came to look like one more link
+      beside "Saisie des notes".
+    -->
+    <div v-if="periodId" class="council">
+      <div class="council-step" :class="{ 'is-done': state.started }">
+        <span class="council-n">1</span>
+        <div>
+          <strong>Les notes</strong>
+          <span>{{ roster.length }} élève(s) · la saisie reste ouverte jusqu'au gel</span>
+        </div>
+      </div>
+      <div class="council-step" :class="{ 'is-on': !!preview && !state.complete }">
+        <span class="council-n">2</span>
+        <div>
+          <strong>La délibération</strong>
+          <span v-if="preview">
+            Moyennes, rangs et mentions calculés — rien n'est écrit
+          </span>
+          <span v-else>Calcul en cours…</span>
+        </div>
+      </div>
+      <div class="council-step" :class="{ 'is-done': state.complete, 'is-on': !!preview && !state.complete }">
+        <span class="council-n">3</span>
+        <div>
+          <strong>Le gel</strong>
+          <span v-if="state.complete">
+            {{ state.done }} bulletin(s) figé(s) — la période est délibérée
+          </span>
+          <span v-else-if="state.started">
+            {{ state.done }} figé(s), {{ state.left }} en attente
+          </span>
+          <span v-else>Aucun bulletin figé pour cette période</span>
+        </div>
+      </div>
+
+      <!-- The one control the meeting exists to press. Enabled as soon as
+           there is something to freeze, including a partial class: a pupil
+           whose marks are in should not wait for one whose are not. -->
+      <button
+        class="btn primary council-go"
+        type="button"
+        :disabled="issuing || !preview || state.complete"
+        @click="issue"
+      >
+        <span v-if="issuing" class="btn-spin" aria-hidden="true" />
+        {{
+          issuing ? "Publication…"
+          : state.started ? `Figer les ${state.left} restant(s)`
+          : "Figer les bulletins"
+        }}
+      </button>
+    </div>
+
     <Alert v-if="error" kind="error" @close="error = null">{{ error }}</Alert>
     <Alert v-if="issued !== null" kind="ok" :auto-dismiss="0" @close="issued = null">
-      {{ issued }} bulletin(s) publié(s) et figé(s).
+      <template v-if="issued.issued">
+        {{ issued.issued }} bulletin(s) figé(s)<template v-if="issued.alreadyIssued">,
+        {{ issued.alreadyIssued }} l'étaient déjà</template>.
+      </template>
+      <template v-else>
+        Rien de nouveau à figer — {{ issued.alreadyIssued }} bulletin(s) le sont déjà.
+        Une correction se fait par réédition, depuis la fiche de l'élève.
+      </template>
       <RouterLink :to="{ name: 'bulletins', params: { id: classeId } }">Imprimer →</RouterLink>
     </Alert>
     <div v-if="loading" class="card"><div class="empty">Chargement…</div></div>
@@ -199,6 +320,7 @@ watch(yearId, () => void loadYearScoped());
               <th class="c-text">Mention</th>
               <th>Abs. (h)</th>
               <th class="c-text">Décision</th>
+              <th class="c-text">Bulletin</th>
             </tr>
           </thead>
           <tbody>
@@ -216,6 +338,12 @@ watch(yearId, () => void loadYearScoped());
                 <span v-else-if="s.needsResit" class="pill warn">Rattrapage</span>
                 <span v-else-if="s.isPassing" class="pill ok">Admis</span>
                 <span v-else class="pill danger">Non admis</span>
+              </td>
+              <!-- Per pupil, because freezing is per pupil: a class where three
+                   are frozen and the rest are not is a normal state now. -->
+              <td class="c-text">
+                <span v-if="frozenBy.has(s.studentId)" class="pill ok">Figé</span>
+                <span v-else class="cell-sub">à figer</span>
               </td>
             </tr>
           </tbody>

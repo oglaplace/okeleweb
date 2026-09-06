@@ -143,6 +143,23 @@ export const ACTIONS: ActionSpec[] = [
     route: "structure",
   },
   {
+    /**
+     * The end of one year and the start of the next.
+     *
+     * Listed beside "Nouvelle année scolaire" because they are the same moment
+     * in a school's calendar: the app could open a year and never finish one,
+     * so a complex ran its second année with the first still marked current and
+     * every re-enrolment was typed by hand.
+     */
+    id: "rentree",
+    label: "Fin d'année et rentrée",
+    group: "structure",
+    icon: "calendar",
+    summary: "Clôturer l'année, puis réinscrire chaque élève dans la suivante.",
+    scope: null,
+    route: "rentree",
+  },
+  {
     id: "create-year",
     label: "Nouvelle année scolaire",
     group: "structure",
@@ -609,26 +626,22 @@ export const ACTIONS: ActionSpec[] = [
     route: "marks",
   },
   {
+    /**
+     * ONE ENTRY, not two.
+     *
+     * "Conseil de classe" and "Générer les bulletins" were separate actions,
+     * and the second was a form asking for a year and a période — which is the
+     * council's own screen asked for again, in a dialog, with none of the
+     * numbers the meeting exists to look at. Freezing is the last step OF the
+     * council, so it lives on the council's screen.
+     */
     id: "council",
     label: "Conseil de classe",
     group: "evaluation",
     icon: "check",
-    summary: "Moyennes, rangs et mentions calculés — avant de rien figer.",
+    summary: "Délibérer : moyennes, rangs et mentions, puis figer les bulletins.",
     scope: ["CLASSE"],
     route: "classe",
-  },
-  {
-    id: "issue-bulletins",
-    label: "Générer les bulletins",
-    group: "evaluation",
-    icon: "fileText",
-    summary: "Fige les bulletins de la période. Une correction se fait par réédition.",
-    scope: ["CLASSE"],
-    fields: [
-      { key: "academicYearId", label: "Année scolaire", type: "select", source: "years", required: true },
-      { key: "periodId", label: "Période", type: "select", source: "periodsOfScope", required: true },
-    ],
-    submit: (scopeId, v) => api.grading.issue(scopeId!, v.periodId!),
   },
   {
     id: "print-bulletins",
