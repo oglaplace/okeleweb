@@ -2000,13 +2000,21 @@ export interface Unpaid {
     balanceXaf: number;
     /** What is late RIGHT NOW against the modalité — not the whole balance. */
     overdueXaf: number;
+    /**
+     * EXIGIBLE: every tranche whose date has passed, grace period included.
+     *
+     * Wider than `overdueXaf` and narrower than `balanceXaf`, and the one the
+     * list is ordered and filtered by — it is what can legitimately be
+     * collected today.
+     */
+    dueNowXaf: number;
     daysLate: number;
     nextDueOn: string | null;
     lastPaymentOn: string | null;
     lastPaymentXaf: number | null;
     state: "LATE" | "PARTIAL" | "DUE";
   }[];
-  totals: { count: number; balanceXaf: number; lateXaf: number };
+  totals: { count: number; balanceXaf: number; lateXaf: number; dueNowXaf: number };
 }
 
 /** One receipt, as the API assembled it. Never recomputed client-side. */

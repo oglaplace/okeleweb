@@ -30,7 +30,29 @@ const loading = ref(true);
 const error = ref<string | null>(null);
 const notice = ref<string | null>(null);
 const query = ref("");
-const lateOnly = ref(false);
+
+/**
+ * WHAT THE LIST IS ABOUT, and it is not the year.
+ *
+ * "Impayé" used to mean the whole outstanding balance, so a family on the
+ * trimestriel plan who has paid everything asked of them so far still appeared
+ * — owing 300 000 F nobody has demanded. Chasing that list loses a parent's
+ * trust, and an économe who learns the list is wrong stops using it.
+ *
+ *   exigible — every tranche whose date has passed, the default and the
+ *              figure the list is ordered by: what can be collected today.
+ *   late     — only what is past the grace period too. The sharper list, for
+ *              the calls that have to be made.
+ *   all      — the whole outstanding balance, which is a report rather than a
+ *              worklist. Kept because a director does ask "what is out there".
+ */
+type Scope = "due" | "late" | "all";
+const scope = ref<Scope>("due");
+const SCOPES: { id: Scope; label: string; hint: string }[] = [
+  { id: "due", label: "Exigible", hint: "Tranches déjà échues, réglées ou non" },
+  { id: "late", label: "En retard", hint: "Au-delà du délai de grâce" },
+  { id: "all", label: "Tout l'impayé", hint: "Toute l'année, échue ou non" },
+];
 
 const XAF = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
 const money = (v: number) => `${XAF.format(v)} XAF`;
@@ -67,7 +89,8 @@ const rows = computed(() => {
   const q = query.value.trim().toLowerCase();
   return all.filter(
     (r) =>
-      (!lateOnly.value || r.state === "LATE") &&
+      (scope.value === "all" ||
+        (scope.value === "late" ? r.overdueXaf > 0 : r.dueNowXaf > 0)) &&
       (!q ||
         `${r.lastName} ${r.firstName} ${r.matricule} ${r.classe?.name ?? ""}`
           .toLowerCase()
@@ -79,6 +102,7 @@ const rows = computed(() => {
 const shown = computed(() => ({
   count: rows.value.length,
   balanceXaf: rows.value.reduce((s, r) => s + r.balanceXaf, 0),
+  dueNowXaf: rows.value.reduce((s, r) => s + r.dueNowXaf, 0),
   lateXaf: rows.value.reduce((s, r) => s + r.overdueXaf, 0),
 }));
 
@@ -123,8 +147,8 @@ async function printReceipt() {
       <div>
         <h1 class="page-title">Impayés</h1>
         <div class="page-sub">
-          Ce qui reste dû, du plus en retard au moins — mesuré sur la modalité de
-          paiement de chaque classe, pas sur la facture entière.
+          Ce qui peut être encaissé aujourd'hui, du plus élevé au moins — mesuré
+          sur les tranches échues de chaque classe, pas sur la facture entière.
         </div>
       </div>
       <div class="page-actions">
@@ -147,23 +171,35 @@ async function printReceipt() {
     <template v-else-if="data">
       <div class="dossier-figures" style="margin-bottom: var(--s4)">
         <div><span>Élèves concernés</span><strong>{{ shown.count }}</strong></div>
-        <div><span>Reste dû</span><strong>{{ money(shown.balanceXaf) }}</strong></div>
+        <!-- The collectable figure first and in red: it is the one an économe
+             acts on. The year's balance is context, not a target. -->
         <div>
-          <span>Dont en retard</span>
-          <strong :class="{ 'is-warn': shown.lateXaf > 0 }">{{ money(shown.lateXaf) }}</strong>
+          <span>Exigible à ce jour</span>
+          <strong :class="{ 'is-warn': shown.dueNowXaf > 0 }">{{ money(shown.dueNowXaf) }}</strong>
         </div>
+        <div><span>Dont en retard</span><strong>{{ money(shown.lateXaf) }}</strong></div>
+        <div><span>Reste sur l'année</span><strong>{{ money(shown.balanceXaf) }}</strong></div>
       </div>
 
       <div class="card">
         <div class="card-head unpaid-tools">
           <input v-model="query" class="unpaid-search" placeholder="Nom, matricule, classe…" />
-          <!-- The default is everything outstanding. "En retard" is the
-               narrower, sharper list, and it is a choice rather than the
-               default because a school also chases what is merely due. -->
-          <label class="unpaid-toggle">
-            <input v-model="lateOnly" type="checkbox" />
-            <span>En retard seulement</span>
-          </label>
+          <!-- Three widths of the same list, and the default is the one that
+               can be acted on. See `scope`. -->
+          <!-- Same control as the grille's list/graphe switch — one segmented
+               group in the console, not two that drift. -->
+          <div class="viewswitch" role="group" aria-label="Portée">
+            <button
+              v-for="sc in SCOPES"
+              :key="sc.id"
+              class="viewswitch-btn"
+              :class="{ 'is-on': scope === sc.id }"
+              type="button"
+              :title="sc.hint"
+              :aria-pressed="scope === sc.id"
+              @click="scope = sc.id"
+            >{{ sc.label }}</button>
+          </div>
           <span class="hint">{{ rows.length }} / {{ data.rows.length }}</span>
         </div>
 
@@ -181,9 +217,10 @@ async function printReceipt() {
                 <th class="c-name">Élève</th>
                 <th class="c-text">Classe</th>
                 <th class="c-text">À contacter</th>
-                <th class="c-num">Reste dû</th>
-                <th class="c-num">En retard</th>
+                <th class="c-num" title="Tranches déjà échues, réglées ou non">Exigible</th>
+                <th class="c-num" title="Au-delà du délai de grâce">En retard</th>
                 <th class="c-num">Jours</th>
+                <th class="c-num" title="Toute l'année, échue ou non">Reste sur l'année</th>
                 <th class="c-text">Dernier règlement</th>
                 <th />
               </tr>
@@ -207,11 +244,12 @@ async function printReceipt() {
                   </template>
                   <span v-else class="cell-sub">Aucun tuteur payeur</span>
                 </td>
-                <td class="c-num">{{ money(r.balanceXaf) }}</td>
-                <td class="c-num" :class="{ 'is-warn': r.overdueXaf > 0 }">
-                  {{ r.overdueXaf > 0 ? money(r.overdueXaf) : "—" }}
+                <td class="c-num" :class="{ 'is-warn': r.dueNowXaf > 0 }">
+                  {{ r.dueNowXaf > 0 ? money(r.dueNowXaf) : "—" }}
                 </td>
+                <td class="c-num">{{ r.overdueXaf > 0 ? money(r.overdueXaf) : "—" }}</td>
                 <td class="c-num">{{ r.daysLate || "—" }}</td>
+                <td class="c-num cell-sub">{{ money(r.balanceXaf) }}</td>
                 <td class="c-text">
                   <template v-if="r.lastPaymentOn">
                     {{ day(r.lastPaymentOn) }}
@@ -235,6 +273,7 @@ async function printReceipt() {
       :student-name="`${paying.lastName.toUpperCase()} ${paying.firstName}`"
       :academic-year-id="yearId"
       :balance-xaf="paying.balanceXaf"
+      :suggest-xaf="paying.dueNowXaf"
       @close="paying = null"
       @recorded="onRecorded"
     />

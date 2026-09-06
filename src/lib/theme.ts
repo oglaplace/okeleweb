@@ -40,8 +40,35 @@ export function initTheme(): void {
   applyTheme(read());
 }
 
-/** Cycles light → dark → system, which is the order people expect from a
- *  single button and keeps "system" reachable without a menu. */
+/** What the MACHINE says, ignoring the setting. */
+export function systemTheme(): "light" | "dark" {
+  return typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+}
+
+/** What the page is actually showing right now — the setting resolved. */
+export function resolvedTheme(): "light" | "dark" {
+  return theme.value === "system" ? systemTheme() : theme.value;
+}
+
+/**
+ * One press, one visible change.
+ *
+ * THE BUG THIS FIXES. The cycle was a fixed light → dark → system, so from the
+ * default ("system") on a laptop already in light mode the first press moved to
+ * "light" — the same picture. The button looked dead and you had to press it
+ * twice for anything to happen, every time, on a machine whose OS theme matched
+ * the start of the cycle.
+ *
+ * The order is now decided by what is ON THE SCREEN rather than by which name
+ * the setting carries: away from the machine's theme first, then to it, then
+ * back to following it. Three stops as before, and "system" is still reachable
+ * without a menu — but the first press always does something visible.
+ */
 export function cycleTheme(): void {
-  applyTheme(theme.value === "light" ? "dark" : theme.value === "dark" ? "system" : "light");
+  const os = systemTheme();
+  if (theme.value === "system") applyTheme(os === "dark" ? "light" : "dark");
+  else if (theme.value !== os) applyTheme(os);
+  else applyTheme("system");
 }

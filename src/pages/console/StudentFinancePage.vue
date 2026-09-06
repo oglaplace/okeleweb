@@ -39,6 +39,32 @@ async function load() {
   error.value = null;
   try {
     led.value = await api.finance.studentLedger(studentId.value, yearParam.value);
+
+    /*
+     * A FACTURE IS READY BY THE TIME YOU LOOK AT IT.
+     *
+     * Billing is automatic in three places — at enrolment, when the grille is
+     * published, and when money arrives — so a pupil with no facture means one
+     * of those did not reach them: a row imported before the hooks existed, or
+     * a call that failed once. The operator should not have to know that. They
+     * opened the dossier to see what this child owes; if it can be answered
+     * with a document, it is, and the page shows the facture rather than a
+     * button asking them to create one.
+     *
+     * Deliberately quiet. It issues nothing when no grille applies (there is
+     * nothing to bill from), it is idempotent server-side, and a refusal —
+     * finance.read without finance.write — leaves the projection on screen
+     * exactly as before rather than raising an error about a button nobody
+     * pressed.
+     */
+    if (led.value?.needsInvoice && led.value.canIssueInvoice) {
+      const issued = await api.finance
+        .issueInvoice(led.value.student.id, led.value.year.id)
+        .catch(() => null);
+      if (issued) {
+        led.value = await api.finance.studentLedger(studentId.value, yearParam.value);
+      }
+    }
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Situation financière indisponible.";
     led.value = null;
@@ -688,6 +714,7 @@ async function printReceipt() {
       :student-name="fullName"
       :academic-year-id="led.year.id"
       :balance-xaf="Math.max(0, led.totals.balanceXaf)"
+      :suggest-xaf="led.totals.dueNowXaf"
       :needs-invoice="led.needsInvoice"
       @close="paying = false"
       @recorded="onRecorded"

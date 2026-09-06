@@ -20,12 +20,22 @@ import { defineStore } from "pinia";
 export const useBusyStore = defineStore("busy", {
   state: () => ({
     pending: 0,
+    /**
+     * A route change in flight.
+     *
+     * Every console screen is a lazy `import()`, so clicking an action on a
+     * slow link starts a chunk fetch and NOTHING moves until it lands — the
+     * click reads as ignored, and the operator clicks again. A flag rather than
+     * the counter because navigations do not nest: one is either running or it
+     * is not, and a guard that redirects must not leave a count behind.
+     */
+    navigating: false,
     /** Set only for blocking work. Null means the overlay is not shown. */
     blocking: null as { title: string; detail: string } | null,
   }),
 
   getters: {
-    active: (s) => s.pending > 0,
+    active: (s) => s.pending > 0 || s.navigating,
   },
 
   actions: {

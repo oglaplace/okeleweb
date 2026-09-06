@@ -21,8 +21,17 @@ const props = defineProps<{
   studentId: string;
   studentName: string;
   academicYearId: string;
-  /** What is still owed, so the form can offer it as the amount. */
+  /** What is still owed over the year, so the form can offer it as the amount. */
   balanceXaf: number;
+  /**
+   * What is EXIGIBLE today — the tranches already due.
+   *
+   * Offered beside the year's balance because it is what the parent is actually
+   * being asked for at the counter: a family on the trimestriel plan pays the
+   * tranche, not the year, and a form that only offers the year invites the
+   * operator to type the number by hand with a queue waiting.
+   */
+  suggestXaf?: number;
   /**
    * True when this pupil has no facture yet.
    *
@@ -170,6 +179,14 @@ async function submit() {
           <input id="pay-amt" v-model="amount" inputmode="numeric" autocomplete="off" />
           <!-- The commonest amount by far is "all of it", and typing 150000
                correctly with a queue waiting is how a digit goes missing. -->
+          <!-- The exigible first: it is the commoner answer, and the one the
+               échéancier says is owed today. -->
+          <button
+            v-if="(suggestXaf ?? 0) > 0 && suggestXaf !== balanceXaf"
+            class="btn sm"
+            type="button"
+            @click="amount = String(suggestXaf)"
+          >Exigible · {{ money(suggestXaf ?? 0) }}</button>
           <button
             v-if="balanceXaf > 0"
             class="btn sm"

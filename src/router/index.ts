@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { useAuthStore } from "../stores/auth";
+import { useBusyStore } from "../stores/busy";
 // The login screen is the entry point on every deployment, so it is bundled
 // into the main chunk — an edge box on a slow LAN should not wait on a second
 // request to show a sign-in form.
@@ -121,6 +122,52 @@ const router = createRouter({
 
     { path: "/:pathMatch(.*)*", redirect: { name: "landing" } },
   ],
+});
+
+/**
+ * THE CLICK THAT APPEARED TO DO NOTHING.
+ *
+ * Every screen below is a lazy `import()`, which is right — a school on a
+ * metered connection should not download the bulletin engine to look at a class
+ * list. But it means a menu click starts a chunk fetch and the page keeps
+ * showing exactly what it showed before until that fetch lands. On a good link
+ * that is 80ms and invisible; on a Brazzaville connection it is seconds of a
+ * screen that looks frozen, so the operator clicks again, and again.
+ *
+ * The same 2px bar the login uses now runs for navigations too — see
+ * busy.navigating. It costs no layout and it is the difference between "the
+ * app is fetching the screen" and "the app ignored me".
+ */
+router.beforeEach(() => {
+  useBusyStore().navigating = true;
+  return true;
+});
+
+/** Fires for completed AND aborted navigations, which is what balances it. */
+router.afterEach(() => {
+  useBusyStore().navigating = false;
+});
+
+/**
+ * And the failure that leaves you stuck for good.
+ *
+ * A chunk request that never arrives — the connection dropped mid-fetch, or the
+ * server was redeployed and the hashed filename this tab remembers is gone —
+ * rejects, vue-router abandons the navigation, and the URL never changes. From
+ * the operator's side the menu item is simply dead, and it stays dead for the
+ * life of the tab because the failed module is cached as failed.
+ *
+ * A full page load at the target URL is the only thing that recovers both
+ * cases, and it is what the operator would eventually do by hand.
+ */
+router.onError((error, to) => {
+  useBusyStore().navigating = false;
+  const message = String((error as Error)?.message ?? error);
+  const chunkFailed =
+    /dynamically imported module|Importing a module script failed|Failed to fetch/i.test(message);
+  if (chunkFailed && to?.fullPath && to.fullPath !== window.location.pathname) {
+    window.location.assign(to.fullPath);
+  }
 });
 
 router.beforeEach(async (to) => {
