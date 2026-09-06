@@ -144,18 +144,19 @@ export const ACTIONS: ActionSpec[] = [
   },
   {
     /**
-     * The end of one year and the start of the next.
+     * RÉINSCRIPTION, and it is not only a year boundary.
      *
-     * Listed beside "Nouvelle année scolaire" because they are the same moment
-     * in a school's calendar: the app could open a year and never finish one,
-     * so a complex ran its second année with the first still marked current and
-     * every re-enrolment was typed by hand.
+     * Under "Scolarité" rather than "Établissement": this is about the pupils,
+     * not the calendar. A collège re-enrols once a year; a université does it
+     * every semester, with the same students staying in the same year — and in
+     * both cases coming back costs what the grille says it costs.
      */
     id: "rentree",
-    label: "Fin d'année et rentrée",
-    group: "structure",
+    label: "Réinscription",
+    group: "scolarite",
     icon: "calendar",
-    summary: "Clôturer l'année, puis réinscrire chaque élève dans la suivante.",
+    summary:
+      "Une période se termine : réinscrire les élèves pour la suivante — année ou semestre.",
     scope: null,
     route: "rentree",
   },

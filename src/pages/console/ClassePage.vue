@@ -45,6 +45,35 @@ const error = ref<string | null>(null);
 /** Bulletins already frozen for the période on screen — the council's state. */
 const frozen = ref<api.MarkSheet[]>([]);
 
+/**
+ * WHERE THE MEETING STANDS, read before anything is computed.
+ *
+ * The engine refuses for three ordinary reasons — nobody enrolled, no
+ * programme, no marks yet — and each used to surface as a red banner saying
+ * so in the API's words, or as nothing at all, leaving a roster on screen with
+ * a button back to mark entry. This is what the council actually asks first:
+ * which subjects are in, what is still a teacher's draft, what is frozen.
+ */
+const council = ref<api.CouncilState | null>(null);
+
+const BLOCKED_FR: Record<string, { title: string; detail: string }> = {
+  NO_PUPILS: {
+    title: "Aucun élève inscrit dans cette classe",
+    detail: "Un conseil délibère sur des élèves. Inscrivez-les d'abord.",
+  },
+  NO_PROGRAMME: {
+    title: "Aucune matière programmée pour ce niveau",
+    detail:
+      "Les moyennes se calculent sur le programme du niveau et ses coefficients. " +
+      "Programmez les matières avant le conseil.",
+  },
+  NO_MARKS: {
+    title: "Aucune note saisie pour cette période",
+    detail:
+      "Le conseil lit des notes. Tant qu'aucune épreuve n'en porte, il n'y a rien à délibérer.",
+  },
+};
+
 /** Periods hang off the cycle, not the classe — walk up to find it. */
 const cycleId = computed(
   () => ancestors.value.find((a) => a.kind === "CYCLE")?.id ?? classe.value?.parentId ?? null,
@@ -127,6 +156,12 @@ async function loadFrozen() {
     : [];
 }
 
+async function loadCouncil() {
+  council.value = periodId.value
+    ? await api.grading.council(classeId.value, periodId.value).catch(() => null)
+    : null;
+}
+
 /** Who has a frozen bulletin, so the roster can say so pupil by pupil. */
 const frozenBy = computed(() => new Set(frozen.value.map((s) => s.studentId)));
 
@@ -172,7 +207,7 @@ async function issue() {
   try {
     const res = await api.grading.issue(classeId.value, periodId.value);
     issued.value = { issued: res.issued, alreadyIssued: res.alreadyIssued ?? 0 };
-    await Promise.all([loadFrozen(), runPreview()]);
+    await Promise.all([loadFrozen(), loadCouncil(), runPreview()]);
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Publication impossible.";
   } finally {
@@ -190,8 +225,10 @@ watch(yearId, () => void loadYearScoped());
 watch(periodId, async () => {
   preview.value = null;
   issued.value = null;
-  await loadFrozen();
-  await runPreview();
+  await Promise.all([loadFrozen(), loadCouncil()]);
+  // Only compute when there is something to compute. A council that opens on
+  // an empty term should explain that, not show the engine's refusal.
+  if (!council.value?.blocked) await runPreview();
 });
 </script>
 
@@ -236,11 +273,18 @@ watch(periodId, async () => {
       beside "Saisie des notes".
     -->
     <div v-if="periodId" class="council">
-      <div class="council-step" :class="{ 'is-done': state.started }">
+      <div class="council-step" :class="{ 'is-done': !!council && council.marksIn.subjects > 0 }">
         <span class="council-n">1</span>
         <div>
           <strong>Les notes</strong>
-          <span>{{ roster.length }} élève(s) · la saisie reste ouverte jusqu'au gel</span>
+          <span v-if="council">
+            {{ council.marksIn.subjects }}/{{ council.marksIn.of }} matière(s) ·
+            {{ council.marksIn.marks }} note(s)
+            <template v-if="council.unsubmitted">
+              · {{ council.unsubmitted }} épreuve(s) non remise(s)
+            </template>
+          </span>
+          <span v-else>{{ roster.length }} élève(s)</span>
         </div>
       </div>
       <div class="council-step" :class="{ 'is-on': !!preview && !state.complete }">
@@ -248,8 +292,10 @@ watch(periodId, async () => {
         <div>
           <strong>La délibération</strong>
           <span v-if="preview">
-            Moyennes, rangs et mentions calculés — rien n'est écrit
+            Moyennes, rangs et mentions — rien n'est écrit
+            <template v-if="council"> · {{ council.decided }} décision(s) prise(s)</template>
           </span>
+          <span v-else-if="council?.blocked">Rien à délibérer pour l'instant</span>
           <span v-else>Calcul en cours…</span>
         </div>
       </div>
@@ -298,6 +344,64 @@ watch(periodId, async () => {
       <RouterLink :to="{ name: 'bulletins', params: { id: classeId } }">Imprimer →</RouterLink>
     </Alert>
     <div v-if="loading" class="card"><div class="empty">Chargement…</div></div>
+
+    <!--
+      WHAT IS MISSING, where the results would have been.
+
+      Not an error banner: "No course offerings for this niveau" is the API
+      telling a developer why it refused. A conseil that cannot sit yet needs
+      the reason in its own words and the way out.
+    -->
+    <div v-else-if="council?.blocked" class="card">
+      <div class="empty">
+        <div class="empty-title">{{ BLOCKED_FR[council.blocked]?.title }}</div>
+        <div>{{ BLOCKED_FR[council.blocked]?.detail }}</div>
+        <div class="empty-actions">
+          <RouterLink
+            v-if="council.blocked === 'NO_MARKS'"
+            class="btn primary"
+            :to="{ name: 'marks', params: { id: classeId } }"
+          >Saisir les notes</RouterLink>
+          <RouterLink
+            v-else-if="council.blocked === 'NO_PROGRAMME'"
+            class="btn primary"
+            :to="{ name: 'action', params: { id: 'create-offering' }, query: { scope: classe?.parentId } }"
+          >Programmer les matières</RouterLink>
+          <RouterLink
+            v-else
+            class="btn primary"
+            :to="{ name: 'enroll' }"
+          >Inscrire des élèves</RouterLink>
+        </div>
+      </div>
+
+      <!-- What IS in, subject by subject: a council that cannot sit still
+           needs to see which teacher it is waiting on. -->
+      <div v-if="council.subjects.length" class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr>
+              <th class="c-name">Matière</th>
+              <th class="c-num">Épreuves</th>
+              <th class="c-num">Notes</th>
+              <th class="c-text">État</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="s in council.subjects" :key="s.courseOfferingId">
+              <td class="c-name">{{ s.name }}</td>
+              <td class="c-num">{{ s.marked }} / {{ s.assessments }}</td>
+              <td class="c-num">{{ s.marks || "—" }}</td>
+              <td class="c-text">
+                <span v-if="!s.marks" class="cell-sub">rien de saisi</span>
+                <span v-else-if="s.unsubmitted" class="pill warn">{{ s.unsubmitted }} non remise(s)</span>
+                <span v-else class="pill ok">remis</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
 
     <!-- Preview: computed, nothing written. -->
     <div v-else-if="preview" class="card is-grid">

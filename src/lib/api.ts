@@ -1208,6 +1208,49 @@ export interface ClassePreview {
   students: PreviewStudent[];
 }
 
+export interface CouncilState {
+  period: { id: string; label: string; locked: boolean };
+  pupils: number;
+  subjects: {
+    courseOfferingId: string;
+    code: string;
+    name: string;
+    assessments: number;
+    marked: number;
+    marks: number;
+    /** Still the teacher's working copy — the council must not freeze these. */
+    unsubmitted: number;
+  }[];
+  marksIn: { subjects: number; of: number; marks: number };
+  unsubmitted: number;
+  decided: number;
+  frozen: number;
+  /** Why the engine cannot run yet, said before it is asked. */
+  blocked: "NO_PUPILS" | "NO_PROGRAMME" | "NO_MARKS" | null;
+}
+
+export interface PeriodRegistrationPlan {
+  period: { id: string; label: string; sequence: number; startsOn: string; endsOn: string };
+  year: { id: string; label: string };
+  /** What coming back costs, from the grille. Null when the school prices none. */
+  fee: { id: string; name: string; code: string } | null;
+  classes: {
+    classe: { id: string; name: string };
+    pupils: {
+      studentId: string;
+      enrollmentId: string;
+      matricule: string;
+      lastName: string;
+      firstName: string;
+      classe: { id: string; name: string };
+      status: "PENDING" | "ACTIVE" | "BLOCKED";
+      activatedAt: string | null;
+      paidXaf: number;
+      invoice: { id: string; number: string; totalXaf: number; paidXaf: number } | null;
+    }[];
+  }[];
+}
+
 export interface MarkSheetLine {
   id: string;
   coefficient: string;
@@ -1417,6 +1460,20 @@ export const grading = {
       method: "POST",
       body: JSON.stringify({ classeId, periodId, appreciations }),
     }),
+  /**
+   * WHERE THE CONSEIL DE CLASSE STANDS — a read that never throws for the
+   * ordinary reasons a term is not finished.
+   *
+   * The council screen used to compute the class or show nothing, so a teacher
+   * who opened it before every subject was marked got a roster and a button
+   * saying "Saisir les notes" — the screen they had just come from.
+   */
+  council: (classeId: string, periodId: string) =>
+    request<CouncilState>(
+      `/grading/council?classeId=${encodeURIComponent(classeId)}` +
+        `&periodId=${encodeURIComponent(periodId)}`,
+    ),
+
   /** Current sheets for a classe, ordered by rang — what the print run reads. */
   sheetsForClasse: (classeId: string, periodId: string) =>
     request<MarkSheet[]>(
@@ -2243,6 +2300,28 @@ export const academics = {
    */
   closeYear: (id: string) =>
     request<AcademicYear>(`/academics/years/${encodeURIComponent(id)}/close`, { method: "POST" }),
+
+  /**
+   * RÉINSCRIPTION AT A PÉRIODE BOUNDARY — the university case.
+   *
+   * A semester ends, the students opt into the next one, and the fee is an
+   * ordinary facture from the grille. The year rollover below is the other
+   * shape of the same act.
+   */
+  periodRegistration: (periodId: string) =>
+    request<PeriodRegistrationPlan>(
+      `/academics/periods/${encodeURIComponent(periodId)}/registration`,
+    ),
+
+  registerPeriod: (
+    periodId: string,
+    studentIds: string[],
+    opts?: { status?: "ACTIVE" | "BLOCKED" | "PENDING"; note?: string },
+  ) =>
+    request<{ activated: number; unchanged: number; notEnrolled: number }>(
+      `/academics/periods/${encodeURIComponent(periodId)}/registration`,
+      { method: "POST", body: JSON.stringify({ studentIds, ...opts }) },
+    ),
 
   /** What the rentrée would look like. Computed, nothing written. */
   rolloverPlan: (fromYearId: string, toYearId: string) =>
