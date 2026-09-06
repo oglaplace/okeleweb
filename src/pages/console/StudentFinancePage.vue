@@ -282,6 +282,52 @@ async function revokeWaiver(id: string) {
   }
 }
 
+/*
+ * ── AN AVANCE GOES WHERE SOMEBODY SAYS ────────────────────────────────────
+ *
+ * Money handed over without a motif used to be swept onto the facture the
+ * moment one existed and spread oldest-tranche-first, so 50 000 F given "pour
+ * la cantine" ended up against the inscription and nobody was ever asked. The
+ * API now holds it as credit until it is directed — here.
+ *
+ * Only for the undirected ones: a payment that named its motif at the counter
+ * was already decided, and asking again about a decision already made is the
+ * ceremony that makes people stop using a screen.
+ */
+const allocating = ref<api.StudentLedger["payments"][number] | null>(null);
+const allocateFeeTypeId = ref("");
+const allocateBusy = ref(false);
+const feeTypeChoices = ref<{ id: string; name: string }[]>([]);
+
+async function openAllocate(payment: api.StudentLedger["payments"][number]) {
+  allocating.value = payment;
+  allocateFeeTypeId.value = "";
+  if (!feeTypeChoices.value.length) {
+    feeTypeChoices.value = await api.finance.feeTypes().catch(() => []);
+  }
+}
+
+async function allocateAdvance() {
+  const payment = allocating.value;
+  const invoice = led.value?.invoices[0];
+  if (!payment || !invoice || allocateBusy.value) return;
+  allocateBusy.value = true;
+  error.value = null;
+  try {
+    await api.finance.allocateAdvance(payment.id, {
+      invoiceId: invoice.id,
+      ...(allocateFeeTypeId.value ? { feeTypeId: allocateFeeTypeId.value } : {}),
+    });
+    notice.value = `${money(payment.amountXaf)} affecté(s) à la facture ${invoice.number}.`;
+    allocating.value = null;
+    await load();
+  } catch (e) {
+    error.value = e instanceof api.ApiError ? e.message : "Affectation impossible.";
+  } finally {
+    allocateBusy.value = false;
+  }
+}
+
 // ── the receipt ─────────────────────────────────────────────────────────────
 const receipt = ref<api.ReceiptDoc | null>(null);
 const receiptBusy = ref(false);
@@ -585,6 +631,14 @@ async function printReceipt() {
               </td>
               <td class="c-num">{{ money(p.amountXaf) }}</td>
               <td>
+                <!-- Credit with nowhere assigned yet: the operator says where,
+                     rather than the system guessing and being right by luck. -->
+                <button
+                  v-if="p.isAdvance && led.invoices.length"
+                  class="btn sm"
+                  type="button"
+                  @click="openAllocate(p)"
+                >Affecter</button>
                 <button
                   v-if="p.receipt"
                   class="btn sm ghost"
@@ -631,6 +685,42 @@ async function printReceipt() {
       this have little experience of software, and the consequence is stated in
       the sentence above the button rather than discovered afterwards.
     -->
+    <ConfirmDialog
+      v-if="allocating && led"
+      title="Affecter cette avance"
+      :subtitle="`${money(allocating.amountXaf)} · reçu ${allocating.receipt?.number ?? '—'}`"
+      confirm-label="Affecter"
+      :busy="allocateBusy"
+      @close="allocating = null"
+      @confirm="allocateAdvance"
+    >
+      <div class="stack">
+        <p class="hint" style="margin-top: 0">
+          Cette somme a été encaissée sans motif : elle est restée au crédit de
+          l'élève plutôt que d'être imputée au hasard. Dites sur quoi elle porte.
+        </p>
+
+        <div class="field">
+          <label for="al-inv">Facture</label>
+          <div class="field-static">
+            {{ led.invoices[0]?.number }} · {{ money(led.invoices[0]?.totalXaf ?? 0) }}
+            <span class="hint">
+              reste {{ money(led.invoices[0]?.balanceXaf ?? 0) }}
+            </span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="al-fee">Motif</label>
+          <select id="al-fee" v-model="allocateFeeTypeId">
+            <option value="">Non précisé</option>
+            <option v-for="f in feeTypeChoices" :key="f.id" :value="f.id">{{ f.name }}</option>
+          </select>
+          <span class="hint">Imprimé sur le reçu et repris en comptabilité.</span>
+        </div>
+      </div>
+    </ConfirmDialog>
+
     <ConfirmDialog
       v-if="granting && led"
       title="Accorder une réduction"

@@ -1036,6 +1036,43 @@ export const timetable = {
     }),
 };
 
+/**
+ * THE ONE CALL THAT NEEDS NO ACCOUNT.
+ *
+ * A printed bulletin is checked where nobody can sign in. The token in the URL
+ * is the capability and it names exactly one frozen document.
+ */
+export const publicApi = {
+  bulletin: (token: string) =>
+    request<PublicBulletin>(`/public/bulletins/${encodeURIComponent(token)}`, { auth: false }),
+};
+
+export interface PublicBulletin {
+  establishment: {
+    complex: string | null; school: string | null;
+    department: string | null; niveau: string | null; classe: string | null;
+  };
+  student: { matricule: string; firstName: string; lastName: string };
+  year: string;
+  period: string;
+  version: number;
+  issuedAt: string | null;
+  gradingSystem: { name: string; scaleMax: string; passThreshold: string };
+  lines: {
+    subjectCode: string; subjectName: string; coefficient: string;
+    score: string | null; classAvg: string | null; rank: number | null;
+    appreciation: string | null;
+  }[];
+  average: string | null;
+  rank: number | null;
+  rankOf: number | null;
+  classAvg: string | null;
+  mention: string | null;
+  absenceHours: string | null;
+  lateCount: number | null;
+  appreciation: string | null;
+}
+
 export const enrollment = {
   /** Creates the Person, the Student and the Enrolment in one call. */
   enroll: (body: {
@@ -1255,6 +1292,13 @@ export interface Bulletin {
   status: "ISSUED" | "DRAFT" | "PROVISIONAL" | "SIMULATED";
   version: number | null;
   issuedAt: string | null;
+  /**
+   * What the QR on the printed sheet encodes — see BulletinPage.
+   *
+   * Present only on a document that was actually issued: a QR on a provisional
+   * bulletin would be a claim of authenticity about a draft.
+   */
+  publicToken?: string | null;
   establishment: {
     complex: string | null;
     school: string | null;
@@ -1558,6 +1602,18 @@ export const finance = {
       body: JSON.stringify(body),
     }),
 
+  /**
+   * Puts one avance on a facture, where the operator says it goes.
+   *
+   * Undirected money is no longer swept automatically — see the API's
+   * sweepAdvances. This is how it stops being credit.
+   */
+  allocateAdvance: (paymentId: string, body: { invoiceId: string; feeTypeId?: string }) =>
+    request<{ allocated: number; invoiceId: string; paidXaf: number }>(
+      `/finance/payments/${encodeURIComponent(paymentId)}/allocate`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+
   revokeWaiver: (id: string) =>
     request<{ revoked: boolean }>(`/finance/waivers/${encodeURIComponent(id)}/revoke`, {
       method: "POST",
@@ -1635,9 +1691,25 @@ export const finance = {
         (academicYearId ? `?academicYearId=${encodeURIComponent(academicYearId)}` : ""),
     ),
 
-  /** The debtor worklist, most overdue first. */
-  unpaid: (academicYearId: string) =>
-    request<Unpaid>(`/finance/unpaid?academicYearId=${encodeURIComponent(academicYearId)}`),
+  /**
+   * The debtor worklist, most exigible first — a page at a time.
+   *
+   * Paged at the API rather than in the browser: a complex of a thousand
+   * pupils has close to a thousand outstanding factures in janvier, and the
+   * console runs on a connection where that payload is the whole wait. The
+   * totals that come back are over EVERYONE, not over the page.
+   */
+  unpaid: (
+    academicYearId: string,
+    page?: { limit?: number; offset?: number; scope?: "due" | "late" | "all"; q?: string },
+  ) =>
+    request<Unpaid>(
+      `/finance/unpaid?academicYearId=${encodeURIComponent(academicYearId)}` +
+        (page?.limit !== undefined ? `&limit=${page.limit}` : "") +
+        (page?.offset ? `&offset=${page.offset}` : "") +
+        (page?.scope ? `&scope=${page.scope}` : "") +
+        (page?.q ? `&q=${encodeURIComponent(page.q)}` : ""),
+    ),
 
   /**
    * Takes money.
@@ -2014,7 +2086,13 @@ export interface Unpaid {
     lastPaymentXaf: number | null;
     state: "LATE" | "PARTIAL" | "DUE";
   }[];
-  totals: { count: number; balanceXaf: number; lateXaf: number; dueNowXaf: number };
+  totals: {
+    count: number; balanceXaf: number; lateXaf: number; dueNowXaf: number;
+    /** Everyone outstanding, before the scope filter. */
+    allCount: number;
+  };
+  /** Where this page sits in the whole set — see `unpaid`. */
+  page: { limit: number; offset: number; total: number };
 }
 
 /** One receipt, as the API assembled it. Never recomputed client-side. */

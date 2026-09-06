@@ -3354,6 +3354,15 @@ table.data td.c-text {
   text-align: right;
 }
 
+/* A whole cell that is context rather than the figure being acted on.
+   NOT `.cell-sub`, which is `display: block` — putting that on a <td> takes the
+   cell out of the row box and collapses the column it belongs to, which is
+   exactly how "reste sur l'année" ended up the wrong width. */
+table.data td.is-muted {
+  color: var(--ink-3);
+  font-weight: 400;
+}
+
 /* A second line inside a table cell — a phone under a name, without a second
    column that would be empty on half the rows. */
 .cell-sub {
@@ -6248,3 +6257,114 @@ table.data td.c-text {
 }
 .steps li.is-done .steps-n { border-color: var(--primary); color: var(--primary); }
 .steps-note { font-size: var(--t-micro); color: var(--line-strong); }
+
+/* A pager under a worked list. Explicit pages, not infinite scroll: this is a
+   list somebody works through and puts down, and "where was I" has to survive
+   a phone call. */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s4);
+  padding: var(--s3);
+  border-top: 1px solid var(--line);
+}
+
+/* ── the verification block on an issued bulletin ──
+   The signatures and the QR share the footer: a reader checking the paper is
+   looking at the bottom of it anyway, and the code has to survive printing, so
+   it is never smaller than about 20mm on the page. */
+.bulletin-foot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s6);
+  margin-top: var(--s6);
+}
+.bulletin-foot .bulletin-sign { flex: 1; margin-top: 0; }
+.bulletin-qr {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s3);
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+  text-align: left;
+}
+.bulletin-qr .qr {
+  border: 1px solid var(--line);
+  padding: 3px;
+  background: #fff;
+}
+.bulletin-qr-url { color: var(--line-strong); }
+@media print {
+  /* Black on white whatever the theme was on screen — a scanner reads
+     contrast, and a dark-mode QR printed as grey on grey reads as nothing. */
+  .bulletin-qr .qr { border-color: #000; background: #fff; }
+  .bulletin-qr { color: #000; }
+}
+
+/* ── the verification page ──
+   No console chrome: this is reached by scanning a printed sheet, by somebody
+   who has no account and nothing to do here but read. */
+.verify {
+  min-height: 100vh;
+  padding: var(--s6) var(--s4);
+  background: var(--bg);
+}
+.verify-card {
+  max-width: 720px;
+  margin-inline: auto;
+  padding: var(--s6);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.verify-badge {
+  display: inline-block;
+  padding: 2px var(--s3);
+  border-radius: 999px;
+  background: var(--ok-soft, var(--primary-soft));
+  color: var(--ok, var(--primary));
+  font-size: var(--t-micro);
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.verify-title { margin: var(--s3) 0 2px; font-size: var(--t-lead); }
+.verify-sub { margin: 0 0 var(--s5); color: var(--ink-3); font-size: var(--t-small); }
+.verify-id {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s5);
+  margin: 0 0 var(--s5);
+}
+.verify-id div { display: flex; flex-direction: column; gap: 2px; }
+.verify-id dt {
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+.verify-id dd { margin: 0; font-weight: 600; }
+.verify-avg { font-size: var(--t-lead); }
+.verify-result { margin-top: var(--s5); }
+.verify-table { width: 100%; border-collapse: collapse; font-size: var(--t-body); }
+.verify-table th {
+  text-align: left;
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  border-bottom: 1px solid var(--line);
+  padding: var(--s2) var(--s3);
+}
+.verify-table td { padding: var(--s2) var(--s3); border-bottom: 1px solid var(--line-soft); }
+.verify-table .c-num { text-align: right; font-variant-numeric: tabular-nums; }
+.verify-note {
+  padding: var(--s3);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--t-small);
+}
+.verify-foot { margin-bottom: 0; }

@@ -121,7 +121,7 @@ const selected = computed(() => scopeOf(route));
  * behind a scrollbar, and a node-link diagram of a whole complex capped at
  * reading width is a diagram of a third of it.
  */
-const FLUID_ROUTES = new Set(["unit", "marks", "classe", "tariffs"]);
+const FLUID_ROUTES = new Set(["unit", "marks", "classe", "tariffs", "unpaid", "collect"]);
 const fluid = computed(() => FLUID_ROUTES.has(String(route.name)));
 
 /** The action being run, when the route is a generic action page. */

@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import * as api from "../../lib/api";
 import Icon from "../../components/ui/Icon.vue";
 import Alert from "../../components/ui/Alert.vue";
+import QrCode from "../../components/ui/QrCode.vue";
 
 /**
  * ONE PUPIL'S BULLETIN — the document, not a screen about it.
@@ -105,6 +106,20 @@ const fullName = computed(() =>
 
 const num = (v: string | null, digits = 2) =>
   v === null || v === "" ? "—" : Number(v).toFixed(digits);
+/**
+ * Where the QR points.
+ *
+ * The console's own origin: the public page is served by the same app, so a
+ * school on an edge box gets a URL that resolves on its own LAN and one in the
+ * cloud gets a public one, without either being configured anywhere.
+ */
+const verifyUrl = computed(() =>
+  bulletin.value?.publicToken
+    ? `${window.location.origin}/b/${bulletin.value.publicToken}`
+    : null,
+);
+const verifyHost = computed(() => window.location.host);
+
 const day = (v: string | null) =>
   v ? new Date(v).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" }) : "—";
 
@@ -340,10 +355,30 @@ const DECISIONS: Record<string, string> = {
         Three empty rules under a draft invite exactly the thing the banner
         above forbids: someone signs it, and it becomes the document.
       -->
-      <footer v-if="bulletin.status === 'ISSUED'" class="bulletin-sign">
-        <div><span>Le titulaire</span></div>
-        <div><span>Le chef d'établissement</span></div>
-        <div><span>Le parent / tuteur</span></div>
+      <footer v-if="bulletin.status === 'ISSUED'" class="bulletin-foot">
+        <div class="bulletin-sign">
+          <div><span>Le titulaire</span></div>
+          <div><span>Le chef d'établissement</span></div>
+          <div><span>Le parent / tuteur</span></div>
+        </div>
+
+        <!--
+          THE CODE THAT MAKES THE PAPER CHECKABLE.
+
+          A bulletin is carried to another school, to an employer, to a
+          ministry — people who cannot sign in here and for whom an edited PDF
+          is indistinguishable from the original. Scanning this opens the
+          document the school actually issued, so the two can be held side by
+          side. Only on an ISSUED sheet: a QR on a provisional one would be a
+          claim of authenticity about a draft.
+        -->
+        <div v-if="verifyUrl" class="bulletin-qr">
+          <QrCode :value="verifyUrl" :size="86" label="Vérifier ce bulletin" />
+          <span>
+            Vérifier l'original<br />
+            <span class="bulletin-qr-url">{{ verifyHost }}</span>
+          </span>
+        </div>
       </footer>
       <footer v-else class="bulletin-unsigned">
         Les signatures apparaîtront sur le bulletin définitif, après le conseil.

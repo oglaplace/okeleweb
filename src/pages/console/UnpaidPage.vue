@@ -69,12 +69,30 @@ onMounted(async () => {
   }
 });
 
+/**
+ * A PAGE AT A TIME, and the narrowing belongs to the API.
+ *
+ * A complex of a thousand pupils has close to a thousand outstanding factures
+ * in janvier. Downloading all of them to show fifty is the whole wait on this
+ * connection — and filtering fifty of nine hundred in the browser answers a
+ * different question from the one that was asked: "who owes something today"
+ * cannot be read off one page. So scope, search and paging all go to the
+ * server, and the figures that come back describe exactly what was asked for.
+ */
+const PAGE = 50;
+const offset = ref(0);
+
 async function load() {
   if (!yearId.value) return;
   loading.value = true;
   error.value = null;
   try {
-    data.value = await api.finance.unpaid(yearId.value);
+    data.value = await api.finance.unpaid(yearId.value, {
+      limit: PAGE,
+      offset: offset.value,
+      scope: scope.value,
+      ...(query.value.trim() ? { q: query.value.trim() } : {}),
+    });
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Impayés indisponibles.";
     data.value = null;
@@ -84,27 +102,28 @@ async function load() {
 }
 watch(yearId, load);
 
-const rows = computed(() => {
-  const all = data.value?.rows ?? [];
-  const q = query.value.trim().toLowerCase();
-  return all.filter(
-    (r) =>
-      (scope.value === "all" ||
-        (scope.value === "late" ? r.overdueXaf > 0 : r.dueNowXaf > 0)) &&
-      (!q ||
-        `${r.lastName} ${r.firstName} ${r.matricule} ${r.classe?.name ?? ""}`
-          .toLowerCase()
-          .includes(q)),
-  );
+/** Any change of question starts at the first page — page 7 of the old one is
+ *  a page of a list that no longer exists. */
+watch([scope, query], () => {
+  offset.value = 0;
+  void load();
 });
+watch(offset, load);
 
-/** What the filtered view actually adds up to — not the unfiltered totals. */
-const shown = computed(() => ({
-  count: rows.value.length,
-  balanceXaf: rows.value.reduce((s, r) => s + r.balanceXaf, 0),
-  dueNowXaf: rows.value.reduce((s, r) => s + r.dueNowXaf, 0),
-  lateXaf: rows.value.reduce((s, r) => s + r.overdueXaf, 0),
-}));
+const rows = computed(() => data.value?.rows ?? []);
+const shown = computed(() => data.value?.totals ?? null);
+
+const pageInfo = computed(() => {
+  const p = data.value?.page;
+  if (!p || !p.total) return null;
+  return {
+    from: p.offset + 1,
+    to: Math.min(p.offset + p.limit, p.total),
+    total: p.total,
+    hasPrev: p.offset > 0,
+    hasNext: p.offset + p.limit < p.total,
+  };
+});
 
 // ── taking money, without leaving the list ──────────────────────────────────
 const paying = ref<api.Unpaid["rows"][number] | null>(null);
@@ -169,7 +188,7 @@ async function printReceipt() {
     </div></div>
 
     <template v-else-if="data">
-      <div class="dossier-figures" style="margin-bottom: var(--s4)">
+      <div v-if="shown" class="dossier-figures" style="margin-bottom: var(--s4)">
         <div><span>Élèves concernés</span><strong>{{ shown.count }}</strong></div>
         <!-- The collectable figure first and in red: it is the one an économe
              acts on. The year's balance is context, not a target. -->
@@ -183,7 +202,12 @@ async function printReceipt() {
 
       <div class="card">
         <div class="card-head unpaid-tools">
-          <input v-model="query" class="unpaid-search" placeholder="Nom, matricule, classe…" />
+          <input
+            v-model="query"
+            class="unpaid-search"
+            placeholder="Nom, matricule, classe…"
+            aria-label="Rechercher un élève"
+          />
           <!-- Three widths of the same list, and the default is the one that
                can be acted on. See `scope`. -->
           <!-- Same control as the grille's list/graphe switch — one segmented
@@ -200,14 +224,20 @@ async function printReceipt() {
               @click="scope = sc.id"
             >{{ sc.label }}</button>
           </div>
-          <span class="hint">{{ rows.length }} / {{ data.rows.length }}</span>
+          <span v-if="pageInfo" class="hint">
+            {{ pageInfo.from }}–{{ pageInfo.to }} sur {{ pageInfo.total }}
+          </span>
         </div>
 
         <div v-if="!rows.length" class="empty">
           <div class="empty-title">
-            {{ data.rows.length ? "Aucun élève ne correspond" : "Aucun impayé" }}
+            {{ data.totals.allCount ? "Aucun élève ne correspond" : "Aucun impayé" }}
           </div>
-          <div v-if="!data.rows.length">Toutes les factures émises sont soldées.</div>
+          <div v-if="!data.totals.allCount">Toutes les factures émises sont soldées.</div>
+          <div v-else-if="scope === 'due'">
+            Personne n'a de tranche échue impayée. {{ data.totals.allCount }} élève(s) ont
+            un solde sur l'année — « Tout l'impayé » les montre.
+          </div>
         </div>
 
         <div v-else class="table-wrap">
@@ -220,7 +250,7 @@ async function printReceipt() {
                 <th class="c-num" title="Tranches déjà échues, réglées ou non">Exigible</th>
                 <th class="c-num" title="Au-delà du délai de grâce">En retard</th>
                 <th class="c-num">Jours</th>
-                <th class="c-num" title="Toute l'année, échue ou non">Reste sur l'année</th>
+                <th class="c-num" title="Toute l'année, échue ou non">Sur l'année</th>
                 <th class="c-text">Dernier règlement</th>
                 <th />
               </tr>
@@ -249,7 +279,7 @@ async function printReceipt() {
                 </td>
                 <td class="c-num">{{ r.overdueXaf > 0 ? money(r.overdueXaf) : "—" }}</td>
                 <td class="c-num">{{ r.daysLate || "—" }}</td>
-                <td class="c-num cell-sub">{{ money(r.balanceXaf) }}</td>
+                <td class="c-num is-muted">{{ money(r.balanceXaf) }}</td>
                 <td class="c-text">
                   <template v-if="r.lastPaymentOn">
                     {{ day(r.lastPaymentOn) }}
@@ -263,6 +293,25 @@ async function printReceipt() {
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <!-- Explicit pages rather than infinite scroll: this is a list that
+             gets worked through and put down, and "where was I" has to survive
+             a phone call. -->
+        <div v-if="pageInfo && (pageInfo.hasPrev || pageInfo.hasNext)" class="pager">
+          <button
+            class="btn sm ghost"
+            type="button"
+            :disabled="!pageInfo.hasPrev || loading"
+            @click="offset = Math.max(0, offset - PAGE)"
+          >Précédent</button>
+          <span class="hint">{{ pageInfo.from }}–{{ pageInfo.to }} sur {{ pageInfo.total }}</span>
+          <button
+            class="btn sm ghost"
+            type="button"
+            :disabled="!pageInfo.hasNext || loading"
+            @click="offset = offset + PAGE"
+          >Suivant</button>
         </div>
       </div>
     </template>

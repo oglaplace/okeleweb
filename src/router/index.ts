@@ -32,6 +32,15 @@ const router = createRouter({
     { path: "/", name: "landing", component: () => import("../pages/BootPage.vue") },
     { path: "/login", name: "login", component: LoginPage },
 
+    /**
+     * THE QR ON A PRINTED BULLETIN LANDS HERE.
+     *
+     * Outside every guard and outside the console shell: whoever scanned it has
+     * no account, and the token in the URL is the only credential involved. A
+     * short path because it is printed on paper and sometimes typed by hand.
+     */
+    { path: "/b/:token", name: "verify-bulletin", component: () => import("../pages/PublicBulletinPage.vue") },
+
     {
       path: "/console",
       component: () => import("../components/console/ConsoleLayout.vue"),
