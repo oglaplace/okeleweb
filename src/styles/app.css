@@ -6461,6 +6461,10 @@ table.data td.is-muted {
 }
 .decide-opt:hover { background: var(--surface-2); }
 
+/* The réinscription form: three fields on one line inside the dialog. */
+.confirm-body .field-row { display: flex; gap: var(--s3); flex-wrap: wrap; margin: var(--s3) 0; }
+.confirm-body .field-row .field { flex: 1 1 8rem; }
+
 /* A reason typed in a dialog is a sentence, not a code field. */
 .confirm-body textarea {
   width: 100%;
@@ -6522,7 +6526,18 @@ table.data td.is-muted {
   background: var(--surface-2);
 }
 .catalogue-edit .field { flex: 1 1 10rem; }
-.catalogue-edit .field-actions { flex: none; display: flex; gap: var(--s2); align-items: flex-end; }
+.catalogue-edit .field-actions {
+  flex: none;
+  display: flex;
+  gap: var(--s2);
+  align-items: flex-end;
+  /* Pushed to the end of whatever line it lands on: with the modalité fields
+     the form wraps, and Annuler sitting against "Jours de grâce" reads as its
+     label rather than as the form's own controls. */
+  margin-left: auto;
+}
+/* Échéances, jour, grâce: three numbers that need four characters, not ten. */
+.catalogue-edit .field.is-narrow { flex: 0 1 7.5rem; }
 
 /* ── matières : le catalogue et sa programmation, côte à côte ──
    The catalogue is a list you scan and the scope is a tree you tick; putting

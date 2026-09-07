@@ -125,6 +125,22 @@ export function studentTabs(
      */
     lockable?: boolean;
     /**
+     * MARKS MAY BE TYPED, but the grid may not be restructured.
+     *
+     * The conseil's own state. A council that reopens a subject reopens it to
+     * correct it, and the correction belongs in the sheet the council is
+     * looking at — sending it to the mark-entry screen was asking it to leave
+     * the meeting to fix a digit. What it still may not do is add an
+     * evaluation or retune a coefficient mid-deliberation, which is what the
+     * full `editable` turns on.
+     *
+     * Which cells accept typing is decided per evaluation exactly as it is for
+     * a teacher: open ones yes, remises and publiées no. So unlocking a
+     * subject is what makes its column typeable, and locking it back is what
+     * stops it — one padlock, one meaning.
+     */
+    marksEditable?: boolean;
+    /**
      * Which subjects the COUNCIL considers handed over, by subject id.
      *
      * THE BUG THIS FIXES: the padlock used to re-derive its own state from the
@@ -275,17 +291,23 @@ export function studentTabs(
                   : a.submitted
                     ? " · remise, en attente du conseil"
                     : " · saisie ouverte"),
-              // Typeable only while it is the teacher's working copy.
-              ...(focus.editable && !a.submitted && !a.published
+              // Typeable only while it is the teacher's working copy — or the
+              // council's, once it has taken the subject back off the padlock.
+              ...((focus.editable || focus.marksEditable) && !a.submitted && !a.published
                 ? { edit: { assessmentId: a.id, max: a.max } }
                 : {}),
               headerButton: {
                 key: `assessment:${a.id}`,
-                // Drawn glyphs, not emoji: the same padlock the subject header
-                // uses, at the same weight, following the theme's colour. An
-                // emoji here rendered as somebody else's yellow cartoon.
+                /*
+                 * Three states, one vocabulary, both sheets: an open padlock
+                 * means the column can be typed into, a tick means it has been
+                 * handed to the conseil, a shut padlock means it is published
+                 * and frozen. The ⋯ said nothing about any of that — it named
+                 * the menu rather than the state, and the state is what
+                 * somebody looking at a column of marks needs to know.
+                 */
                 label: "",
-                icon: (a.published ? "lock" : a.submitted ? "check" : "dots") as IconName,
+                icon: (a.published ? "lock" : a.submitted ? "check" : "lockOpen") as IconName,
                 hint: a.published
                   ? "Publiée — figée par le conseil"
                   : a.submitted

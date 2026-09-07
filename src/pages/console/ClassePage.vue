@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 import * as api from "../../lib/api";
 import Alert from "../../components/ui/Alert.vue";
 import ConfirmDialog from "../../components/ui/ConfirmDialog.vue";
 import DataSheet from "../../components/sheet/DataSheet.vue";
 import { studentTabs, flattenStudentRow } from "../../components/sheet/columns";
+import { useMarkEntry } from "../../lib/markEntry";
 import type { SheetGroup, SheetTab } from "../../components/sheet/columns";
 import SheetTabs from "../../components/sheet/SheetTabs.vue";
 import { useAuthStore } from "../../stores/auth";
@@ -59,6 +60,14 @@ const sheet = ref<api.StudentSheet | null>(null);
  */
 const auth = useAuthStore();
 const mayFreeze = computed(() => auth.can("grading.issue"));
+/**
+ * May type a mark into a reopened column.
+ *
+ * Both grants, deliberately: `grading.write` is who may touch a mark at all,
+ * and `grading.issue` is who sits on the conseil. A titulaire reading the
+ * deliberation over somebody's shoulder has neither business nor button.
+ */
+const mayCorrect = computed(() => mayFreeze.value && auth.can("grading.write"));
 const preview = ref<api.ClassePreview | null>(null);
 
 const yearId = ref<string | null>(null);
@@ -236,6 +245,9 @@ const marksTab = computed(() =>
         periodId: periodId.value,
         editable: false,
         lockable: mayFreeze.value,
+        // Reopening a subject is what makes its column typeable — see
+        // marksEditable. The council corrects in the grid it is reading.
+        marksEditable: mayCorrect.value,
         // One verdict on what is remise: the council's — see submittedSubjects.
         submittedSubjects: new Set(
           (council.value?.subjects ?? []).filter((x) => x.submitted).map((x) => x.subjectId),
@@ -279,8 +291,15 @@ const previewOf = computed(() => {
   return map;
 });
 
+const marks = useMarkEntry({
+  sheet,
+  periodId,
+  // The council's own reload: the sheet, and everything that reads from it.
+  reload: async () => { await refresh(); },
+});
+
 const marksRows = computed(() =>
-  (sheet.value?.rows ?? []).map((row) => {
+  marks.apply((sheet.value?.rows ?? []).map((row) => {
     const flat = flattenStudentRow(row);
     const id = String(flat.studentId ?? "");
     const p = previewOf.value.get(id);
@@ -295,7 +314,7 @@ const marksRows = computed(() =>
       "c:observation": observationOf.value.get(id) ?? "—",
       "c:bulletin": frozenBy.value.has(id) ? "Figé" : "à figer",
     };
-  }),
+  })),
 );
 
 /** Which subject a padlock belongs to — the sheet names subjects, not offerings. */
@@ -705,6 +724,10 @@ async function issue() {
 }
 
 onMounted(load);
+// Marks in flight would be lost by leaving, by changing période, or by
+// switching to the minutes — flush before any of the three.
+onBeforeUnmount(() => void marks.flush());
+watch(page, () => void marks.flush());
 watch(yearId, () => void loadYearScoped());
 /*
  * The council opens ready. Computing on arrival rather than behind a button:
@@ -712,6 +735,7 @@ watch(yearId, () => void loadYearScoped());
  * shows nothing until you find the right control is a screen people leave.
  */
 watch(periodId, async () => {
+  await marks.flush();
   preview.value = null;
   issued.value = null;
   await refresh();
@@ -864,6 +888,9 @@ watch(periodId, async () => {
 
     <Alert v-if="notice" kind="ok" @close="notice = null">{{ notice }}</Alert>
     <Alert v-if="error" kind="error" @close="error = null">{{ error }}</Alert>
+    <Alert v-if="marks.error.value" kind="error" @close="marks.error.value = null">
+      {{ marks.error.value }}
+    </Alert>
     <Alert v-if="issued !== null" kind="ok" :auto-dismiss="0" @close="issued = null">
       <template v-if="issued.issued">
         {{ issued.issued }} bulletin(s) figé(s)<template v-if="issued.alreadyIssued">,
@@ -918,6 +945,7 @@ watch(periodId, async () => {
         :title="`${classe?.name ?? ''} — conseil`"
         @group-act="onGroupAct"
         @act="onCellAct"
+        @edit="marks.onEdit"
       />
       <DataSheet
         v-else-if="!pvBlocked"
@@ -940,9 +968,23 @@ watch(periodId, async () => {
           <span v-if="acting" class="marksave">
             <span class="btn-spin" aria-hidden="true" />Enregistrement…
           </span>
-          <RouterLink class="btn sm ghost" :to="{ name: 'marks', params: { id: classeId } }">
-            Saisir les notes
-          </RouterLink>
+          <!--
+            Where the typing got to. Nobody presses save: the writes go out
+            shortly after the keystrokes stop, and this is the receipt.
+
+            "Saisir les notes" used to sit here and is gone: the marks of a
+            reopened subject are typed in this grid now, and a button leading
+            to another screen showing the same grid was one more place to look
+            for something already under the cursor.
+          -->
+          <span v-else-if="marks.state.value !== 'idle'" class="marksave">
+            <span v-if="marks.state.value === 'saving'" class="btn-spin" aria-hidden="true" />
+            {{
+              marks.state.value === "saving" ? "Enregistrement…"
+              : marks.state.value === "dirty" ? "Modifications non enregistrées"
+              : `Enregistré à ${marks.savedAt.value}`
+            }}
+          </span>
         </template>
       </SheetTabs>
     </div>

@@ -618,8 +618,44 @@ async function removeFeeType() {
  * every facture match on, and a school that renames a code detaches itself from
  * its own history.
  */
-const editing = ref<{ id: string; name: string; recurrence: string } | null>(null);
+/**
+ * ONE FEE, ONE FORM — its name, its périodicité and its modalité.
+ *
+ * The cadence used to live only on the school (« payable au trimestre », said
+ * once about everything), so a facture split an inscription paid at the counter
+ * into three tranches like the scolarité beside it. It belongs to the fee: what
+ * a school charges and when it expects to be paid for it are one decision, and
+ * they are taken here, in the space where the type is created and removed.
+ */
+type Cadence = {
+  modality: api.PaymentModality | "";
+  installments: number | null;
+  dueDayOfMonth: number | null;
+  graceDays: number | null;
+};
+const editing = ref<({ id: string; name: string; recurrence: string } & Cadence) | null>(null);
 const editBusy = ref(false);
+
+/** Empty strings and NaN out of the form, nulls onto the wire. */
+function cadenceOf(c: Cadence) {
+  return {
+    modality: c.modality || null,
+    installments: c.installments || null,
+    dueDayOfMonth: c.dueDayOfMonth || null,
+    graceDays: c.graceDays ?? null,
+  };
+}
+
+/** What the row shows under its name, in the words the operator picked. */
+function cadenceLabel(t: api.FeeCadence): string | null {
+  if (!t.modality) return null;
+  if (t.modality === "COMPTANT") return "comptant";
+  const parts = [api.PAYMENT_MODALITY_FR[t.modality].split(" — ")[0]!.toLowerCase()];
+  if (t.installments) parts.push(`${t.installments} échéance(s)`);
+  if (t.dueDayOfMonth) parts.push(`le ${t.dueDayOfMonth}`);
+  if (t.graceDays) parts.push(`+${t.graceDays} j de grâce`);
+  return parts.join(" · ");
+}
 
 async function saveFeeType() {
   const target = editing.value;
@@ -630,6 +666,7 @@ async function saveFeeType() {
     await api.finance.updateFeeType(target.id, {
       name: target.name.trim(),
       recurrence: target.recurrence,
+      ...cadenceOf(target),
     });
     notice.value = `« ${target.name.trim()} » enregistré.`;
     editing.value = null;
@@ -644,7 +681,10 @@ async function saveFeeType() {
 
 /** A fee this school charges and the catalogue never heard of. */
 const creating = ref(false);
-const newType = ref({ name: "", recurrence: "ONCE" as string });
+const newType = ref<{ name: string; recurrence: string } & Cadence>({
+  name: "", recurrence: "ONCE",
+  modality: "", installments: null, dueDayOfMonth: null, graceDays: null,
+});
 const createBusy = ref(false);
 
 /** A code nobody has to invent, derived from the name they typed. */
@@ -670,9 +710,13 @@ async function createFeeType() {
       code: codeFrom(name),
       name,
       recurrence: newType.value.recurrence as "ONCE",
+      ...cadenceOf(newType.value),
     });
     notice.value = `« ${name} » ajouté.`;
-    newType.value = { name: "", recurrence: "ONCE" };
+    newType.value = {
+      name: "", recurrence: "ONCE",
+      modality: "", installments: null, dueDayOfMonth: null, graceDays: null,
+    };
     creating.value = false;
     catalogue.value = await api.finance.feeCatalogue().catch(() => catalogue.value);
     await load();
@@ -1154,7 +1198,16 @@ const pricedCount = computed(
                     <span class="tranche-tag">{{ RECURRENCE_FR[t.recurrence] }}</span>
                     <span v-if="t.installed" class="tranche-tag is-clear">déjà là</span>
                   </span>
-                  <span class="catalogue-detail">{{ t.detail }}</span>
+                  <span class="catalogue-detail">
+                    {{ t.detail }}
+                    <!-- The échéancier, in the row: a catalogue that says what
+                         a school charges and not when it is due is half a
+                         catalogue. Absent = follows the school's modalité. -->
+                    <template v-if="t.installed">
+                      <span v-if="cadenceLabel(t)" class="tranche-tag">{{ cadenceLabel(t) }}</span>
+                      <span v-else class="tranche-tag is-clear">modalité de l'école</span>
+                    </template>
+                  </span>
                 </span>
               </label>
 
@@ -1166,7 +1219,11 @@ const pricedCount = computed(
                 class="catalogue-rm"
                 type="button"
                 :title="`Renommer « ${t.name} »`"
-                @click="editing = { id: t.id!, name: t.name, recurrence: t.recurrence }"
+                @click="editing = {
+                  id: t.id!, name: t.name, recurrence: t.recurrence,
+                  modality: t.modality ?? '', installments: t.installments,
+                  dueDayOfMonth: t.dueDayOfMonth, graceDays: t.graceDays,
+                }"
               >Modifier</button>
               <button
                 v-if="t.installed && t.removable"
@@ -1201,6 +1258,41 @@ const pricedCount = computed(
                 <option value="MONTHLY">Par mois</option>
               </select>
             </div>
+
+            <!--
+              LA MODALITÉ DE CE FRAIS.
+
+              Blank means "follow the school's" — the honest default, and the
+              one every existing fee keeps. Comptant is the answer for what is
+              paid at the counter on the day: one tranche, due at once, and the
+              three fields below stop applying, which is why they hide.
+            -->
+            <div class="field">
+              <label for="ft-mod">Modalité</label>
+              <select id="ft-mod" v-model="editing.modality">
+                <option value="">Celle de l'école</option>
+                <option v-for="(label, id) in api.PAYMENT_MODALITY_FR" :key="id" :value="id">
+                  {{ label }}
+                </option>
+              </select>
+            </div>
+            <template v-if="editing.modality && editing.modality !== 'COMPTANT'">
+              <div class="field is-narrow">
+                <label for="ft-inst">Échéances</label>
+                <input id="ft-inst" v-model.number="editing.installments" type="number" min="1" max="12"
+                       placeholder="auto" />
+              </div>
+              <div class="field is-narrow">
+                <label for="ft-day">Jour d'échéance</label>
+                <input id="ft-day" v-model.number="editing.dueDayOfMonth" type="number" min="1" max="31"
+                       placeholder="—" />
+              </div>
+              <div class="field is-narrow">
+                <label for="ft-grace">Jours de grâce</label>
+                <input id="ft-grace" v-model.number="editing.graceDays" type="number" min="0" max="180"
+                       placeholder="0" />
+              </div>
+            </template>
             <div class="field field-actions">
               <button class="btn sm ghost" type="button" @click="editing = null">Annuler</button>
               <button
@@ -1235,6 +1327,41 @@ const pricedCount = computed(
                 <option value="MONTHLY">Par mois</option>
               </select>
             </div>
+
+            <!--
+              LA MODALITÉ DE CE FRAIS.
+
+              Blank means "follow the school's" — the honest default, and the
+              one every existing fee keeps. Comptant is the answer for what is
+              paid at the counter on the day: one tranche, due at once, and the
+              three fields below stop applying, which is why they hide.
+            -->
+            <div class="field">
+              <label for="ftn-mod">Modalité</label>
+              <select id="ftn-mod" v-model="newType.modality">
+                <option value="">Celle de l'école</option>
+                <option v-for="(label, id) in api.PAYMENT_MODALITY_FR" :key="id" :value="id">
+                  {{ label }}
+                </option>
+              </select>
+            </div>
+            <template v-if="newType.modality && newType.modality !== 'COMPTANT'">
+              <div class="field is-narrow">
+                <label for="ftn-inst">Échéances</label>
+                <input id="ftn-inst" v-model.number="newType.installments" type="number" min="1" max="12"
+                       placeholder="auto" />
+              </div>
+              <div class="field is-narrow">
+                <label for="ftn-day">Jour d'échéance</label>
+                <input id="ftn-day" v-model.number="newType.dueDayOfMonth" type="number" min="1" max="31"
+                       placeholder="—" />
+              </div>
+              <div class="field is-narrow">
+                <label for="ftn-grace">Jours de grâce</label>
+                <input id="ftn-grace" v-model.number="newType.graceDays" type="number" min="0" max="180"
+                       placeholder="0" />
+              </div>
+            </template>
             <div class="field field-actions">
               <button class="btn sm ghost" type="button" @click="creating = false">Annuler</button>
               <button

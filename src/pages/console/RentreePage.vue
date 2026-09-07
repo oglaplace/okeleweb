@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { RouterLink } from "vue-router";
 import * as api from "../../lib/api";
 import Alert from "../../components/ui/Alert.vue";
+import ConfirmDialog from "../../components/ui/ConfirmDialog.vue";
 import { useOrgStore } from "../../stores/org";
 
 /**
@@ -133,13 +134,20 @@ async function loadPeriods() {
   periodPlan.value = null;
   const year = years.value.find((y) => y.isCurrent)?.id ?? toId.value;
   if (!schoolId.value || !year) return;
-  periods.value = await api.academics.periods(schoolId.value, year).catch(() => []);
+  const all = await api.academics.periods(schoolId.value, year).catch(() => []);
+  /*
+   * ON NE SE RÉINSCRIT PAS À UNE PÉRIODE DÉJÀ CLOSE.
+   *
+   * The picker listed every période of the year, so an operator could choose a
+   * trimestre that ended in décembre and "réinscrire" a class into it. A
+   * réinscription is an opt-in to what comes next; a term that is over has
+   * nothing to opt into, and the API refuses it now — the list should not have
+   * offered it in the first place.
+   */
   const today = Date.now();
+  periods.value = all.filter((p) => new Date(p.endsOn).getTime() >= today);
   const ahead = periods.value.filter((p) => new Date(p.startsOn).getTime() > today);
-  const now = periods.value.find(
-    (p) => new Date(p.startsOn).getTime() <= today && today <= new Date(p.endsOn).getTime(),
-  );
-  periodId.value = (ahead[0] ?? now ?? periods.value[periods.value.length - 1])?.id ?? null;
+  periodId.value = (ahead[0] ?? periods.value[0])?.id ?? null;
 }
 watch(schoolId, loadPeriods);
 
@@ -168,19 +176,94 @@ const periodPupils = computed(() => {
     : all;
 });
 
-async function setStatus(
-  p: api.PeriodRegistrationPlan["classes"][number]["pupils"][number],
-  status: "ACTIVE" | "BLOCKED",
-) {
-  if (!periodId.value || working.value) return;
-  working.value = p.studentId;
+type PeriodPupil = api.PeriodRegistrationPlan["classes"][number]["pupils"][number];
+const named = (p: PeriodPupil) => `${p.lastName.toUpperCase()} ${p.firstName}`;
+
+/**
+ * RÉINSCRIPTION AND ITS FEE, in one act.
+ *
+ * The same form inscription uses at the counter, for the same reason: the
+ * student comes back and the activation fee crosses the desk in the same
+ * breath. The API takes both or neither, so a refused payment cannot leave a
+ * place held for money the school never received.
+ *
+ * The amount is left empty on purpose — the operator types what was handed
+ * over, which is not always the whole fee — and « sans paiement » is a real
+ * answer for a school that prices no activation.
+ */
+const reinscribing = ref<{
+  pupil: PeriodPupil;
+  amount: number | null;
+  method: string;
+  reference: string;
+} | null>(null);
+
+async function reinscribe(withPayment: boolean) {
+  const target = reinscribing.value;
+  if (!target || !periodId.value || working.value) return;
+  if (withPayment && !target.amount) return;
+  working.value = target.pupil.studentId;
   error.value = null;
   try {
-    await api.academics.registerPeriod(periodId.value, [p.studentId], { status });
-    notice.value =
-      status === "ACTIVE"
-        ? `${p.lastName.toUpperCase()} ${p.firstName} réinscrit(e) pour ${periodPlan.value?.period.label}.`
-        : `${p.lastName.toUpperCase()} ${p.firstName} bloqué(e) pour ${periodPlan.value?.period.label}.`;
+    const res = await api.academics.reinscribePeriod(periodId.value, target.pupil.studentId, {
+      ...(withPayment && target.amount
+        ? {
+            payment: {
+              amountXaf: target.amount,
+              method: target.method as api.PaymentMethod,
+              ...(periodPlan.value?.fee ? { feeTypeId: periodPlan.value.fee.id } : {}),
+              ...(target.reference.trim() ? { reference: target.reference.trim() } : {}),
+            },
+          }
+        : {}),
+    });
+    notice.value = res.receipt
+      ? `${named(target.pupil)} réinscrit(e) — reçu n° ${res.receipt.number}.`
+      : `${named(target.pupil)} réinscrit(e) pour ${periodPlan.value?.period.label}.`;
+    reinscribing.value = null;
+    await loadPeriodPlan();
+  } catch (e) {
+    error.value = e instanceof api.ApiError ? e.message : "Opération impossible.";
+  } finally {
+    working.value = null;
+  }
+}
+
+/**
+ * BLOQUER — ce que cela fait, et ce que cela ne fait pas.
+ *
+ * The school refuses this student the période until something is settled,
+ * normally unpaid fees. It is a RECORDED REFUSAL against the période, with a
+ * reason and a date: it does not withdraw them from the school, does not stop
+ * their marks being entered, and does not touch their factures. The point is
+ * that "why is this one not registered?" has an answer in six weeks, instead
+ * of a pupil left PENDING and nobody remembering.
+ *
+ * Which is why the reason is required. A block with no motive is the state
+ * this feature was invented to replace.
+ */
+const blocking = ref<{ pupil: PeriodPupil; reason: string } | null>(null);
+
+async function setStatus(pupil: PeriodPupil, status: "ACTIVE" | "BLOCKED" | "PENDING", note?: string) {
+  if (!periodId.value || working.value) return;
+  working.value = pupil.studentId;
+  error.value = null;
+  try {
+    const res = await api.academics.registerPeriod(periodId.value, [pupil.studentId], {
+      status,
+      ...(note !== undefined ? { note } : {}),
+    });
+    if (res.refused.length) {
+      error.value = res.refused[0]!.message;
+    } else {
+      notice.value =
+        status === "BLOCKED"
+          ? `${named(pupil)} bloqué(e) pour ${periodPlan.value?.period.label}.`
+          : status === "PENDING"
+            ? `Blocage levé pour ${named(pupil)}.`
+            : `${named(pupil)} réinscrit(e) pour ${periodPlan.value?.period.label}.`;
+    }
+    blocking.value = null;
     await loadPeriodPlan();
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Opération impossible.";
@@ -414,8 +497,24 @@ const STATUS_FR: Record<string, string> = {
               {{ periodPupils.filter((p) => p.status === 'ACTIVE').length }} réinscrit(s)
               <template v-if="periodPlan.fee"> · frais : {{ periodPlan.fee.name }}</template>
               <template v-else> · aucun frais de réinscription au tarif</template>
+              <template v-if="periodPlan.period.current"> · période en cours</template>
             </span>
           </div>
+
+          <!--
+            BLOQUER, expliqué là où on l'utilise.
+
+            The button was doing something invisible: it wrote a state nothing
+            else in the app reads, with no reason attached, and an operator who
+            pressed it could not tell what had changed. What it IS, is a
+            recorded refusal — and saying so is most of the fix.
+          -->
+          <p class="hint" style="margin: 0 0 var(--s3)">
+            <strong>Bloquer</strong> refuse la période à un élève et inscrit le motif
+            (scolarité impayée, dossier incomplet). C'est une trace, pas une exclusion :
+            l'élève reste inscrit à l'année, ses notes se saisissent et ses factures
+            courent. Le blocage se lève dès que la situation est réglée.
+          </p>
 
           <div class="card is-grid">
             <div class="table-wrap">
@@ -442,6 +541,11 @@ const STATUS_FR: Record<string, string> = {
                         class="pill"
                         :class="{ ok: p.status === 'ACTIVE', danger: p.status === 'BLOCKED' }"
                       >{{ STATUS_FR[p.status] }}</span>
+                      <!-- Why the school stopped them, or why they cannot be
+                           réinscrit here. A state with no reason beside it is
+                           what made this screen unreadable six weeks later. -->
+                      <span v-if="p.status === 'BLOCKED' && p.note" class="cell-sub">{{ p.note }}</span>
+                      <span v-else-if="!p.eligible && p.reason" class="cell-sub">{{ p.reason }}</span>
                     </td>
                     <td class="c-num">{{ p.paidXaf ? money(p.paidXaf) : "—" }}</td>
                     <td class="c-text">
@@ -457,14 +561,27 @@ const STATUS_FR: Record<string, string> = {
                           class="btn sm ghost"
                           type="button"
                           :disabled="working === p.studentId"
-                          @click="setStatus(p, 'BLOCKED')"
+                          title="Refuser la période à cet élève, avec le motif — voir l'aide ci-dessus"
+                          @click="blocking = { pupil: p, reason: '' }"
                         >Bloquer</button>
+                        <!-- Undoing it is the other half of the feature: a
+                             block is lifted when the situation is settled. -->
+                        <button
+                          v-else
+                          class="btn sm ghost"
+                          type="button"
+                          :disabled="working === p.studentId"
+                          @click="setStatus(p, 'PENDING')"
+                        >Lever le blocage</button>
                         <button
                           v-if="p.status !== 'ACTIVE'"
                           class="btn sm primary"
                           type="button"
-                          :disabled="working === p.studentId"
-                          @click="setStatus(p, 'ACTIVE')"
+                          :disabled="working === p.studentId || !p.eligible"
+                          :title="p.eligible ? undefined : p.reason ?? undefined"
+                          @click="reinscribing = {
+                            pupil: p, amount: null, method: 'CASH', reference: '',
+                          }"
                         >
                           <span v-if="working === p.studentId" class="btn-spin" aria-hidden="true" />
                           Réinscrire
@@ -479,5 +596,83 @@ const STATUS_FR: Record<string, string> = {
         </template>
       </template>
     </template>
+
+    <!--
+      LA RÉINSCRIPTION ET SON RÈGLEMENT, en un seul geste.
+
+      Same form as the guichet's inscription, and the same promise: the API
+      takes both or neither. « Sans paiement » stays available because a school
+      that prices no activation fee still réinscrit its students.
+    -->
+    <ConfirmDialog
+      v-if="reinscribing"
+      :title="`Réinscrire — ${reinscribing.pupil.lastName.toUpperCase()} ${reinscribing.pupil.firstName}`"
+      :subtitle="periodPlan?.period.label"
+      confirm-label="Réinscrire et encaisser"
+      :busy="working === reinscribing.pupil.studentId"
+      :confirm-disabled="!reinscribing.amount"
+      @close="reinscribing = null"
+      @confirm="reinscribe(true)"
+    >
+      <p>
+        <template v-if="periodPlan?.fee">
+          {{ periodPlan.fee.name }} — l'élève est réinscrit(e) et le règlement est
+          encaissé ensemble : si le paiement échoue, la réinscription n'a pas lieu.
+        </template>
+        <template v-else>
+          Aucun frais de réinscription n'est au tarif. Vous pouvez tout de même
+          encaisser un règlement, ou réinscrire sans paiement.
+        </template>
+      </p>
+      <div class="field-row">
+        <div class="field">
+          <label for="re-amount">Montant reçu (XAF)</label>
+          <input id="re-amount" v-model.number="reinscribing.amount" type="number" min="1" step="1" />
+        </div>
+        <div class="field">
+          <label for="re-method">Moyen</label>
+          <select id="re-method" v-model="reinscribing.method">
+            <option v-for="(label, id) in api.PAYMENT_METHOD_FR" :key="id" :value="id">
+              {{ label }}
+            </option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="re-ref">Référence</label>
+          <input id="re-ref" v-model="reinscribing.reference" maxlength="64" placeholder="MOMO-…" />
+        </div>
+      </div>
+      <button
+        class="btn sm ghost"
+        type="button"
+        :disabled="working === reinscribing.pupil.studentId"
+        @click="reinscribe(false)"
+      >Réinscrire sans paiement</button>
+    </ConfirmDialog>
+
+    <!-- Un blocage sans motif est exactement l'état que ce bouton remplace. -->
+    <ConfirmDialog
+      v-if="blocking"
+      :title="`Bloquer — ${blocking.pupil.lastName.toUpperCase()} ${blocking.pupil.firstName}`"
+      :subtitle="periodPlan?.period.label"
+      confirm-label="Bloquer"
+      danger
+      :busy="working === blocking.pupil.studentId"
+      :confirm-disabled="!blocking.reason.trim()"
+      @close="blocking = null"
+      @confirm="setStatus(blocking.pupil, 'BLOCKED', blocking.reason.trim())"
+    >
+      <p>
+        L'élève ne sera pas réinscrit(e) pour cette période tant que le blocage
+        n'est pas levé. Il reste inscrit à l'année : ses notes se saisissent, ses
+        factures courent, rien n'est annulé. Le motif est ce que lira la personne
+        qui ouvrira cet écran dans six semaines.
+      </p>
+      <textarea
+        v-model="blocking.reason"
+        rows="2"
+        placeholder="Motif — scolarité du 1er trimestre impayée, dossier incomplet…"
+      />
+    </ConfirmDialog>
   </div>
 </template>

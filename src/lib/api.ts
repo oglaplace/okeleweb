@@ -1304,7 +1304,13 @@ export interface CouncilState {
 }
 
 export interface PeriodRegistrationPlan {
-  period: { id: string; label: string; sequence: number; startsOn: string; endsOn: string };
+  period: {
+    id: string; label: string; sequence: number; startsOn: string; endsOn: string;
+    /** Over: nothing can be réinscrit into it any more. */
+    closed: boolean;
+    /** Running right now — the période most pupils are already sitting in. */
+    current: boolean;
+  };
   year: { id: string; label: string };
   /** What coming back costs, from the grille. Null when the school prices none. */
   fee: { id: string; name: string; code: string } | null;
@@ -1321,6 +1327,11 @@ export interface PeriodRegistrationPlan {
       activatedAt: string | null;
       paidXaf: number;
       invoice: { id: string; number: string; totalXaf: number; paidXaf: number } | null;
+      /** Why the school stopped them, when it did. */
+      note: string | null;
+      /** False when réinscribing here would mean nothing — `reason` says why. */
+      eligible: boolean;
+      reason: string | null;
     }[];
   }[];
 }
@@ -1726,7 +1737,7 @@ export const finance = {
     code: string;
     name: string;
     recurrence?: "ONCE" | "PER_PERIOD" | "MONTHLY";
-  }) =>
+  } & Partial<FeeCadence>) =>
     request<{ id: string; code: string; name: string; recurrence: string }>("/finance/fee-types", {
       method: "POST",
       body: JSON.stringify(body),
@@ -1739,7 +1750,10 @@ export const finance = {
    * projection match on, and renaming it detaches a school from its own
    * history.
    */
-  updateFeeType: (id: string, patch: { name?: string; recurrence?: string }) =>
+  updateFeeType: (
+    id: string,
+    patch: { name?: string; recurrence?: string } & Partial<FeeCadence>,
+  ) =>
     request<{ id: string; name: string; recurrence: string }>(
       `/finance/fee-types/${encodeURIComponent(id)}`,
       { method: "PATCH", body: JSON.stringify(patch) },
@@ -2154,7 +2168,20 @@ export interface StudentLedger {
 }
 
 /** One entry of the shipped fee-type catalogue. */
-export interface FeeTypeTemplate {
+/**
+ * LA MODALITÉ D'UN TYPE DE FRAIS — when it falls due, and in how many pieces.
+ *
+ * Every field null means "follow the school's policy". COMPTANT overrides the
+ * rest: payable on presentation, one tranche, dated from the facture itself.
+ */
+export interface FeeCadence {
+  modality: PaymentModality | null;
+  installments: number | null;
+  dueDayOfMonth: number | null;
+  graceDays: number | null;
+}
+
+export interface FeeTypeTemplate extends FeeCadence {
   code: string;
   name: string;
   recurrence: "ONCE" | "PER_PERIOD" | "MONTHLY";
@@ -2392,6 +2419,8 @@ export interface Period {
  * MENSUEL is nine instalments, not twelve: the school year runs October to July.
  */
 export type PaymentModality =
+  /** Payable on presentation, one tranche, dated from the facture itself. */
+  | "COMPTANT"
   | "ANNUEL_UNIQUE"
   | "ANNUEL"
   | "SEMESTRIEL"
@@ -2399,6 +2428,7 @@ export type PaymentModality =
   | "MENSUEL";
 
 export const PAYMENT_MODALITY_FR: Record<PaymentModality, string> = {
+  COMPTANT: "Comptant — dû à l'émission, en une fois",
   ANNUEL_UNIQUE: "Annuel — payé à l'inscription",
   ANNUEL: "Annuel — une échéance",
   SEMESTRIEL: "Semestriel — 2 échéances",
@@ -2481,9 +2511,44 @@ export const academics = {
     studentIds: string[],
     opts?: { status?: "ACTIVE" | "BLOCKED" | "PENDING"; note?: string },
   ) =>
-    request<{ activated: number; unchanged: number; notEnrolled: number }>(
+    request<{
+      activated: number; unchanged: number; notEnrolled: number;
+      /** Already registered, or already past this période — with the words. */
+      refused: { studentId: string; code: string; message: string }[];
+    }>(
       `/academics/periods/${encodeURIComponent(periodId)}/registration`,
       { method: "POST", body: JSON.stringify({ studentIds, ...opts }) },
+    ),
+
+  /**
+   * ONE STUDENT COMING BACK, and the fee taken with them — atomically.
+   *
+   * Réinscription is sanctioned by a payment, the way inscription is: the two
+   * land together or neither does. `payment` omitted is the school that prices
+   * no activation fee.
+   */
+  reinscribePeriod: (
+    periodId: string,
+    studentId: string,
+    opts?: {
+      note?: string;
+      payment?: {
+        amountXaf: number;
+        method: PaymentMethod;
+        feeTypeId?: string;
+        purposeNote?: string;
+        reference?: string;
+      };
+    },
+  ) =>
+    request<{
+      registered: boolean;
+      payment: { id: string; amountXaf: number } | null;
+      receipt: { id: string; number: string } | null;
+      invoice: { id: string; number: string } | null;
+    }>(
+      `/academics/periods/${encodeURIComponent(periodId)}/reinscription`,
+      { method: "POST", body: JSON.stringify({ studentId, ...opts }) },
     ),
 
   /**
