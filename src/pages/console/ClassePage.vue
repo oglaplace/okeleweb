@@ -85,6 +85,8 @@ const frozen = ref<api.MarkSheet[]>([]);
  * which subjects are in, what is still a teacher's draft, what is frozen.
  */
 const council = ref<api.CouncilState | null>(null);
+/** Reopened bulletins, waiting to be frozen again — not documents yet. */
+const drafts = ref<api.MarkSheet[]>([]);
 
 const BLOCKED_FR: Record<string, { title: string; detail: string }> = {
   NO_PUPILS: {
@@ -193,11 +195,21 @@ function currentPeriod(list: api.Period[]): string | null {
   return (started[started.length - 1] ?? list[0])?.id ?? null;
 }
 
-/** What is already frozen for this période — read on every period change. */
+/**
+ * What is already FROZEN for this période.
+ *
+ * THE BUG THIS FIXES: the endpoint returns DRAFT sheets as well as ISSUED ones,
+ * and counting both made the screen announce "4 bulletin(s) figé(s)" over a
+ * class whose bulletins were all drafts — then offer to reopen them and get
+ * "aucun bulletin figé" back from an API that counts the way the word does.
+ * A draft is a working copy; only ISSUED is a document.
+ */
 async function loadFrozen() {
-  frozen.value = periodId.value
+  const rows = periodId.value
     ? await api.grading.sheetsForClasse(classeId.value, periodId.value).catch(() => [])
     : [];
+  frozen.value = rows.filter((s) => s.status === "ISSUED");
+  drafts.value = rows.filter((s) => s.status === "DRAFT");
 }
 
 async function loadCouncil() {
@@ -224,6 +236,10 @@ const marksTab = computed(() =>
         periodId: periodId.value,
         editable: false,
         lockable: mayFreeze.value,
+        // One verdict on what is remise: the council's — see submittedSubjects.
+        submittedSubjects: new Set(
+          (council.value?.subjects ?? []).filter((x) => x.submitted).map((x) => x.subjectId),
+        ),
         councilColumns: councilColumns.value,
       }).find((t) => t.id === "grades") ?? null
     : null,
@@ -359,7 +375,16 @@ async function submitSubject(courseOfferingId: string, name: string) {
   error.value = null;
   try {
     const res = await api.grading.submitSubject(classeId.value, periodId.value, courseOfferingId);
-    notice.value = `${name} remis — ${res.submitted} épreuve(s).`;
+    // Zero is not a success. It means the subject has no marked evaluation to
+    // hand over, and the padlock will stay open however often it is clicked —
+    // saying "remis — 0 épreuve(s)" was how that looked like a broken button.
+    if (res.submitted === 0) {
+      error.value =
+        `Rien à remettre en ${name} : aucune épreuve notée sur cette période. ` +
+        `Saisissez les notes, puis remettez la matière.`;
+    } else {
+      notice.value = `${name} remis — ${res.submitted} épreuve(s).`;
+    }
     await refresh();
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Remise impossible.";
@@ -376,10 +401,16 @@ async function unlockSubject() {
   acting.value = target.id;
   error.value = null;
   try {
-    await api.grading.unlockSubject(
+    const res = await api.grading.unlockSubject(
       classeId.value, periodId.value, target.id, target.reason.trim(),
     );
-    notice.value = `${target.name} rouvert — la correction est tracée au procès-verbal.`;
+    if (res.unlocked === 0) {
+      error.value = `${target.name} n'avait aucune épreuve remise à rouvrir.`;
+    } else {
+      notice.value =
+        `${target.name} rouvert (${res.unlocked} épreuve(s)) — ` +
+        `la correction est tracée au procès-verbal.`;
+    }
     unlocking.value = null;
     await refresh();
   } catch (e) {
@@ -500,8 +531,17 @@ const pvRows = computed(() =>
   })),
 );
 
+/*
+ * THE BUG THIS FIXES: clicking "Notes" showed the procès-verbal.
+ *
+ * The marks tab comes out of studentTabs with id "grades", the page state was
+ * compared against "notes", and the tab strip writes the tab's OWN id back —
+ * so selecting Notes set page to "grades", which matched neither branch and
+ * fell through to the minutes. The page is renamed here, so the id the strip
+ * emits is the id the template tests, and there is one name for it.
+ */
 const sheetPages = computed<SheetTab[]>(() => [
-  ...(marksTab.value ? [{ ...marksTab.value, label: "Notes" }] : []),
+  ...(marksTab.value ? [{ ...marksTab.value, id: "notes", label: "Notes" }] : []),
   PV_TAB,
 ]);
 
@@ -555,6 +595,9 @@ const MANIFEST_FR: Record<string, string> = {
 const DECISIONS = [
   { id: "ADMIS", label: "Admis" },
   { id: "ADMIS_SOUS_CONDITION", label: "Admis sous condition" },
+  // The verdict was missing: a conseil could say "redouble", which is a ruling
+  // about next September, but had no way to say the period was simply failed.
+  { id: "NON_ADMIS", label: "Non admis" },
   { id: "REDOUBLE", label: "Redouble" },
   { id: "RATTRAPAGE", label: "Rattrapage" },
   { id: "EXCLU", label: "Exclu" },
@@ -587,8 +630,29 @@ async function decide(studentId: string, kind: string, computed_: string) {
 function proposed(s: { isEliminated: boolean; needsResit: boolean; isPassing: boolean }) {
   if (s.isEliminated) return "EXCLU";
   if (s.needsResit) return "RATTRAPAGE";
-  return s.isPassing ? "ADMIS" : "REDOUBLE";
+  // NON_ADMIS, not REDOUBLE: the engine reads marks, and marks say whether the
+  // period was passed. Whether the pupil sits the year again is the council's
+  // to rule, in September's vocabulary, not an arithmetic consequence.
+  return s.isPassing ? "ADMIS" : "NON_ADMIS";
 }
+
+/**
+ * Subjects nobody has marked at all.
+ *
+ * They cannot be handed over — there is nothing to hand — and the conseil
+ * counts them as zero for every pupil. Said out loud, because a subject worth
+ * coefficient 4 silently scoring zero for the whole class is the kind of thing
+ * a director wants to hear before the bulletins are frozen, not after.
+ */
+const unmarkedSubjects = computed(
+  () => (council.value?.subjects ?? []).filter((x) => x.marks === 0).length,
+);
+
+/** Pupils the council has not ruled on yet — what step 2 is waiting for. */
+const undecided = computed(() =>
+  Math.max(0, roster.value.length - (council.value?.decided ?? 0)),
+);
+const deliberated = computed(() => roster.value.length > 0 && undecided.value === 0);
 
 /** The council's own summary line: what is done and what is left. */
 const state = computed(() => {
@@ -700,24 +764,38 @@ watch(periodId, async () => {
         <span class="council-n">1</span>
         <div>
           <strong>Les notes remises</strong>
+          <!-- Counted against the subjects that HAVE marks, which is what the
+               freeze actually requires. Counting against every programmed
+               subject read as "3/4 done" on a class that was ready, because
+               the fourth had nothing to hand over and never would. -->
           <span v-if="council">
-            {{ council.subjects.filter((x) => x.submitted).length }}/{{ council.marksIn.of }}
-            matière(s) verrouillée(s)
+            {{ council.subjects.filter((x) => x.submitted).length }}/{{ council.marksIn.subjects }}
+            matière(s) remise(s)
             <template v-if="council.unsubmitted">
               · {{ council.unsubmitted }} épreuve(s) encore ouverte(s)
+            </template>
+            <template v-else-if="unmarkedSubjects">
+              · {{ unmarkedSubjects }} matière(s) sans note (comptée(s) 0)
             </template>
           </span>
           <span v-else>{{ roster.length }} élève(s)</span>
         </div>
       </div>
-      <div class="council-step" :class="{ 'is-on': !!preview && !state.complete }">
+      <!-- THE BUG THIS FIXES: step 2 had no completed state at all, so the
+           meeting's middle act stayed lit however many pupils were decided. It
+           is done when every pupil on the roster has a decision on file. -->
+      <div
+        class="council-step"
+        :class="{ 'is-done': deliberated, 'is-on': !!preview && !deliberated }"
+      >
         <span class="council-n">2</span>
         <div>
           <strong>La délibération</strong>
-          <span v-if="preview">
-            Moyennes, rangs et mentions — rien n'est écrit
-            <template v-if="council"> · {{ council.decided }} décision(s) prise(s)</template>
+          <span v-if="council && preview">
+            {{ council.decided }}/{{ roster.length }} décision(s) prise(s)
+            <template v-if="undecided"> · {{ undecided }} élève(s) sans décision</template>
           </span>
+          <span v-else-if="preview">Moyennes, rangs et mentions — rien n'est écrit</span>
           <span v-else-if="council?.blocked">Rien à délibérer pour l'instant</span>
           <span v-else>Calcul en cours…</span>
         </div>
@@ -731,6 +809,9 @@ watch(periodId, async () => {
           </span>
           <span v-else-if="state.started">
             {{ state.done }} figé(s), {{ state.left }} en attente
+          </span>
+          <span v-else-if="drafts.length">
+            {{ drafts.length }} bulletin(s) rouvert(s) — à figer de nouveau
           </span>
           <span v-else>Aucun bulletin figé pour cette période</span>
         </div>
@@ -819,8 +900,8 @@ watch(periodId, async () => {
         </span>
         <span class="unit-meta">
           <template v-if="page === 'notes' && council">
-            {{ council.subjects.filter((x) => x.submitted).length }}/{{ council.subjects.length }}
-            matière(s) verrouillée(s)
+            {{ council.subjects.filter((x) => x.submitted).length }}/{{ council.marksIn.subjects }}
+            matière(s) remise(s)
           </template>
           <template v-else-if="manifest">
             {{ SESSION_FR[manifest.session.status] ?? manifest.session.status }} ·

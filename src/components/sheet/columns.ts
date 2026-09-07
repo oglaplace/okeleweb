@@ -125,6 +125,17 @@ export function studentTabs(
      */
     lockable?: boolean;
     /**
+     * Which subjects the COUNCIL considers handed over, by subject id.
+     *
+     * THE BUG THIS FIXES: the padlock used to re-derive its own state from the
+     * evaluations on screen — shut only when every one of them was submitted.
+     * An evaluation created and never marked is never submitted (submitting it
+     * would hand over nothing), so one empty shell held the padlock open
+     * forever while the council's own counter read the subject as remise. Two
+     * answers to one question; this makes the council's the only one.
+     */
+    submittedSubjects?: Set<string>;
+    /**
      * Columns appended after the last subject: décision, observation, bulletin.
      *
      * They belong to the conseil rather than to the mark book, and they are
@@ -226,16 +237,19 @@ export function studentTabs(
            * how a subject is remise — or reopened, which asks for a reason.
            * Same gesture as the ⋯ on an evaluation, one level up.
            */
-          ...(focus.lockable && evaluations.length ? { action: {
-            key:  `lock:${subject.id}`,
-            label: "",
-            icon: (evaluations.every((a) => a.submitted || a.published)
-              ? "lock"
-              : "lockOpen") as IconName,
-            hint: evaluations.every((a) => a.submitted || a.published)
-              ? `${subject.name} — remis. Cliquer pour rouvrir la saisie.`
-              : `${subject.name} — saisie encore ouverte. Cliquer pour remettre les notes au conseil.`,
-          } } : {}),
+          ...(focus.lockable && evaluations.length ? (() => {
+            const handedOver = focus.submittedSubjects
+              ? focus.submittedSubjects.has(subject.id)
+              : evaluations.every((a) => a.submitted || a.published);
+            return { action: {
+              key:  `lock:${subject.id}`,
+              label: "",
+              icon: (handedOver ? "lock" : "lockOpen") as IconName,
+              hint: handedOver
+                ? `${subject.name} — remis. Cliquer pour rouvrir la saisie.`
+                : `${subject.name} — saisie encore ouverte. Cliquer pour remettre les notes au conseil.`,
+            } };
+          })() : {}),
           ...(focus.editable === false ? {} : { action: {
             key: `assessment:${subject.id}`,
             label: evaluations.length ? "＋" : "＋ évaluation",

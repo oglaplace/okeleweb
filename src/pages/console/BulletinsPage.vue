@@ -19,6 +19,8 @@ const route = useRoute();
 const classeId = computed(() => String(route.params.id));
 
 const sheets = ref<api.MarkSheet[]>([]);
+/** Bulletins the conseil took back to correct: not printable until re-frozen. */
+const reopened = ref(0);
 const periods = ref<api.Period[]>([]);
 const years = ref<api.AcademicYear[]>([]);
 const ancestors = ref<api.OrgUnit[]>([]);
@@ -99,7 +101,15 @@ async function loadSheets() {
   loading.value = true;
   error.value = null;
   try {
-    sheets.value = await api.grading.sheetsForClasse(classeId.value, periodId.value);
+    /*
+     * ISSUED ONLY. The endpoint answers with drafts too — a bulletin the
+     * council reopened to correct is a DRAFT again — and printing those would
+     * hand a family a document under signature lines that no meeting has
+     * validated. The count of them is shown instead, above the run.
+     */
+    const rows = await api.grading.sheetsForClasse(classeId.value, periodId.value);
+    sheets.value = rows.filter((s) => s.status === "ISSUED");
+    reopened.value = rows.filter((s) => s.status === "DRAFT").length;
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Chargement impossible.";
     sheets.value = [];
@@ -148,11 +158,19 @@ watch(periodId, () => void loadSheets());
 
     <div v-if="error" class="form-error no-print">{{ error }}</div>
 
+    <div v-if="reopened" class="alert is-warn no-print">
+      {{ reopened }} bulletin(s) ont été rouverts par le conseil et ne sont pas
+      imprimés : ils redeviennent des documents une fois figés de nouveau.
+    </div>
+
     <div v-if="loading" class="card no-print"><div class="empty">Chargement…</div></div>
 
     <div v-else-if="!sheets.length" class="card no-print">
       <div class="empty">
-        <div class="empty-title">Aucun bulletin figé pour cette période</div>
+        <div class="empty-title">
+          {{ reopened ? "Les bulletins de cette période sont rouverts"
+             : "Aucun bulletin figé pour cette période" }}
+        </div>
         <div>
           Les bulletins d'une période sont figés par le conseil de classe. Ceux
           d'une autre période sont peut-être prêts — le sélecteur ci-dessus les
