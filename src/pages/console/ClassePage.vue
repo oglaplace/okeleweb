@@ -6,6 +6,8 @@ import Alert from "../../components/ui/Alert.vue";
 import ConfirmDialog from "../../components/ui/ConfirmDialog.vue";
 import DataSheet from "../../components/sheet/DataSheet.vue";
 import { studentTabs, flattenStudentRow } from "../../components/sheet/columns";
+import type { SheetGroup, SheetTab } from "../../components/sheet/columns";
+import SheetTabs from "../../components/sheet/SheetTabs.vue";
 import { useAuthStore } from "../../stores/auth";
 
 /**
@@ -202,6 +204,9 @@ async function loadCouncil() {
   council.value = periodId.value
     ? await api.grading.council(classeId.value, periodId.value).catch(() => null)
     : null;
+  // The decisions already on file — the column shows them rather than offering
+  // the engine's proposal again for a pupil the council settled last week.
+  decisions.value = { ...(council.value?.decisions ?? {}) };
 }
 
 /** Who has a frozen bulletin, so the roster can say so pupil by pupil. */
@@ -215,11 +220,120 @@ const frozenBy = computed(() => new Set(frozen.value.map((s) => s.studentId)));
  */
 const marksTab = computed(() =>
   sheet.value
-    ? studentTabs(sheet.value, { periodId: periodId.value, editable: false })
-        .find((t) => t.id === "grades") ?? null
+    ? studentTabs(sheet.value, {
+        periodId: periodId.value,
+        editable: false,
+        lockable: mayFreeze.value,
+        councilColumns: councilColumns.value,
+      }).find((t) => t.id === "grades") ?? null
     : null,
 );
-const marksRows = computed(() => (sheet.value?.rows ?? []).map(flattenStudentRow));
+
+/**
+ * THE CONSEIL'S THREE COLUMNS, on the same row as the marks.
+ *
+ * Décision first, because it is the act. Its cell shows what the engine
+ * PROPOSES until somebody decides — "Admis ?" with a question mark, not a
+ * value — so a class nobody has been through reads as forty open questions
+ * rather than forty settled ones.
+ */
+const councilColumns = computed<SheetGroup[] | undefined>(() =>
+  mayFreeze.value
+    ? [{
+        label: "Conseil",
+        title: "Ce que le conseil décide, dit et fige",
+        columns: [
+          { key: "c:decision", label: "Décision", width: 20,
+            action: { when: "always" },
+            hint: "Cliquer pour décider. La proposition du moteur est celle qui est présélectionnée." },
+          { key: "c:observation", label: "Observation", width: 26,
+            action: { when: "always" },
+            hint: "Ce que le conseil veut voir imprimé sur le bulletin de l'élève." },
+          { key: "c:bulletin", label: "Bulletin", type: "pill", width: 10,
+            hint: "Figé = le document est émis et imprimable." },
+        ],
+      }]
+    : undefined,
+);
+
+/** The engine's row for a pupil, so a cell can show what the marks say. */
+const previewOf = computed(() => {
+  const map = new Map<string, api.ClassePreview["students"][number]>();
+  for (const s of preview.value?.students ?? []) map.set(s.studentId, s);
+  return map;
+});
+
+const marksRows = computed(() =>
+  (sheet.value?.rows ?? []).map((row) => {
+    const flat = flattenStudentRow(row);
+    const id = String(flat.studentId ?? "");
+    const p = previewOf.value.get(id);
+    const decided = decisions.value[id];
+    return {
+      ...flat,
+      "c:decision": decided
+        ? DECISIONS.find((d) => d.id === decided)?.label ?? decided
+        : p
+          ? `${DECISIONS.find((d) => d.id === proposed(p))?.label} ?`
+          : "—",
+      "c:observation": observationOf.value.get(id) ?? "—",
+      "c:bulletin": frozenBy.value.has(id) ? "Figé" : "à figer",
+    };
+  }),
+);
+
+/** Which subject a padlock belongs to — the sheet names subjects, not offerings. */
+const offeringOfSubject = computed(() => {
+  const map = new Map<string, { id: string; name: string; submitted: boolean }>();
+  for (const s of council.value?.subjects ?? []) {
+    map.set(s.subjectId, { id: s.courseOfferingId, name: s.name, submitted: s.submitted });
+  }
+  return map;
+});
+
+/** A padlock was clicked in a subject header: hand it over, or reopen it. */
+function onGroupAct(key: string) {
+  const subjectId = key.startsWith("lock:") ? key.slice(5) : null;
+  const target = subjectId ? offeringOfSubject.value.get(subjectId) : null;
+  if (!target) return;
+  if (target.submitted) unlocking.value = { id: target.id, name: target.name, reason: "" };
+  else submitSubject(target.id, target.name);
+}
+
+/** A conseil cell was clicked: décision or observation, both per pupil. */
+function onCellAct({ row, column }: { row: Record<string, unknown>; column: { key: string } }) {
+  const id = String(row.studentId ?? "");
+  const name = `${String(row.lastName ?? "").toUpperCase()} ${row.firstName ?? ""}`.trim();
+  if (column.key === "c:observation") {
+    observing.value = { studentId: id, name, text: observationOf.value.get(id) ?? "" };
+  } else if (column.key === "c:decision") {
+    deciding.value = {
+      studentId: id,
+      name,
+      // The default IS what the marks say — the council overrides it or agrees
+      // with it, and agreeing should be one click.
+      kind: decisions.value[id] ?? (previewOf.value.get(id) ? proposed(previewOf.value.get(id)!) : "ADMIS"),
+    };
+  }
+}
+
+/** The picker the décision cell opens. */
+const deciding = ref<{ studentId: string; name: string; kind: string } | null>(null);
+const decidingRow = computed(() =>
+  deciding.value ? previewOf.value.get(deciding.value.studentId) ?? null : null,
+);
+const decidingProposal = computed(() =>
+  decidingRow.value
+    ? DECISIONS.find((d) => d.id === proposed(decidingRow.value!))?.label ?? "—"
+    : "—",
+);
+async function saveDecision() {
+  const target = deciding.value;
+  if (!target) return;
+  const p = previewOf.value.get(target.studentId);
+  await decide(target.studentId, target.kind, p ? proposed(p) : "");
+  deciding.value = null;
+}
 
 /*
  * ── THE MEETING'S FOUR ACTS ────────────────────────────────────────────────
@@ -231,7 +345,6 @@ const marksRows = computed(() => (sheet.value?.rows ?? []).map(flattenStudentRow
  */
 const manifest = ref<api.CouncilManifest | null>(null);
 const acting = ref<string | null>(null);
-const showManifest = ref(false);
 
 async function loadManifest() {
   manifest.value = periodId.value
@@ -315,9 +428,25 @@ async function unfreeze() {
 }
 
 /** One reload for all of it: the state, the minutes, the sheets, the numbers. */
+/**
+ * One reload for every consequence of one act.
+ *
+ * THE BUG THIS FIXES: locking a subject changed the strip but not the padlock,
+ * and freezing changed the banner but not the Bulletin column — the screen
+ * disagreed with itself until somebody reloaded the page. Every act that
+ * writes goes through here, and everything the act can be seen in is re-read:
+ * the council state, the frozen sheets, the minutes, the engine's numbers, and
+ * the mark book itself, which is where the padlocks and the marks live.
+ */
 async function refresh() {
-  await Promise.all([loadCouncil(), loadFrozen(), loadManifest()]);
+  await Promise.all([loadCouncil(), loadFrozen(), loadManifest(), loadSheet()]);
   if (!council.value?.blocked) await runPreview();
+}
+
+/** The mark book, re-read on its own — the padlocks are its data. */
+async function loadSheet() {
+  if (!yearId.value) return;
+  sheet.value = await api.sheets.classe(classeId.value, yearId.value).catch(() => sheet.value);
 }
 
 /** The observation already minuted for a pupil, so the row can show it. */
@@ -335,6 +464,73 @@ function stamp(iso: string): string {
     day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
   });
 }
+
+/*
+ * ── DEUX PAGES, COMME UN CLASSEUR ──────────────────────────────────────────
+ *
+ * "Notes" and "Procès-verbal", switched at the foot of the grid the way a
+ * spreadsheet switches sheets. The minutes are not a panel that appears
+ * somewhere above the marks: they are the meeting's second page, and an
+ * operator looking for "what did we change?" goes to the tab that says so.
+ */
+const page = ref("notes");
+
+const PV_TAB: SheetTab = {
+  id: "pv",
+  label: "Procès-verbal",
+  frozen: 1,
+  identity: [],
+  columns: [
+    { key: "at", label: "Heure", width: 12 },
+    { key: "kind", label: "Acte", width: 18 },
+    { key: "about", label: "Objet", width: 24 },
+    { key: "note", label: "Détail", width: 52 },
+    { key: "by", label: "Par", width: 20 },
+  ],
+};
+
+const pvRows = computed(() =>
+  (manifest.value?.entries ?? []).map((e) => ({
+    id: e.id,
+    at: stamp(e.at),
+    kind: MANIFEST_FR[e.kind] ?? e.kind,
+    about: e.subject ?? e.student ?? "—",
+    note: e.note ?? "—",
+    by: e.by ?? "—",
+  })),
+);
+
+const sheetPages = computed<SheetTab[]>(() => [
+  ...(marksTab.value ? [{ ...marksTab.value, label: "Notes" }] : []),
+  PV_TAB,
+]);
+
+/**
+ * Why the minutes are empty, and what to do about it.
+ *
+ * A procès-verbal exists once the conseil has done something — the register is
+ * opened by the first act, not by the calendar. So an empty page says which act
+ * would open it rather than showing a blank grid and letting the operator
+ * conclude the feature is broken.
+ */
+const pvBlocked = computed(() => {
+  if (!periodId.value) return { title: "Aucune période choisie",
+    detail: "Choisissez la période que le conseil délibère, en haut de l'écran." };
+  if (!manifest.value) return { title: "Le conseil n'a pas encore siégé",
+    detail: "Le procès-verbal s'ouvre au premier acte : remettez une matière depuis " +
+      "le cadenas de son en-tête, ou écrivez une observation dans la colonne Conseil.",
+  };
+  if (!manifest.value.entries.length) return { title: "Registre vide",
+    detail: "La séance est ouverte mais rien n'y a encore été inscrit." };
+  return null;
+});
+
+/** Where the séance itself stands — not an act, a state. */
+const SESSION_FR: Record<string, string> = {
+  OPEN: "Séance ouverte",
+  DELIBERATED: "Délibérée",
+  CLOSED: "Séance close",
+};
 
 const MANIFEST_FR: Record<string, string> = {
   OPENED: "Conseil ouvert",
@@ -379,7 +575,7 @@ async function decide(studentId: string, kind: string, computed_: string) {
       ...(computed_ ? { computedKind: computed_ as "ADMIS" } : {}),
     });
     decisions.value = { ...decisions.value, [studentId]: kind };
-    await loadCouncil();
+    await refresh();
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Décision impossible.";
   } finally {
@@ -481,14 +677,6 @@ watch(periodId, async () => {
           re-run something the screen recomputes on arrival and after every act
           — a control whose only honest label would have been "try again".
         -->
-        <button
-          v-if="manifest"
-          class="btn"
-          type="button"
-          @click="showManifest = !showManifest"
-        >
-          {{ showManifest ? "Masquer le procès-verbal" : "Procès-verbal" }}
-        </button>
         <RouterLink
           v-if="state.started"
           class="btn"
@@ -568,11 +756,14 @@ watch(periodId, async () => {
           :disabled="!!acting"
           @click="unfreezing = { reason: '' }"
         >Rouvrir les bulletins</button>
+        <!-- Nothing left to freeze: the button that would say "figer les 0
+             restant(s)" is not disabled, it is absent. -->
         <button
+          v-if="!state.complete"
           class="btn primary"
           :class="{ 'council-go': !state.started }"
           type="button"
-          :disabled="issuing || !preview || state.complete || !council?.allSubmitted"
+          :disabled="issuing || !preview || !council?.allSubmitted"
           :title="
             council && !council.allSubmitted
               ? 'Toutes les matières doivent être remises avant le gel'
@@ -603,123 +794,77 @@ watch(periodId, async () => {
       </template>
       <RouterLink :to="{ name: 'bulletins', params: { id: classeId } }">Imprimer →</RouterLink>
     </Alert>
-    <!--
-      LA REMISE — subject by subject, and the council's own override.
 
-      A conseil sits on marks that are finished. "Remettre" is the teacher's
-      act, but a teacher on sick leave, or one who typed the marks and never
-      pressed anything, used to stop the whole meeting. So whoever chairs it can
-      hand a subject over in their place — and reopen one when the council finds
-      a mistake, with a reason that goes in the minutes. Nothing is corrected
-      quietly here: every lock and unlock is a line somebody can read back.
-    -->
-    <div v-if="council && council.subjects.length" class="card is-grid">
-      <div class="card-head">
-        <span>Remise des notes</span>
-        <span class="unit-meta">
-          {{ council.subjects.filter((x) => x.submitted).length }}/{{ council.subjects.length }}
-          matière(s) verrouillée(s)
-        </span>
-      </div>
-      <div class="table-wrap">
-        <table class="data">
-          <thead>
-            <tr>
-              <th class="c-name">Matière</th>
-              <th class="c-num">Épreuves</th>
-              <th class="c-num">Notes</th>
-              <th class="c-text">État</th>
-              <th v-if="mayFreeze" class="c-text" />
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="s in council.subjects" :key="s.courseOfferingId">
-              <td class="c-name">{{ s.name }}</td>
-              <td class="c-num">{{ s.marked }} / {{ s.assessments }}</td>
-              <td class="c-num">{{ s.marks || "—" }}</td>
-              <td class="c-text">
-                <span v-if="!s.marks" class="cell-sub">rien de saisi</span>
-                <span v-else-if="s.unsubmitted" class="pill warn">{{ s.unsubmitted }} non remise(s)</span>
-                <span v-else class="pill ok">remis</span>
-              </td>
-              <td v-if="mayFreeze" class="c-text">
-                <button
-                  v-if="s.submitted"
-                  class="btn sm ghost"
-                  type="button"
-                  :disabled="!!acting"
-                  @click="unlocking = { id: s.courseOfferingId, name: s.name, reason: '' }"
-                >Rouvrir</button>
-                <button
-                  v-else-if="s.marks"
-                  class="btn sm"
-                  type="button"
-                  :disabled="acting === s.courseOfferingId"
-                  @click="submitSubject(s.courseOfferingId, s.name)"
-                >
-                  <span v-if="acting === s.courseOfferingId" class="btn-spin" aria-hidden="true" />
-                  Remettre
-                </button>
-                <RouterLink
-                  v-else
-                  class="btn sm ghost"
-                  :to="{ name: 'marks', params: { id: classeId } }"
-                >Saisir</RouterLink>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
 
-    <!--
-      LE PROCÈS-VERBAL. Who handed what over, what was reopened and why, what
-      the council said about each pupil, when the bulletins were frozen. The
-      minutes are the only place that answers "who changed this mark, and on
-      whose authority" once the term is over — which is the question that
-      actually gets asked, months later, by a family.
-    -->
-    <div v-if="showManifest && manifest" class="card is-grid">
-      <div class="card-head">
-        <span>Procès-verbal du conseil</span>
-        <span class="unit-meta">
-          {{ MANIFEST_FR[manifest.session.status] ?? manifest.session.status }} ·
-          {{ manifest.entries.length }} acte(s)
-        </span>
-      </div>
-      <ol v-if="manifest.entries.length" class="minutes">
-        <li v-for="e in manifest.entries" :key="e.id">
-          <span class="minutes-when">{{ stamp(e.at) }}</span>
-          <span class="minutes-what">
-            <strong>{{ MANIFEST_FR[e.kind] ?? e.kind }}</strong>
-            <template v-if="e.subject"> — {{ e.subject }}</template>
-            <template v-else-if="e.student"> — {{ e.student }}</template>
-            <span v-if="e.note" class="minutes-note">{{ e.note }}</span>
-          </span>
-          <span class="minutes-who">{{ e.by ?? "—" }}</span>
-        </li>
-      </ol>
-      <div v-else class="empty">Le conseil n'a encore rien inscrit.</div>
-    </div>
-
-    <!--
-      THE NOTES, as the class sheet shows them.
-
-      A conseil reads the term's marks; this is that reading, in the grid the
-      teachers filled. Read-only: entering marks is one screen away and is a
-      different job from deciding what they mean.
-    -->
-    <div v-if="marksTab && marksRows.length" class="card is-grid council-marks">
-      <div class="card-head">
-        <span>Notes — {{ periods.find((p) => p.id === periodId)?.label ?? "période" }}</span>
-        <RouterLink class="btn sm ghost" :to="{ name: 'marks', params: { id: classeId } }">
-          Saisir les notes
-        </RouterLink>
-      </div>
-      <DataSheet :tab="marksTab" :rows="marksRows" row-key="studentId" />
-    </div>
 
     <div v-if="loading" class="card"><div class="empty">Chargement…</div></div>
+
+    <!--
+      LE CLASSEUR DU CONSEIL — deux pages, une grille.
+
+      Page « Notes » : le carnet de notes de la période, avec un cadenas par
+      matière dans son en-tête (remettre / rouvrir) et, tout à droite, les trois
+      colonnes que produit la séance — décision, observation, état du bulletin.
+      Page « Procès-verbal » : le registre de ce qui s'est passé.
+
+      Tout est là parce que tout se lit ensemble : décider du sort d'un élève en
+      regardant sa moyenne dans un tableau et en cliquant dans un autre, ligne
+      par ligne, était la vraie difficulté de cet écran.
+    -->
+    <div v-else-if="marksTab && marksRows.length" class="card is-grid council-marks">
+      <div class="card-head">
+        <span>
+          {{ page === "pv" ? "Procès-verbal" : "Notes" }} —
+          {{ periods.find((p) => p.id === periodId)?.label ?? "période" }}
+        </span>
+        <span class="unit-meta">
+          <template v-if="page === 'notes' && council">
+            {{ council.subjects.filter((x) => x.submitted).length }}/{{ council.subjects.length }}
+            matière(s) verrouillée(s)
+          </template>
+          <template v-else-if="manifest">
+            {{ SESSION_FR[manifest.session.status] ?? manifest.session.status }} ·
+            {{ manifest.entries.length }} acte(s)
+          </template>
+        </span>
+      </div>
+
+      <DataSheet
+        v-if="page === 'notes'"
+        :tab="marksTab"
+        :rows="marksRows"
+        row-key="studentId"
+        :title="`${classe?.name ?? ''} — conseil`"
+        @group-act="onGroupAct"
+        @act="onCellAct"
+      />
+      <DataSheet
+        v-else-if="!pvBlocked"
+        :tab="PV_TAB"
+        :rows="pvRows"
+        row-key="id"
+        :title="`${classe?.name ?? ''} — procès-verbal`"
+      />
+      <!-- The minutes are not ready: say why, and name the act that opens them. -->
+      <div v-else class="empty">
+        <div class="empty-title">{{ pvBlocked.title }}</div>
+        <div>{{ pvBlocked.detail }}</div>
+        <div class="empty-actions">
+          <button class="btn" type="button" @click="page = 'notes'">Aller aux notes</button>
+        </div>
+      </div>
+
+      <SheetTabs v-model="page" :tabs="sheetPages">
+        <template #end>
+          <span v-if="acting" class="marksave">
+            <span class="btn-spin" aria-hidden="true" />Enregistrement…
+          </span>
+          <RouterLink class="btn sm ghost" :to="{ name: 'marks', params: { id: classeId } }">
+            Saisir les notes
+          </RouterLink>
+        </template>
+      </SheetTabs>
+    </div>
 
     <!--
       WHAT IS MISSING, where the results would have been.
@@ -752,95 +897,6 @@ watch(periodId, async () => {
       </div>
     </div>
 
-    <!-- Preview: computed, nothing written. -->
-    <div v-else-if="preview" class="card is-grid">
-      <div class="card-head">
-        <span>Résultats — {{ preview.gradingSystem.name }}</span>
-        <span class="unit-meta">
-          Moyenne classe {{ preview.classAvg ?? "—" }} ·
-          min {{ preview.classMin ?? "—" }} · max {{ preview.classMax ?? "—" }} ·
-          {{ preview.rankOf }} élèves
-        </span>
-      </div>
-      <div class="table-wrap">
-        <table class="data">
-          <thead>
-            <tr>
-              <th>Rang</th>
-              <th class="c-text">Matricule</th>
-              <th class="c-name">Élève</th>
-              <th>Moyenne</th>
-              <th class="c-text">Mention</th>
-              <th>Abs. (h)</th>
-              <th class="c-text">Proposition</th>
-              <th class="c-text">Décision du conseil</th>
-              <th class="c-text">Observation</th>
-              <th class="c-text">Bulletin</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="s in sortedPreview" :key="s.studentId">
-              <td>{{ s.rank ?? "—" }}</td>
-              <td class="c-text">{{ byStudent.get(s.studentId)?.student.matricule ?? "—" }}</td>
-              <td class="c-name">
-                {{ byStudent.get(s.studentId) ? names(byStudent.get(s.studentId)!) : s.studentId }}
-              </td>
-              <td>{{ s.average ?? "—" }}</td>
-              <td class="c-text">{{ s.mention ?? "—" }}</td>
-              <td>{{ s.absenceHours }}</td>
-              <!-- What the ENGINE proposes. The council's own answer is the
-                   next column, and the two are kept apart on purpose. -->
-              <td class="c-text">
-                <span v-if="s.isEliminated" class="pill danger">Éliminé</span>
-                <span v-else-if="s.needsResit" class="pill warn">Rattrapage</span>
-                <span v-else-if="s.isPassing" class="pill ok">Admis</span>
-                <span v-else class="pill danger">Non admis</span>
-              </td>
-              <td class="c-text">
-                <select
-                  v-if="mayFreeze"
-                  :value="decisions[s.studentId] ?? ''"
-                  :disabled="decidingId === s.studentId"
-                  :aria-label="`Décision pour ${byStudent.get(s.studentId)?.student.matricule ?? s.studentId}`"
-                  @change="decide(s.studentId, ($event.target as HTMLSelectElement).value, proposed(s))"
-                >
-                  <option value="">Décider…</option>
-                  <option v-for="d in DECISIONS" :key="d.id" :value="d.id">{{ d.label }}</option>
-                </select>
-                <span v-else class="cell-sub">
-                  {{ DECISIONS.find((d) => d.id === decisions[s.studentId])?.label ?? "—" }}
-                </span>
-              </td>
-              <!-- What the council wants the family to read. Written here
-                   because this is where the council is looking at the pupil,
-                   and printed later on the bulletin. -->
-              <td class="c-text">
-                <button
-                  v-if="mayFreeze"
-                  class="btn sm ghost obs-cell"
-                  type="button"
-                  :disabled="!!acting"
-                  @click="observing = {
-                    studentId: s.studentId,
-                    name: byStudent.get(s.studentId)
-                      ? names(byStudent.get(s.studentId)!)
-                      : s.studentId,
-                    text: observationOf.get(s.studentId) ?? '',
-                  }"
-                >{{ observationOf.get(s.studentId) ?? "Ajouter…" }}</button>
-                <span v-else class="cell-sub">{{ observationOf.get(s.studentId) ?? "—" }}</span>
-              </td>
-              <!-- Per pupil, because freezing is per pupil: a class where three
-                   are frozen and the rest are not is a normal state now. -->
-              <td class="c-text">
-                <span v-if="frozenBy.has(s.studentId)" class="pill ok">Figé</span>
-                <span v-else class="cell-sub">à figer</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
 
     <!-- Otherwise the plain roster. -->
     <div v-else class="card is-grid">
@@ -894,6 +950,34 @@ watch(periodId, async () => {
         rows="3"
         placeholder="Motif — erreur de saisie sur la composition, note manquante…"
       />
+    </ConfirmDialog>
+
+    <!--
+      La décision, présélectionnée sur ce que disent les notes.
+
+      The council usually agrees with the engine; making that the default turns
+      the common case into one click, and leaves the disagreement — which is the
+      interesting one — exactly as visible.
+    -->
+    <ConfirmDialog
+      v-if="deciding"
+      :title="`Décision — ${deciding.name}`"
+      :subtitle="classe?.name"
+      confirm-label="Enregistrer"
+      :busy="!!decidingId"
+      @close="deciding = null"
+      @confirm="saveDecision"
+    >
+      <p v-if="decidingRow">
+        Moyenne {{ decidingRow.average ?? "—" }} · proposition du moteur :
+        <strong>{{ decidingProposal }}</strong>
+      </p>
+      <div class="decide-list">
+        <label v-for="d in DECISIONS" :key="d.id" class="decide-opt">
+          <input v-model="deciding.kind" type="radio" :value="d.id" name="decision" />
+          <span>{{ d.label }}</span>
+        </label>
+      </div>
     </ConfirmDialog>
 
     <ConfirmDialog

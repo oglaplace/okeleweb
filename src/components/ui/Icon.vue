@@ -26,6 +26,9 @@ const PATHS = {
   fileText: "M6 3h8l5 5v13H6zM14 3v5h5M9 13h6M9 17h6",
   check: "M4 12.5 9 18 20 6",
   lock: "M6 10.5h12v10H6zM8.5 10.5V7a3.5 3.5 0 1 1 7 0v3.5",
+  // The same body with the shackle swung open — the pair has to read as one
+  // control in two states, so only the arc moves.
+  lockOpen: "M6 10.5h12v10H6zM8.5 10.5V7a3.5 3.5 0 1 1 7 0",
   wallet: "M3 7.5A1.5 1.5 0 0 1 4.5 6H18v3M3 7.5v10A1.5 1.5 0 0 0 4.5 19H19.5A1.5 1.5 0 0 0 21 17.5V11A1.5 1.5 0 0 0 19.5 9.5H4.5A1.5 1.5 0 0 1 3 8zM17 14.2h.01",
   receipt: "M6 3h12v18l-3-2-3 2-3-2-3 2zM9.5 8h5M9.5 12h5",
   coins: "M9 12a5 3 0 1 0 0-6 5 3 0 0 0 0 6ZM4 9v4c0 1.7 2.2 3 5 3s5-1.3 5-3V9M10 16v3c0 1.7 2.2 3 5 3s5-1.3 5-3v-4M10 15a5 3 0 0 0 10 0",

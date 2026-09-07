@@ -200,7 +200,9 @@ function format(value: unknown, column: Col): string {
     case "date":
       return typeof value === "string" ? value.split("-").reverse().join("/") : String(value);
     case "pill":
-      return value ? "Oui" : "Non";
+      // A boolean pill is Oui/Non; a pill that was given words shows the words.
+      // "Figé" rendered as "Oui" answered a question nobody asked.
+      return typeof value === "boolean" ? (value ? "Oui" : "Non") : String(value);
     default:
       return String(value);
   }
@@ -409,7 +411,8 @@ defineExpose({ exportCsv });
                 :title="group.action.hint ?? group.action.label"
                 @click.stop="emit('groupAct', group.action.key)"
               >
-                {{ group.action.label }}
+                <Icon v-if="group.action.icon" :name="group.action.icon" :size="13" />
+                <template v-else>{{ group.action.label }}</template>
               </button>
 
               <!--
@@ -460,7 +463,10 @@ defineExpose({ exportCsv });
                 type="button"
                 :title="column.headerButton.hint ?? column.headerButton.label"
                 @click.stop="emit('headerAct', column.headerButton.key)"
-              >{{ column.headerButton.label }}</button>
+              >
+                <Icon v-if="column.headerButton.icon" :name="column.headerButton.icon" :size="13" />
+                <template v-else>{{ column.headerButton.label }}</template>
+              </button>
             </th>
             <th class="sheet-fill" />
           </tr>

@@ -2887,6 +2887,14 @@ table.data td.c-text {
   font-size: 10.5px;
   color: #4b5060;
 }
+/* The council reference, under the edition line where a registry number goes. */
+.bl-council-ref { margin-top: 3px; font-weight: 600; color: var(--ink); }
+
+/* The QR sits at the end of the footer, small enough not to compete with the
+   signatures and large enough for a phone camera at arm's length. */
+.bl-qr { display: flex; align-items: center; gap: 7px; text-align: left; line-height: 1.25; }
+.bl-qr-url { color: var(--ink-3); }
+
 .bl-sign { display: flex; gap: 34px; }
 .bl-sign span {
   border-top: 1px solid #14171f;
@@ -6445,6 +6453,14 @@ table.data td.is-muted {
    page, capped so the deliberation below it stays on screen. */
 .council-marks .sheet { max-height: 46vh; }
 
+/* Six decisions, readable at a glance rather than hidden in a select. */
+.decide-list { display: grid; gap: 2px; margin-top: var(--s3); }
+.decide-opt {
+  display: flex; align-items: center; gap: var(--s3);
+  padding: var(--s2) var(--s3); border-radius: var(--r2); cursor: pointer;
+}
+.decide-opt:hover { background: var(--surface-2); }
+
 /* A reason typed in a dialog is a sentence, not a code field. */
 .confirm-body textarea {
   width: 100%;
@@ -6461,6 +6477,9 @@ table.data td.is-muted {
   text-align: center;
   font-style: italic;
 }
+
+/* While a niveau is being ticked: dimmed, still there, still readable. */
+.subjects-group.is-busy { opacity: 0.6; transition: opacity 0.12s ease; }
 
 /* Le procès-verbal — a register, read top to bottom, not a table. */
 .minutes { list-style: none; margin: 0; padding: 0; }

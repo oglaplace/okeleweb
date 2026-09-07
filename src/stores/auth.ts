@@ -66,6 +66,17 @@ export const useAuthStore = defineStore("auth", {
      */
     async restore() {
       this.loading = true;
+      /*
+       * FIREBASE IS THE AUTHORITY, localStorage is only a cache of it.
+       *
+       * This used to return "signed out" whenever `ec_token` was missing, even
+       * with a live Firebase session sitting in IndexedDB — a session the SDK
+       * would have handed over a millisecond later. The copy is refreshed here
+       * so the rest of the app, which reads the cached value when the SDK is
+       * still waking up, is never the odd one out.
+       */
+      const live = await phoneAuth.getIdToken().catch(() => null);
+      if (live) api.setToken(live);
       if (!api.getToken()) {
         this.loading = false;
         return;

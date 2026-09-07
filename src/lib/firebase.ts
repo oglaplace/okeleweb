@@ -73,9 +73,23 @@ export const phoneAuth = {
     return cred.user.getIdToken();
   },
 
+  /**
+   * The Bearer token, AFTER the SDK has finished restoring the session.
+   *
+   * THE BUG THIS FIXES: "Missing Authorization header" on a page opened cold.
+   * Firebase restores the signed-in user from IndexedDB asynchronously, so for
+   * the first few hundred milliseconds `auth.currentUser` is null even though
+   * the session is perfectly valid. Every request a page fired in that window
+   * went out with no header at all — which is why the matières and management
+   * screens failed on load and were fine the moment you reloaded them.
+   *
+   * `authStateReady()` resolves once that restoration has settled, one way or
+   * the other. Awaiting it turns the race into a wait of a few milliseconds.
+   */
   async getIdToken(forceRefresh = false): Promise<string | null> {
     if (!firebaseConfigured) return localStorage.getItem("ec_token");
     const { auth } = await ensureAuth();
+    await auth.authStateReady();
     return auth.currentUser ? auth.currentUser.getIdToken(forceRefresh) : null;
   },
 

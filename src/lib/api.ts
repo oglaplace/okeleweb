@@ -1291,6 +1291,8 @@ export interface CouncilState {
   marksIn: { subjects: number; of: number; marks: number };
   unsubmitted: number;
   decided: number;
+  /** studentId → the decision already on file, so a reopened screen shows it. */
+  decisions: Record<string, string>;
   frozen: number;
   /** The meeting, if one has started. Read — looking never opens a conseil. */
   session: { id: string; status: string; openedAt: string; closedAt: string | null } | null;
@@ -1357,6 +1359,16 @@ export interface MarkSheet {
   appreciation: string | null;
   issuedAt: string | null;
   reason: string | null;
+  /**
+   * What the QR on the printed bulletin encodes — see BulletinSheet.
+   *
+   * Present on ISSUED documents. A draft has nothing to verify, and printing a
+   * code that resolves to nothing would be a claim of authenticity about a
+   * working copy.
+   */
+  publicToken: string | null;
+  /** The conseil de classe that validated it: printed, and referenced. */
+  councilSession?: CouncilStamp | null;
   student: {
     matricule: string;
     person: {

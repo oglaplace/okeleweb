@@ -1,4 +1,5 @@
 import type * as api from "../../lib/api";
+import type { IconName } from "../ui/icons";
 // A value import, not a type one: PAYMENT_METHOD_FR is a runtime table and the
 // finance tab reads it to turn MTN_MOMO into something a parent recognises.
 import { PAYMENT_METHOD_FR } from "../../lib/api";
@@ -31,7 +32,7 @@ export interface SheetColumn {
    * rather than to any row: editing the evaluation it stands for, or removing
    * it. See DataSheet, which renders it beside the label.
    */
-  headerButton?: { key: string; label: string; hint?: string };
+  headerButton?: { key: string; label: string; hint?: string; icon?: IconName };
   /**
    * Turns the cell into a control.
    *
@@ -63,7 +64,7 @@ export interface SheetGroup {
    * on every pupil's cell says the opposite — forty identical buttons, each
    * looking like it would do something to that pupil.
    */
-  action?: { key: string; label: string; hint?: string };
+  action?: { key: string; label: string; hint?: string; icon?: IconName };
   /**
    * A second, quieter one — a fact about the group that can be changed.
    *
@@ -112,7 +113,26 @@ export const IDENTITY: SheetColumn[] = [
 export function studentTabs(
   sheet: api.StudentSheet,
   /** Which période the Notes tab is showing, and whether marks may be typed. */
-  focus: { periodId: string | null; editable?: boolean } = { periodId: null },
+  focus: {
+    periodId: string | null;
+    editable?: boolean;
+    /**
+     * The conseil's own grip on the grid: a padlock per subject, open or shut.
+     *
+     * Locking is not editing — the council does not type marks, it decides
+     * whether the column is finished — so it is offered on a read-only sheet
+     * and only to whoever holds the authority to freeze.
+     */
+    lockable?: boolean;
+    /**
+     * Columns appended after the last subject: décision, observation, bulletin.
+     *
+     * They belong to the conseil rather than to the mark book, and they are
+     * passed in rather than built here because only the council screen knows
+     * what the engine proposed for each pupil.
+     */
+    councilColumns?: SheetGroup[];
+  } = { periodId: null },
 ): SheetTab[] {
   const tabs: SheetTab[] = [
     {
@@ -198,6 +218,24 @@ export function studentTabs(
                 ? `Aucun coefficient pour ${subject.name} — le conseil ne peut pas pondérer sans lui. Cliquer pour le définir.`
                 : `Coefficient ${subject.coefficient} — cliquer pour le modifier.`,
           } }),
+          /*
+           * THE PADLOCK, when the conseil is the one reading.
+           *
+           * Shut once every evaluation carrying marks has been handed over;
+           * open while any is still the teacher's working copy. Clicking it is
+           * how a subject is remise — or reopened, which asks for a reason.
+           * Same gesture as the ⋯ on an evaluation, one level up.
+           */
+          ...(focus.lockable && evaluations.length ? { action: {
+            key:  `lock:${subject.id}`,
+            label: "",
+            icon: (evaluations.every((a) => a.submitted || a.published)
+              ? "lock"
+              : "lockOpen") as IconName,
+            hint: evaluations.every((a) => a.submitted || a.published)
+              ? `${subject.name} — remis. Cliquer pour rouvrir la saisie.`
+              : `${subject.name} — saisie encore ouverte. Cliquer pour remettre les notes au conseil.`,
+          } } : {}),
           ...(focus.editable === false ? {} : { action: {
             key: `assessment:${subject.id}`,
             label: evaluations.length ? "＋" : "＋ évaluation",
@@ -229,10 +267,11 @@ export function studentTabs(
                 : {}),
               headerButton: {
                 key: `assessment:${a.id}`,
-                // Three dots, back by request. The dialog it opens is a set of
-                // choices — modifier, remettre, supprimer — so the ellipsis is
-                // the more honest promise of the two anyway.
-                label: a.published ? "🔒" : a.submitted ? "✓" : "⋯",
+                // Drawn glyphs, not emoji: the same padlock the subject header
+                // uses, at the same weight, following the theme's colour. An
+                // emoji here rendered as somebody else's yellow cartoon.
+                label: "",
+                icon: (a.published ? "lock" : a.submitted ? "check" : "dots") as IconName,
                 hint: a.published
                   ? "Publiée — figée par le conseil"
                   : a.submitted
@@ -297,6 +336,19 @@ export function studentTabs(
         },
       ],
     });
+  }
+
+  /*
+   * THE CONSEIL'S OWN BLOCK, at the far right of the mark book.
+   *
+   * Décision, observation, état du bulletin — the three things the meeting
+   * produces, sitting on the same row as the marks that produced them. They
+   * used to be a separate table below the sheet, which meant reading a pupil's
+   * average in one grid and deciding their year in another, matching them up
+   * by name.
+   */
+  if (period && gradeGroups.length && focus.councilColumns) {
+    gradeGroups.push(...focus.councilColumns);
   }
 
   tabs.push({

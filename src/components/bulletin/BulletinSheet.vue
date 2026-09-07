@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { MarkSheet } from "../../lib/api";
+import QrCode from "../ui/QrCode.vue";
 
 /**
  * One bulletin — the document the whole system exists to produce.
@@ -29,6 +30,33 @@ const born = computed(() => {
   const d = new Date(p.value.birthDate).toLocaleDateString("fr-FR");
   return p.value.birthPlace ? `${d} à ${p.value.birthPlace}` : d;
 });
+
+/** The meeting that validated this document, when it was frozen by one. */
+const council = computed(() => props.sheet.councilSession ?? null);
+
+const heldAt = computed(() =>
+  council.value?.heldAt
+    ? new Date(council.value.heldAt).toLocaleDateString("fr-FR", {
+        day: "numeric", month: "long", year: "numeric",
+      })
+    : null,
+);
+
+/** Short enough to be read out at a counter, long enough to be unambiguous. */
+const councilRef = computed(() => (council.value?.id ?? "").slice(-8).toUpperCase());
+
+/*
+ * WHAT THE QR ENCODES: the public verification page for this exact document.
+ *
+ * Same origin as the console, so a school on an edge box prints a code that
+ * resolves on its own network — see PublicBulletinPage and the /b/:token route.
+ */
+const verifyUrl = computed(() =>
+  props.sheet.publicToken && props.sheet.status === "ISSUED"
+    ? `${window.location.origin}/b/${props.sheet.publicToken}`
+    : null,
+);
+const verifyHost = computed(() => window.location.host);
 
 const num = (v: string | null | undefined, dp = 2) =>
   v === null || v === undefined ? "—" : Number(v).toFixed(dp);
@@ -154,10 +182,34 @@ const issued = computed(() =>
              dispute the audit trail exists to settle. -->
         · <strong>version {{ sheet.version }}</strong>
         <span v-if="sheet.version > 1 && sheet.reason"> — {{ sheet.reason }}</span>
+        <!--
+          LA SÉANCE QUI L'A VALIDÉ.
+
+          A bulletin's authority is not its arithmetic — anybody can redo that —
+          it is that a conseil de classe sat and froze it. The reference is
+          short on purpose: it is what a parent quotes at the secretariat, and
+          it is the row the procès-verbal is filed under.
+        -->
+        <div v-if="council" class="bl-council-ref">
+          Conseil de classe<template v-if="council.heldAt"> du {{ heldAt }}</template>
+          · réf. {{ councilRef }}
+        </div>
       </div>
       <div class="bl-sign">
         <span>Le chef d'établissement</span>
         <span>Le tuteur</span>
+      </div>
+      <!--
+        The code that makes the paper checkable, on the paper itself.
+
+        A bulletin travels to another school, an employer, a ministry — readers
+        who cannot sign in here and for whom an edited PDF looks exactly like
+        the original. Scanning opens the document the school actually issued.
+        ISSUED only: a QR on a draft would claim authenticity for a draft.
+      -->
+      <div v-if="verifyUrl" class="bl-qr">
+        <QrCode :value="verifyUrl" :size="72" label="Vérifier ce bulletin" />
+        <span>Vérifier<br /><span class="bl-qr-url">{{ verifyHost }}</span></span>
       </div>
     </footer>
   </article>

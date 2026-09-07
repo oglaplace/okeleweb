@@ -7,7 +7,7 @@
  */
 export const ICON_NAMES = [
   "home", "tree", "folder", "school", "userPlus", "users", "upload", "calendar",
-  "book", "clipboard", "fileText", "check", "lock", "wallet", "receipt", "coins",
+  "book", "clipboard", "fileText", "check", "lock", "lockOpen", "wallet", "receipt", "coins",
   "layers", "plus", "search", "chevronRight", "chevronLeft", "chevronDown", "dots", "arrowLeft",
   "settings", "clock",
   "bulb",

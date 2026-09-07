@@ -25,6 +25,8 @@ const yearId = ref<string | null>(null);
 const subjects = ref<{ id: string; code: string; name: string }[]>([]);
 const selectedId = ref<string | null>(null);
 const placement = ref<api.SubjectPlacement | null>(null);
+/** A reload in flight over content that stays put. */
+const refreshing = ref(false);
 
 const loading = ref(true);
 const busy = ref<string | null>(null);
@@ -74,17 +76,30 @@ async function load() {
   }
 }
 
-async function loadPlacement() {
-  placement.value = null;
+/**
+ * Reload where the subject is taught.
+ *
+ * `keep` holds the panel on screen while it refreshes. Blanking it after a tick
+ * was the glitch: the checkbox you had just clicked, the group it sat in and
+ * the count above it all vanished for the length of a request and came back a
+ * moment later, which reads as a fault rather than as a save.
+ */
+async function loadPlacement(keep = false) {
+  if (!keep) placement.value = null;
   if (!selectedId.value || !yearId.value) return;
+  refreshing.value = true;
   try {
     placement.value = await api.academics.subjectPlacement(selectedId.value, yearId.value);
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Chargement impossible.";
+  } finally {
+    refreshing.value = false;
   }
 }
 onMounted(load);
-watch([selectedId, yearId], loadPlacement);
+// A new subject swaps the panel; a new année refreshes the same one.
+watch(selectedId, () => loadPlacement());
+watch(yearId, () => loadPlacement(true));
 
 /** Programme it here, or take it off. One tick, one niveau. */
 async function toggle(row: api.SubjectPlacement["niveaux"][number]) {
@@ -103,7 +118,7 @@ async function toggle(row: api.SubjectPlacement["niveaux"][number]) {
       });
       notice.value = `${placement.value?.subject.name} programmé en ${row.niveau}.`;
     }
-    await loadPlacement();
+    await loadPlacement(true);
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Opération impossible.";
   } finally {
@@ -249,7 +264,8 @@ async function saveName() {
               <span class="cell-sub">{{ placement.subject.code }}</span>
             </span>
             <span class="hint">
-              Enseignée dans {{ taught }} niveau(x) sur {{ placement.niveaux.length }}
+              <span v-if="refreshing || busy" class="btn-spin" aria-hidden="true" />
+              {{ refreshing || busy ? "Mise à jour…" : `Enseignée dans ${taught} niveau(x) sur ${placement.niveaux.length}` }}
             </span>
           </div>
 
@@ -273,7 +289,12 @@ async function saveName() {
             <div>Une matière s'enseigne dans un niveau. Créez-en un d'abord.</div>
           </div>
 
-          <div v-for="g in grouped" :key="g.label" class="subjects-group">
+          <div
+            v-for="g in grouped"
+            :key="g.label"
+            class="subjects-group"
+            :class="{ 'is-busy': !!busy }"
+          >
             <div class="subjects-group-head">{{ g.label }}</div>
             <label
               v-for="n in g.rows"
@@ -284,7 +305,7 @@ async function saveName() {
               <input
                 type="checkbox"
                 :checked="!!n.offeringId"
-                :disabled="busy === n.niveauId"
+                :disabled="!!busy"
                 @change="toggle(n)"
               />
               <span>{{ n.niveau }}</span>
