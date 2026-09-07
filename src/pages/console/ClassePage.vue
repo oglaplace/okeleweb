@@ -3,6 +3,9 @@ import { computed, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 import * as api from "../../lib/api";
 import Alert from "../../components/ui/Alert.vue";
+import DataSheet from "../../components/sheet/DataSheet.vue";
+import { studentTabs, flattenStudentRow } from "../../components/sheet/columns";
+import { useAuthStore } from "../../stores/auth";
 
 /**
  * LE CONSEIL DE CLASSE — the meeting, as a screen.
@@ -31,6 +34,28 @@ const ancestors = ref<api.OrgUnit[]>([]);
 const years = ref<api.AcademicYear[]>([]);
 const periods = ref<api.Period[]>([]);
 const roster = ref<api.RosterRow[]>([]);
+
+/**
+ * THE MARKS, as the class sheet shows them.
+ *
+ * The same grid the Notes tab of the classe draws — same columns, same
+ * averages, same engine behind them — because a conseil deliberating on
+ * different numbers from the ones the teachers entered is the failure this
+ * whole module exists to prevent. Read-only here: the council reads marks, it
+ * does not type them.
+ */
+const sheet = ref<api.StudentSheet | null>(null);
+
+/**
+ * WHO MAY FREEZE.
+ *
+ * `grading.issue`, not `grading.write`: entering a mark and deciding that the
+ * term's numbers are final are different authorities, and the second belongs to
+ * whoever chairs the conseil. A titulaire who may type marks all term must not
+ * be able to close the term on their own.
+ */
+const auth = useAuthStore();
+const mayFreeze = computed(() => auth.can("grading.issue"));
 const preview = ref<api.ClassePreview | null>(null);
 
 const yearId = ref<string | null>(null);
@@ -74,9 +99,19 @@ const BLOCKED_FR: Record<string, { title: string; detail: string }> = {
   },
 };
 
-/** Periods hang off the cycle, not the classe — walk up to find it. */
-const cycleId = computed(
-  () => ancestors.value.find((a) => a.kind === "CYCLE")?.id ?? classe.value?.parentId ?? null,
+/**
+ * Whose calendar this class runs on.
+ *
+ * Périodes are declared on the ÉCOLE now — one calendar per établissement — and
+ * the API walks up from whatever unit it is given, so either answer works. The
+ * école is asked first because that is where new ones are created.
+ */
+const calendarId = computed(
+  () =>
+    ancestors.value.find((a) => a.kind === "SCHOOL")?.id ??
+    ancestors.value.find((a) => a.kind === "CYCLE")?.id ??
+    classe.value?.parentId ??
+    null,
 );
 
 const names = (r: api.RosterRow) =>
@@ -120,11 +155,15 @@ async function loadYearScoped() {
   preview.value = null;
   periodId.value = null;
   try {
-    const [rosterRows, periodList] = await Promise.all([
+    const [rosterRows, periodList, classSheet] = await Promise.all([
       api.enrollment.roster(classeId.value, yearId.value),
-      cycleId.value ? api.academics.periods(cycleId.value, yearId.value) : Promise.resolve([]),
+      calendarId.value
+        ? api.academics.periods(calendarId.value, yearId.value)
+        : Promise.resolve([]),
+      api.sheets.classe(classeId.value, yearId.value).catch(() => null),
     ]);
     roster.value = rosterRows;
+    sheet.value = classSheet;
     periods.value = periodList;
     /*
      * The période a school is actually IN, not the first of the year — the
@@ -164,6 +203,66 @@ async function loadCouncil() {
 
 /** Who has a frozen bulletin, so the roster can say so pupil by pupil. */
 const frozenBy = computed(() => new Set(frozen.value.map((s) => s.studentId)));
+
+/**
+ * The Notes tab of the class sheet, focused on the période being deliberated.
+ *
+ * `editable: false` on purpose — see mayFreeze. Marks are typed in the mark
+ * entry screen, which is one click away and says so.
+ */
+const marksTab = computed(() =>
+  sheet.value
+    ? studentTabs(sheet.value, { periodId: periodId.value, editable: false })
+        .find((t) => t.id === "grades") ?? null
+    : null,
+);
+const marksRows = computed(() => (sheet.value?.rows ?? []).map(flattenStudentRow));
+
+/**
+ * THE DECISION, which is the council's own act.
+ *
+ * Averages and mentions are computed; "admis" or "redouble" is decided, by
+ * people, in a room. The engine's proposal is shown beside the picker and
+ * recorded with the decision, so the file keeps both — and the réinscription
+ * screen reads exactly this when it proposes where each pupil goes next.
+ */
+const DECISIONS = [
+  { id: "ADMIS", label: "Admis" },
+  { id: "ADMIS_SOUS_CONDITION", label: "Admis sous condition" },
+  { id: "REDOUBLE", label: "Redouble" },
+  { id: "RATTRAPAGE", label: "Rattrapage" },
+  { id: "EXCLU", label: "Exclu" },
+  { id: "EN_ATTENTE", label: "En attente" },
+] as const;
+const decisions = ref<Record<string, string>>({});
+const decidingId = ref<string | null>(null);
+
+async function decide(studentId: string, kind: string, computed_: string) {
+  if (!yearId.value || decidingId.value) return;
+  decidingId.value = studentId;
+  error.value = null;
+  try {
+    await api.grading.decide({
+      studentId,
+      academicYearId: yearId.value,
+      kind: kind as "ADMIS",
+      ...(computed_ ? { computedKind: computed_ as "ADMIS" } : {}),
+    });
+    decisions.value = { ...decisions.value, [studentId]: kind };
+    await loadCouncil();
+  } catch (e) {
+    error.value = e instanceof api.ApiError ? e.message : "Décision impossible.";
+  } finally {
+    decidingId.value = null;
+  }
+}
+
+/** What the engine proposes for a pupil, in the DecisionKind vocabulary. */
+function proposed(s: { isEliminated: boolean; needsResit: boolean; isPassing: boolean }) {
+  if (s.isEliminated) return "EXCLU";
+  if (s.needsResit) return "RATTRAPAGE";
+  return s.isPassing ? "ADMIS" : "REDOUBLE";
+}
 
 /** The council's own summary line: what is done and what is left. */
 const state = computed(() => {
@@ -316,7 +415,14 @@ watch(periodId, async () => {
       <!-- The one control the meeting exists to press. Enabled as soon as
            there is something to freeze, including a partial class: a pupil
            whose marks are in should not wait for one whose are not. -->
+      <!-- Freezing is `grading.issue` — see mayFreeze. Absent the grant the
+           council is still readable: a titulaire may sit in it, read the
+           numbers and print, and may not close the term. -->
+      <span v-if="!mayFreeze" class="hint council-go">
+        Le gel des bulletins demande le droit « conseil de classe ».
+      </span>
       <button
+        v-else
         class="btn primary council-go"
         type="button"
         :disabled="issuing || !preview || state.complete"
@@ -343,6 +449,23 @@ watch(periodId, async () => {
       </template>
       <RouterLink :to="{ name: 'bulletins', params: { id: classeId } }">Imprimer →</RouterLink>
     </Alert>
+    <!--
+      THE NOTES, as the class sheet shows them.
+
+      A conseil reads the term's marks; this is that reading, in the grid the
+      teachers filled. Read-only: entering marks is one screen away and is a
+      different job from deciding what they mean.
+    -->
+    <div v-if="marksTab && marksRows.length" class="card is-grid council-marks">
+      <div class="card-head">
+        <span>Notes — {{ periods.find((p) => p.id === periodId)?.label ?? "période" }}</span>
+        <RouterLink class="btn sm ghost" :to="{ name: 'marks', params: { id: classeId } }">
+          Saisir les notes
+        </RouterLink>
+      </div>
+      <DataSheet :tab="marksTab" :rows="marksRows" row-key="studentId" />
+    </div>
+
     <div v-if="loading" class="card"><div class="empty">Chargement…</div></div>
 
     <!--
@@ -423,7 +546,8 @@ watch(periodId, async () => {
               <th>Moyenne</th>
               <th class="c-text">Mention</th>
               <th>Abs. (h)</th>
-              <th class="c-text">Décision</th>
+              <th class="c-text">Proposition</th>
+              <th class="c-text">Décision du conseil</th>
               <th class="c-text">Bulletin</th>
             </tr>
           </thead>
@@ -437,11 +561,28 @@ watch(periodId, async () => {
               <td>{{ s.average ?? "—" }}</td>
               <td class="c-text">{{ s.mention ?? "—" }}</td>
               <td>{{ s.absenceHours }}</td>
+              <!-- What the ENGINE proposes. The council's own answer is the
+                   next column, and the two are kept apart on purpose. -->
               <td class="c-text">
                 <span v-if="s.isEliminated" class="pill danger">Éliminé</span>
                 <span v-else-if="s.needsResit" class="pill warn">Rattrapage</span>
                 <span v-else-if="s.isPassing" class="pill ok">Admis</span>
                 <span v-else class="pill danger">Non admis</span>
+              </td>
+              <td class="c-text">
+                <select
+                  v-if="mayFreeze"
+                  :value="decisions[s.studentId] ?? ''"
+                  :disabled="decidingId === s.studentId"
+                  :aria-label="`Décision pour ${byStudent.get(s.studentId)?.student.matricule ?? s.studentId}`"
+                  @change="decide(s.studentId, ($event.target as HTMLSelectElement).value, proposed(s))"
+                >
+                  <option value="">Décider…</option>
+                  <option v-for="d in DECISIONS" :key="d.id" :value="d.id">{{ d.label }}</option>
+                </select>
+                <span v-else class="cell-sub">
+                  {{ DECISIONS.find((d) => d.id === decisions[s.studentId])?.label ?? "—" }}
+                </span>
               </td>
               <!-- Per pupil, because freezing is per pupil: a class where three
                    are frozen and the rest are not is a normal state now. -->

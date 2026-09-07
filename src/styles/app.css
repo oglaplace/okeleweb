@@ -6408,9 +6408,24 @@ table.data td.is-muted {
 }
 .council-go { margin-left: auto; }
 
-/* ── fin d'année et rentrée ── */
-.rentree-pick { display: flex; gap: var(--s5); align-items: flex-end; flex-wrap: wrap; }
-.rentree-pick .field { flex: 1 1 12rem; }
+/* ── réinscription ──
+   TOP-aligned, not bottom-aligned, and that is the whole fix.
+   Every field is label → control → hint, and the labels and controls are the
+   same height in each. Aligning the boxes at their BOTTOM lines up whatever
+   trails them — a one-line hint against a two-line one — and leaves the
+   controls at different heights, which is what "the form is not aligned"
+   looked like. Aligned at the top, the controls sit on one line and the hints
+   hang below at whatever height they need. */
+.reins-form {
+  display: flex;
+  gap: var(--s5);
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.reins-form .field { flex: 0 1 16rem; min-width: 12rem; }
+.reins-form .field-grow { flex: 1 1 22rem; }
+/* The switch is a control on the same row as the selects — same height. */
+.reins-form .viewswitch { height: var(--control-h); }
 .rentree-bar {
   display: flex;
   align-items: center;
@@ -6425,3 +6440,7 @@ table.data td.is-muted {
 }
 .rentree-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s4); }
 .rentree-apply { display: flex; align-items: center; gap: var(--s2); font-size: var(--t-small); }
+
+/* The council's marks grid: tall enough to read a class without scrolling the
+   page, capped so the deliberation below it stays on screen. */
+.council-marks .sheet { max-height: 46vh; }

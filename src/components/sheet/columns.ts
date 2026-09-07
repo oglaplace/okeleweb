@@ -168,7 +168,15 @@ export function studentTabs(
            * when an evaluation belongs to the whole class. One button, in the
            * one place that names the subject, is the honest shape.
            */
-          badge: {
+          /*
+           * The ＋ and the coefficient chip are EDIT affordances.
+           *
+           * A conseil reads this grid; it does not add an evaluation from it
+           * and it does not retune a coefficient mid-deliberation. Offering
+           * both there put two controls that write on a screen whose whole
+           * point is that it writes nothing until the freeze.
+           */
+          ...(focus.editable === false ? {} : { badge: {
             key: `coefficient:${subject.id}`,
             /*
              * Both states start with "coef." so the eye reads the same slot,
@@ -177,23 +185,26 @@ export function studentTabs(
              * one evaluation is narrow enough that a long sentence here would
              * stretch the whole block sideways.
              */
+            // `?? null` because a subject the API has no coefficient row for
+            // arrives as undefined, and `undefined === null` is false — which
+            // printed the word "undefined" in the header of a mark sheet.
             label:
-              subject.coefficient === null
+              (subject.coefficient ?? null) === null
                 ? "coef. à définir"
                 : `coef. ${subject.coefficient}`,
-            missing: subject.coefficient === null,
+            missing: (subject.coefficient ?? null) === null,
             hint:
               subject.coefficient === null
                 ? `Aucun coefficient pour ${subject.name} — le conseil ne peut pas pondérer sans lui. Cliquer pour le définir.`
                 : `Coefficient ${subject.coefficient} — cliquer pour le modifier.`,
-          },
-          action: {
+          } }),
+          ...(focus.editable === false ? {} : { action: {
             key: `assessment:${subject.id}`,
             label: evaluations.length ? "＋" : "＋ évaluation",
             hint: evaluations.length
               ? `Ajouter une évaluation en ${subject.name} (${evaluations.length} déjà)`
               : `Aucune évaluation en ${subject.name} — en créer une`,
-          },
+          } }),
           columns: [
             ...evaluations.map((a) => ({
               key: `e:${a.id}`,

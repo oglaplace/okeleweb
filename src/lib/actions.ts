@@ -240,16 +240,17 @@ export const ACTIONS: ActionSpec[] = [
     label: "Créer une période",
     group: "structure",
     icon: "clock",
-    summary: "Trimestre ou semestre, sur un cycle. Un bulletin est un document de période.",
+    summary: "Trimestre ou semestre, sur une école. Un bulletin est un document de période.",
     /**
-     * A CYCLE, and nothing else for now.
+     * AN ÉCOLE, because an établissement runs ONE calendar.
      *
-     * The API enforces the same list. A période on a classe lets every class of
-     * a cycle drift into its own calendar and stops two bulletins from being
-     * comparable; on a school it would silently mean "all its cycles", which is
-     * a different statement from the one the operator made.
+     * Its trimestres start and end on the same days for every cycle inside it,
+     * the rentrée is one date, the conseils are held in the same week.
+     * Declaring them per cycle meant writing the same three dates three times
+     * and letting them drift apart — and a bulletin whose trimestre ran to
+     * different dates from the class next door is not comparable with it.
      */
-    scope: ["CYCLE"],
+    scope: ["SCHOOL"],
     fields: [
       { key: "academicYearId", label: "Année scolaire", type: "select", source: "years", required: true },
       {
@@ -282,16 +283,41 @@ export const ACTIONS: ActionSpec[] = [
     label: "Verrouiller une période",
     group: "structure",
     icon: "lock",
-    summary: "Après le conseil : les notes de la période deviennent non modifiables.",
-    // A période lives on a CYCLE, so this is where one is locked. It listed
-    // complexes and schools too, which offered a scope whose période list could
-    // only ever come back empty.
-    scope: ["CYCLE"],
+    summary:
+      "Après le conseil : les notes de la période deviennent non modifiables. " +
+      "C'est aussi ici qu'une année scolaire se clôture.",
+    // Where the calendar lives — see create-period.
+    scope: ["SCHOOL"],
     fields: [
       { key: "academicYearId", label: "Année scolaire", type: "select", source: "years", required: true },
       { key: "periodId", label: "Période", type: "select", source: "periodsOfScope", required: true },
     ],
     submit: (_s, v) => api.academics.lockPeriod(v.periodId!),
+  },
+  {
+    /**
+     * CLOSING A YEAR belongs with locking a période, not with réinscription.
+     *
+     * Both are about the calendar; réinscription is about a pupil. It sat on
+     * the réinscription screen because that is where it was written, which made
+     * an act with consequences for the whole établissement a button beside a
+     * pupil's name.
+     *
+     * The API refuses while any période is still open — marks that can still
+     * change are not a year anybody can close.
+     */
+    id: "close-year",
+    label: "Clôturer l'année scolaire",
+    group: "structure",
+    icon: "lock",
+    summary:
+      "L'année cesse d'être l'année en cours et ses notes sont définitives. " +
+      "Rien n'est supprimé : bulletins, factures et notes restent consultables.",
+    scope: null,
+    fields: [
+      { key: "academicYearId", label: "Année à clôturer", type: "select", source: "years", required: true },
+    ],
+    submit: (_s, v) => api.academics.closeYear(v.academicYearId!),
   },
 
   // ── scolarité ─────────────────────────────────────────────────────────────

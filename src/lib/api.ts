@@ -1073,6 +1073,23 @@ export interface PublicBulletin {
   appreciation: string | null;
 }
 
+export interface ReinscriptionCandidates {
+  year: { id: string; label: string };
+  candidates: {
+    studentId: string;
+    matricule: string;
+    lastName: string;
+    firstName: string;
+    from: { yearId: string; yearLabel: string; classeId: string; classe: string };
+    decision: string;
+    /** Where the promotion rule would put them. Null when the school must pick. */
+    suggestedClasseId: string | null;
+    isRepeating: boolean;
+    /** Still owed on the year they are leaving — the counter's other question. */
+    owesXaf: number;
+  }[];
+}
+
 export interface RolloverPlan {
   from: { id: string; label: string; closedAt: string | null };
   to: { id: string; label: string };
@@ -1473,6 +1490,26 @@ export const grading = {
       `/grading/council?classeId=${encodeURIComponent(classeId)}` +
         `&periodId=${encodeURIComponent(periodId)}`,
     ),
+
+  /**
+   * THE COUNCIL'S OWN ACT — what it decided about a pupil.
+   *
+   * `grading.issue`, like freezing: deciding that a child repeats a year is the
+   * conseil's authority, not the authority to type a mark. The engine's own
+   * proposal rides along as `computedKind`, so the record keeps both what was
+   * computed and what the council decided.
+   */
+  decide: (body: {
+    studentId: string;
+    academicYearId: string;
+    kind: "ADMIS" | "ADMIS_SOUS_CONDITION" | "REDOUBLE" | "EXCLU" | "RATTRAPAGE" | "EN_ATTENTE";
+    computedKind?: "ADMIS" | "REDOUBLE" | "RATTRAPAGE" | "EXCLU";
+    note?: string;
+  }) =>
+    request<{ id: string; kind: string }>("/grading/decisions", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
 
   /** Current sheets for a classe, ordered by rang — what the print run reads. */
   sheetsForClasse: (classeId: string, periodId: string) =>
@@ -2321,6 +2358,19 @@ export const academics = {
     request<{ activated: number; unchanged: number; notEnrolled: number }>(
       `/academics/periods/${encodeURIComponent(periodId)}/registration`,
       { method: "POST", body: JSON.stringify({ studentIds, ...opts }) },
+    ),
+
+  /**
+   * WHO MAY BE RÉINSCRIT — one pupil at a time, found by name or matricule.
+   *
+   * A rentrée moves six hundred together; the counter in septembre serves one
+   * family. Eligibility is the same rule for both: enrolled in an earlier year,
+   * not yet in the target one.
+   */
+  reinscriptionCandidates: (toYearId: string, q?: string) =>
+    request<ReinscriptionCandidates>(
+      `/academics/reinscription/candidates?toYearId=${encodeURIComponent(toYearId)}` +
+        (q ? `&q=${encodeURIComponent(q)}` : ""),
     ),
 
   /** What the rentrée would look like. Computed, nothing written. */
