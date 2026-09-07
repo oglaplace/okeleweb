@@ -71,6 +71,10 @@ const day = (v: string | null) =>
         <div><dt>Élève</dt><dd>{{ doc.student.lastName.toUpperCase() }} {{ doc.student.firstName }}</dd></div>
         <div><dt>Matricule</dt><dd>{{ doc.student.matricule }}</dd></div>
         <div><dt>Délivré le</dt><dd>{{ day(doc.issuedAt) }}</dd></div>
+        <!-- The meeting behind the paper, for whoever is holding the paper. -->
+        <div v-if="doc.council?.heldAt">
+          <dt>Conseil de classe</dt><dd>{{ day(doc.council.heldAt) }}</dd>
+        </div>
         <div><dt>Barème</dt><dd>{{ doc.gradingSystem.name }} / {{ doc.gradingSystem.scaleMax }}</dd></div>
       </dl>
 

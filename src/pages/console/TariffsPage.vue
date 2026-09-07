@@ -605,6 +605,84 @@ async function removeFeeType() {
   }
 }
 
+/*
+ * ── EDITING THE CATALOGUE, not only installing from it ─────────────────────
+ *
+ * The catalogue ships what Congolese schools usually charge. Two things it
+ * cannot know: that this school calls one of them something else — "frais de
+ * surveillance" rather than "frais d'examen" — and that it charges something
+ * nobody thought of. Both were unreachable: the list was fixed, and the only
+ * way to get a name you wanted was not to use the feature.
+ *
+ * The CODE stays fixed once created. It is what the grille, the projection and
+ * every facture match on, and a school that renames a code detaches itself from
+ * its own history.
+ */
+const editing = ref<{ id: string; name: string; recurrence: string } | null>(null);
+const editBusy = ref(false);
+
+async function saveFeeType() {
+  const target = editing.value;
+  if (!target || editBusy.value) return;
+  editBusy.value = true;
+  error.value = null;
+  try {
+    await api.finance.updateFeeType(target.id, {
+      name: target.name.trim(),
+      recurrence: target.recurrence,
+    });
+    notice.value = `« ${target.name.trim()} » enregistré.`;
+    editing.value = null;
+    catalogue.value = await api.finance.feeCatalogue().catch(() => catalogue.value);
+    await load();
+  } catch (e) {
+    error.value = e instanceof api.ApiError ? e.message : "Modification impossible.";
+  } finally {
+    editBusy.value = false;
+  }
+}
+
+/** A fee this school charges and the catalogue never heard of. */
+const creating = ref(false);
+const newType = ref({ name: "", recurrence: "ONCE" as string });
+const createBusy = ref(false);
+
+/** A code nobody has to invent, derived from the name they typed. */
+function codeFrom(name: string) {
+  return (
+    name
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, "_")
+      .replace(/^_|_$/g, "")
+      .slice(0, 24) || "FRAIS"
+  );
+}
+
+async function createFeeType() {
+  const name = newType.value.name.trim();
+  if (!name || createBusy.value) return;
+  createBusy.value = true;
+  error.value = null;
+  try {
+    await api.finance.createFeeType({
+      code: codeFrom(name),
+      name,
+      recurrence: newType.value.recurrence as "ONCE",
+    });
+    notice.value = `« ${name} » ajouté.`;
+    newType.value = { name: "", recurrence: "ONCE" };
+    creating.value = false;
+    catalogue.value = await api.finance.feeCatalogue().catch(() => catalogue.value);
+    await load();
+  } catch (e) {
+    error.value = e instanceof api.ApiError ? e.message : "Ajout impossible.";
+  } finally {
+    createBusy.value = false;
+  }
+}
+
 async function install() {
   if (!wanted.value.size) return;
   installing.value = true;
@@ -1084,6 +1162,13 @@ const pricedCount = computed(
                    only where nothing cites it; where something does, the row
                    says what, instead of a button that refuses when pressed. -->
               <button
+                v-if="t.installed && t.id"
+                class="catalogue-rm"
+                type="button"
+                :title="`Renommer « ${t.name} »`"
+                @click="editing = { id: t.id!, name: t.name, recurrence: t.recurrence }"
+              >Modifier</button>
+              <button
                 v-if="t.installed && t.removable"
                 class="catalogue-rm"
                 type="button"
@@ -1096,7 +1181,80 @@ const pricedCount = computed(
             </div>
           </div>
         </div>
+          <!--
+            EDITING ONE, in place.
+
+            The code is shown and not editable: it is what the grille, the
+            projection and every facture match on. What a school actually wants
+            to change is the word its parents read.
+          -->
+          <div v-if="editing" class="catalogue-edit">
+            <div class="field">
+              <label for="ft-name">Nom</label>
+              <input id="ft-name" v-model="editing.name" maxlength="80" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label for="ft-rec">Périodicité</label>
+              <select id="ft-rec" v-model="editing.recurrence">
+                <option value="ONCE">Une fois</option>
+                <option value="PER_PERIOD">Par tranche</option>
+                <option value="MONTHLY">Par mois</option>
+              </select>
+            </div>
+            <div class="field field-actions">
+              <button class="btn sm ghost" type="button" @click="editing = null">Annuler</button>
+              <button
+                class="btn sm primary"
+                type="button"
+                :disabled="!editing.name.trim() || editBusy"
+                @click="saveFeeType"
+              >
+                <span v-if="editBusy" class="btn-spin" aria-hidden="true" />
+                Enregistrer
+              </button>
+            </div>
+          </div>
+
+          <!-- A fee the catalogue never heard of. -->
+          <div v-if="creating" class="catalogue-edit">
+            <div class="field">
+              <label for="ft-new">Nouveau type de frais</label>
+              <input
+                id="ft-new"
+                v-model="newType.name"
+                maxlength="80"
+                autocomplete="off"
+                placeholder="Frais de laboratoire, sortie pédagogique…"
+              />
+            </div>
+            <div class="field">
+              <label for="ft-newrec">Périodicité</label>
+              <select id="ft-newrec" v-model="newType.recurrence">
+                <option value="ONCE">Une fois</option>
+                <option value="PER_PERIOD">Par tranche</option>
+                <option value="MONTHLY">Par mois</option>
+              </select>
+            </div>
+            <div class="field field-actions">
+              <button class="btn sm ghost" type="button" @click="creating = false">Annuler</button>
+              <button
+                class="btn sm primary"
+                type="button"
+                :disabled="!newType.name.trim() || createBusy"
+                @click="createFeeType"
+              >
+                <span v-if="createBusy" class="btn-spin" aria-hidden="true" />
+                <!-- "Créer", not "Ajouter": the dialog's own Ajouter installs
+                     what is ticked, and two buttons with one word is a trap. -->
+                Créer
+              </button>
+            </div>
+          </div>
+
         <div class="dialog-actions" style="padding: 0 var(--s5) var(--s4)">
+          <button v-if="!creating" class="btn ghost" type="button" @click="creating = true">
+            Créer un type de frais
+          </button>
           <button class="btn primary" type="button" :disabled="!wanted.size || installing" @click="install">
             <span v-if="installing" class="btn-spin" aria-hidden="true" />
             Ajouter {{ wanted.size || "" }}

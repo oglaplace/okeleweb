@@ -56,6 +56,8 @@ const router = createRouter({
          * performs once a year and had no screen for at all.
          */
         { path: "rentree", name: "rentree", component: () => import("../pages/console/RentreePage.vue") },
+        /** The catalogue AND its programming — see SubjectsPage. */
+        { path: "matieres", name: "subjects", component: () => import("../pages/console/SubjectsPage.vue") },
         /**
          * One route for every declarative action — see lib/actions.ts. Actions
          * with a screen of their own keep their route above; this serves the

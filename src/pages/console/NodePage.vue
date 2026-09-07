@@ -981,7 +981,7 @@ const dueNow = computed(() => ledger.value?.totals.dueNowXaf ?? null);
           </span>
           <RouterLink
             class="btn sm"
-            :to="{ name: 'action', params: { id: 'create-offering' }, query: { scope: unit.parentId } }"
+            :to="{ name: 'subjects' }"
           >
             Programmer une matière
           </RouterLink>

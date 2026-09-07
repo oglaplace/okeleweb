@@ -6444,3 +6444,125 @@ table.data td.is-muted {
 /* The council's marks grid: tall enough to read a class without scrolling the
    page, capped so the deliberation below it stays on screen. */
 .council-marks .sheet { max-height: 46vh; }
+
+/* A reason typed in a dialog is a sentence, not a code field. */
+.confirm-body textarea {
+  width: 100%;
+  margin-top: var(--s3);
+  font: inherit;
+  resize: vertical;
+}
+
+/* The council's stamp on the printed bulletin — quiet, but on the page. */
+.bulletin-council {
+  margin-top: var(--s4);
+  font-size: var(--t-small);
+  color: var(--ink-2);
+  text-align: center;
+  font-style: italic;
+}
+
+/* Le procès-verbal — a register, read top to bottom, not a table. */
+.minutes { list-style: none; margin: 0; padding: 0; }
+.minutes li {
+  display: grid;
+  grid-template-columns: 6.5rem 1fr auto;
+  gap: var(--s3);
+  align-items: baseline;
+  padding: var(--s2) var(--s4);
+  border-top: 1px solid var(--line-soft);
+  font-size: var(--t-small);
+}
+.minutes li:first-child { border-top: 0; }
+.minutes-when { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.minutes-what { display: flex; flex-wrap: wrap; gap: 0 var(--s2); }
+.minutes-note { color: var(--ink-2); font-style: italic; }
+.minutes-who { color: var(--ink-3); white-space: nowrap; }
+@media (max-width: 640px) {
+  .minutes li { grid-template-columns: 1fr; gap: 2px; }
+}
+
+/* An observation is a sentence, so its control reads as one, not as a button. */
+.obs-cell {
+  max-width: 16rem;
+  text-align: left;
+  white-space: normal;
+  font-weight: 400;
+}
+
+/* Editing a fee type in place, inside the catalogue dialog. */
+.catalogue-edit {
+  display: flex;
+  gap: var(--s4);
+  align-items: flex-start;
+  flex-wrap: wrap;
+  padding: var(--s4);
+  margin-top: var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.catalogue-edit .field { flex: 1 1 10rem; }
+.catalogue-edit .field-actions { flex: none; display: flex; gap: var(--s2); align-items: flex-end; }
+
+/* ── matières : le catalogue et sa programmation, côte à côte ──
+   The catalogue is a list you scan and the scope is a tree you tick; putting
+   them side by side is what makes "where do we teach maths" one glance rather
+   than one screen per niveau. */
+.subjects {
+  display: grid;
+  grid-template-columns: minmax(16rem, 22rem) 1fr;
+  gap: var(--s4);
+  align-items: start;
+}
+.subjects-items { list-style: none; margin: 0; padding: var(--s2); max-height: 60vh; overflow-y: auto; }
+.subjects-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  border-radius: var(--radius-sm);
+}
+.subjects-item.is-on { background: var(--primary-soft); }
+.subjects-pick {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+.subjects-code {
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+  flex: none;
+}
+.subjects-name { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subjects-item.is-on .subjects-name { font-weight: 600; }
+.subjects-group { padding: 0 var(--s4) var(--s3); }
+.subjects-group-head {
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  padding: var(--s3) 0 var(--s2);
+}
+.subjects-niveau {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: 4px var(--s2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.subjects-niveau:hover { background: var(--surface-2); }
+.subjects-niveau.is-on { font-weight: 600; }
+@media (max-width: 860px) {
+  .subjects { grid-template-columns: 1fr; }
+}

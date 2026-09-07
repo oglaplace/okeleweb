@@ -1047,6 +1047,14 @@ export const publicApi = {
     request<PublicBulletin>(`/public/bulletins/${encodeURIComponent(token)}`, { auth: false }),
 };
 
+/** The meeting that validated the document — printed on it, and verifiable. */
+export interface CouncilStamp {
+  /** Absent on the public page: a reader of the paper gets the date, no handle. */
+  id?: string;
+  heldAt: string | null;
+  status: "OPEN" | "DELIBERATED" | "CLOSED";
+}
+
 export interface PublicBulletin {
   establishment: {
     complex: string | null; school: string | null;
@@ -1071,6 +1079,20 @@ export interface PublicBulletin {
   absenceHours: string | null;
   lateCount: number | null;
   appreciation: string | null;
+  council: CouncilStamp | null;
+}
+
+export interface SubjectPlacement {
+  subject: { id: string; code: string; name: string };
+  niveaux: {
+    niveauId: string;
+    niveau: string;
+    school: string | null;
+    cycle: string | null;
+    /** Null when the subject is not programmed there. */
+    offeringId: string | null;
+    weeklyHours: number | null;
+  }[];
 }
 
 export interface ReinscriptionCandidates {
@@ -1225,11 +1247,37 @@ export interface ClassePreview {
   students: PreviewStudent[];
 }
 
+export interface CouncilManifest {
+  session: {
+    id: string;
+    status: "OPEN" | "DELIBERATED" | "CLOSED";
+    classe: string;
+    period: string;
+    openedAt: string;
+    closedAt: string | null;
+  };
+  entries: {
+    id: string;
+    kind:
+      | "OPENED" | "SUBMITTED" | "UNLOCKED" | "MARK_CHANGED" | "DECISION"
+      | "OBSERVATION" | "FROZEN" | "UNFROZEN" | "CLOSED";
+    at: string;
+    by: string | null;
+    studentId: string | null;
+    student: string | null;
+    subjectId: string | null;
+    subject: string | null;
+    detail: unknown;
+    note: string | null;
+  }[];
+}
+
 export interface CouncilState {
   period: { id: string; label: string; locked: boolean };
   pupils: number;
   subjects: {
     courseOfferingId: string;
+    subjectId: string;
     code: string;
     name: string;
     assessments: number;
@@ -1237,11 +1285,18 @@ export interface CouncilState {
     marks: number;
     /** Still the teacher's working copy — the council must not freeze these. */
     unsubmitted: number;
+    /** Every evaluation carrying marks has been handed over. */
+    submitted: boolean;
   }[];
   marksIn: { subjects: number; of: number; marks: number };
   unsubmitted: number;
   decided: number;
   frozen: number;
+  /** The meeting, if one has started. Read — looking never opens a conseil. */
+  session: { id: string; status: string; openedAt: string; closedAt: string | null } | null;
+  observations: number;
+  /** Every subject that carries marks has been handed over. */
+  allSubmitted: boolean;
   /** Why the engine cannot run yet, said before it is asked. */
   blocked: "NO_PUPILS" | "NO_PROGRAMME" | "NO_MARKS" | null;
 }
@@ -1439,6 +1494,8 @@ export interface Bulletin {
   lateCount: number | null;
   appreciation: string | null;
   decision: { kind: string; computedKind: string | null; note: string | null; decidedOn: string | null } | null;
+  /** Only on a frozen sheet: which conseil de classe stands behind it. */
+  council?: CouncilStamp | null;
 }
 
 /** A barème: the scale, where the pass sits, and what the mentions are. */
@@ -1509,6 +1566,46 @@ export const grading = {
     request<{ id: string; kind: string }>("/grading/decisions", {
       method: "PUT",
       body: JSON.stringify(body),
+    }),
+
+  /** THE MINUTES — everything the conseil did, in order. */
+  councilManifest: (classeId: string, periodId: string) =>
+    request<CouncilManifest | null>(
+      `/grading/council/manifest?classeId=${encodeURIComponent(classeId)}` +
+        `&periodId=${encodeURIComponent(periodId)}`,
+    ),
+
+  /**
+   * Hands a whole subject over — on the teacher's behalf if need be.
+   *
+   * `grading.issue`: doing it FOR somebody is exactly the act that belongs to
+   * the chair and is written down with their name on it.
+   */
+  submitSubject: (classeId: string, periodId: string, courseOfferingId: string) =>
+    request<{ submitted: number; sessionId: string }>("/grading/council/submit-subject", {
+      method: "POST",
+      body: JSON.stringify({ classeId, periodId, courseOfferingId }),
+    }),
+
+  /** Reopens one subject so the council can correct it. Reason required. */
+  unlockSubject: (classeId: string, periodId: string, courseOfferingId: string, reason: string) =>
+    request<{ unlocked: number; sessionId: string }>("/grading/council/unlock-subject", {
+      method: "POST",
+      body: JSON.stringify({ classeId, periodId, courseOfferingId, reason }),
+    }),
+
+  /** What the council wants printed on one pupil's bulletin. */
+  observe: (classeId: string, periodId: string, studentId: string, text: string) =>
+    request<{ sessionId: string }>("/grading/council/observation", {
+      method: "POST",
+      body: JSON.stringify({ classeId, periodId, studentId, text }),
+    }),
+
+  /** Reopens the frozen bulletins of a class. Always with a reason. */
+  unfreeze: (classeId: string, periodId: string, reason: string) =>
+    request<{ reopened: number; sessionId: string }>("/grading/council/unfreeze", {
+      method: "POST",
+      body: JSON.stringify({ classeId, periodId, reason }),
     }),
 
   /** Current sheets for a classe, ordered by rang — what the print run reads. */
@@ -1617,7 +1714,24 @@ export const finance = {
     code: string;
     name: string;
     recurrence?: "ONCE" | "PER_PERIOD" | "MONTHLY";
-  }) => request<unknown>("/finance/fee-types", { method: "POST", body: JSON.stringify(body) }),
+  }) =>
+    request<{ id: string; code: string; name: string; recurrence: string }>("/finance/fee-types", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  /**
+   * Renames one, or changes how often it recurs.
+   *
+   * The CODE is not editable: it is what the catalogue, the grille and the
+   * projection match on, and renaming it detaches a school from its own
+   * history.
+   */
+  updateFeeType: (id: string, patch: { name?: string; recurrence?: string }) =>
+    request<{ id: string; name: string; recurrence: string }>(
+      `/finance/fee-types/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: JSON.stringify(patch) },
+    ),
 
   createFeeSchedule: (body: {
     orgUnitId: string;
@@ -2424,6 +2538,32 @@ export const academics = {
     }),
 
   subjects: () => request<Subject[]>("/academics/subjects"),
+  /**
+   * WHERE ONE SUBJECT IS TAUGHT — every niveau, with the offering where there
+   * is one.
+   *
+   * The catalogue is complex-wide and the programming is per niveau, which is
+   * the right model and the wrong shape for "where do we teach maths?".
+   */
+  subjectPlacement: (subjectId: string, academicYearId: string) =>
+    request<SubjectPlacement>(
+      `/academics/subjects/${encodeURIComponent(subjectId)}/placement` +
+        `?academicYearId=${encodeURIComponent(academicYearId)}`,
+    ),
+
+  /** Renames a subject. The code stays — marks and bulletins cite it. */
+  updateSubject: (id: string, name: string) =>
+    request<{ id: string; code: string; name: string }>(
+      `/academics/subjects/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: JSON.stringify({ name }) },
+    ),
+
+  /** Unprogrammes a subject from a niveau. Refused once marks cite it. */
+  deleteOffering: (id: string) =>
+    request<{ deleted: boolean }>(`/academics/offerings/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
+
   createSubject: (body: { code: string; name: string }) =>
     request<Subject>("/academics/subjects", { method: "POST", body: JSON.stringify(body) }),
 

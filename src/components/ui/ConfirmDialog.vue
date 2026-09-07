@@ -20,10 +20,12 @@ withDefaults(
     subtitle?: string;
     confirmLabel?: string;
     busy?: boolean;
+    /** Nothing to confirm yet — a required reason still empty, say. */
+    confirmDisabled?: boolean;
     /** Publication is not destructive; this is for the ones that are. */
     danger?: boolean;
   }>(),
-  { confirmLabel: "Confirmer", busy: false, danger: false },
+  { confirmLabel: "Confirmer", busy: false, danger: false, confirmDisabled: false },
 );
 const emit = defineEmits<{ confirm: []; close: [] }>();
 </script>
@@ -40,7 +42,7 @@ const emit = defineEmits<{ confirm: []; close: [] }>();
           class="btn"
           :class="danger ? 'danger' : 'primary'"
           type="button"
-          :disabled="busy"
+          :disabled="busy || confirmDisabled"
           @click="emit('confirm')"
         >
           <span v-if="busy" class="btn-spin" aria-hidden="true" />

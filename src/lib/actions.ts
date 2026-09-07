@@ -375,37 +375,23 @@ export const ACTIONS: ActionSpec[] = [
 
   // ── programme ─────────────────────────────────────────────────────────────
   {
-    id: "create-subject",
-    label: "Nouvelle matière",
+    /**
+     * ONE SCREEN for the catalogue and its programming.
+     *
+     * They were two actions: "Nouvelle matière", a form with a code and a name,
+     * and "Programmer une matière", a different form on a niveau asking for a
+     * subject. Between them sat the thing an operator actually holds in their
+     * head — "we teach maths in these six niveaux" — and neither showed it.
+     * Creating told you nothing about where it was taught; programming had to
+     * be repeated niveau by niveau with no view of what was already done.
+     */
+    id: "subjects",
+    label: "Matières et programmation",
     group: "programme",
     icon: "book",
-    summary: "Le catalogue des matières est commun à tout l'établissement.",
+    summary: "Le catalogue de l'établissement, et où chaque matière est enseignée.",
     scope: null,
-    fields: [
-      { key: "code", label: "Code", type: "text", required: true, hint: "MATH" },
-      { key: "name", label: "Nom", type: "text", required: true, hint: "Mathématiques" },
-    ],
-    submit: (_s, v) => api.academics.createSubject({ code: v.code!, name: v.name! }),
-  },
-  {
-    id: "create-offering",
-    label: "Programmer une matière",
-    group: "programme",
-    icon: "layers",
-    summary: "Rattacher une matière à un niveau pour l'année — la base de la saisie des notes.",
-    scope: ["NIVEAU"],
-    fields: [
-      { key: "academicYearId", label: "Année scolaire", type: "select", source: "years", required: true },
-      { key: "subjectId", label: "Matière", type: "select", source: "subjects", required: true },
-      { key: "weeklyHours", label: "Heures / semaine", type: "number" },
-    ],
-    submit: (scopeId, v) =>
-      api.academics.createOffering({
-        niveauId: scopeId!,
-        academicYearId: v.academicYearId!,
-        subjectId: v.subjectId!,
-        ...(num(v.weeklyHours) !== undefined ? { weeklyHours: num(v.weeklyHours)! } : {}),
-      }),
+    route: "subjects",
   },
   {
     id: "set-coefficient",

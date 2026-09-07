@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 import * as api from "../../lib/api";
 import Alert from "../../components/ui/Alert.vue";
+import ConfirmDialog from "../../components/ui/ConfirmDialog.vue";
 import DataSheet from "../../components/sheet/DataSheet.vue";
 import { studentTabs, flattenStudentRow } from "../../components/sheet/columns";
 import { useAuthStore } from "../../stores/auth";
@@ -66,6 +67,8 @@ const previewing = ref(false);
 const issuing = ref(false);
 const issued = ref<{ issued: number; alreadyIssued: number } | null>(null);
 const error = ref<string | null>(null);
+/** What just happened, said once and dismissible. */
+const notice = ref<string | null>(null);
 
 /** Bulletins already frozen for the période on screen — the council's state. */
 const frozen = ref<api.MarkSheet[]>([]);
@@ -218,6 +221,133 @@ const marksTab = computed(() =>
 );
 const marksRows = computed(() => (sheet.value?.rows ?? []).map(flattenStudentRow));
 
+/*
+ * ── THE MEETING'S FOUR ACTS ────────────────────────────────────────────────
+ *
+ * A conseil hands the marks over, corrects what it finds, says what it wants
+ * printed, and freezes. Each of those writes a line in the minute book — which
+ * is the point: months later, when a family disputes a bulletin, the question
+ * is who changed what and when, and the app used to keep none of it.
+ */
+const manifest = ref<api.CouncilManifest | null>(null);
+const acting = ref<string | null>(null);
+const showManifest = ref(false);
+
+async function loadManifest() {
+  manifest.value = periodId.value
+    ? await api.grading.councilManifest(classeId.value, periodId.value).catch(() => null)
+    : null;
+}
+
+/** Hands one subject over, on the teacher's behalf if need be. */
+async function submitSubject(courseOfferingId: string, name: string) {
+  if (!periodId.value || acting.value) return;
+  acting.value = courseOfferingId;
+  error.value = null;
+  try {
+    const res = await api.grading.submitSubject(classeId.value, periodId.value, courseOfferingId);
+    notice.value = `${name} remis — ${res.submitted} épreuve(s).`;
+    await refresh();
+  } catch (e) {
+    error.value = e instanceof api.ApiError ? e.message : "Remise impossible.";
+  } finally {
+    acting.value = null;
+  }
+}
+
+/** Reopens one, with the reason that goes in the minutes. */
+const unlocking = ref<{ id: string; name: string; reason: string } | null>(null);
+async function unlockSubject() {
+  const target = unlocking.value;
+  if (!target || !periodId.value || !target.reason.trim() || acting.value) return;
+  acting.value = target.id;
+  error.value = null;
+  try {
+    await api.grading.unlockSubject(
+      classeId.value, periodId.value, target.id, target.reason.trim(),
+    );
+    notice.value = `${target.name} rouvert — la correction est tracée au procès-verbal.`;
+    unlocking.value = null;
+    await refresh();
+  } catch (e) {
+    error.value = e instanceof api.ApiError ? e.message : "Réouverture impossible.";
+  } finally {
+    acting.value = null;
+  }
+}
+
+/** What the council wants printed on one pupil's bulletin. */
+const observing = ref<{ studentId: string; name: string; text: string } | null>(null);
+async function saveObservation() {
+  const target = observing.value;
+  if (!target || !periodId.value || !target.text.trim() || acting.value) return;
+  acting.value = target.studentId;
+  error.value = null;
+  try {
+    await api.grading.observe(classeId.value, periodId.value, target.studentId, target.text.trim());
+    notice.value = `Observation enregistrée pour ${target.name}.`;
+    observing.value = null;
+    await refresh();
+  } catch (e) {
+    error.value = e instanceof api.ApiError ? e.message : "Enregistrement impossible.";
+  } finally {
+    acting.value = null;
+  }
+}
+
+/** A mistake still slipped through: reopen, correct, freeze again. */
+const unfreezing = ref<{ reason: string } | null>(null);
+async function unfreeze() {
+  const target = unfreezing.value;
+  if (!target || !periodId.value || !target.reason.trim() || acting.value) return;
+  acting.value = "unfreeze";
+  error.value = null;
+  try {
+    const res = await api.grading.unfreeze(classeId.value, periodId.value, target.reason.trim());
+    notice.value = `${res.reopened} bulletin(s) rouvert(s) — le motif est au procès-verbal.`;
+    unfreezing.value = null;
+    await refresh();
+  } catch (e) {
+    error.value = e instanceof api.ApiError ? e.message : "Réouverture impossible.";
+  } finally {
+    acting.value = null;
+  }
+}
+
+/** One reload for all of it: the state, the minutes, the sheets, the numbers. */
+async function refresh() {
+  await Promise.all([loadCouncil(), loadFrozen(), loadManifest()]);
+  if (!council.value?.blocked) await runPreview();
+}
+
+/** The observation already minuted for a pupil, so the row can show it. */
+const observationOf = computed(() => {
+  const map = new Map<string, string>();
+  for (const e of manifest.value?.entries ?? []) {
+    if (e.kind === "OBSERVATION" && e.studentId && e.note) map.set(e.studentId, e.note);
+  }
+  return map;
+});
+
+/** Minute-book stamp: the day and the hour, which is what a PV records. */
+function stamp(iso: string): string {
+  return new Date(iso).toLocaleString("fr-FR", {
+    day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+  });
+}
+
+const MANIFEST_FR: Record<string, string> = {
+  OPENED: "Conseil ouvert",
+  SUBMITTED: "Matière remise",
+  UNLOCKED: "Matière rouverte",
+  MARK_CHANGED: "Note modifiée",
+  DECISION: "Décision",
+  OBSERVATION: "Observation",
+  FROZEN: "Bulletins figés",
+  UNFROZEN: "Bulletins rouverts",
+  CLOSED: "Conseil clos",
+};
+
 /**
  * THE DECISION, which is the council's own act.
  *
@@ -306,7 +436,7 @@ async function issue() {
   try {
     const res = await api.grading.issue(classeId.value, periodId.value);
     issued.value = { issued: res.issued, alreadyIssued: res.alreadyIssued ?? 0 };
-    await Promise.all([loadFrozen(), loadCouncil(), runPreview()]);
+    await refresh();
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Publication impossible.";
   } finally {
@@ -324,10 +454,7 @@ watch(yearId, () => void loadYearScoped());
 watch(periodId, async () => {
   preview.value = null;
   issued.value = null;
-  await Promise.all([loadFrozen(), loadCouncil()]);
-  // Only compute when there is something to compute. A council that opens on
-  // an empty term should explain that, not show the engine's refusal.
-  if (!council.value?.blocked) await runPreview();
+  await refresh();
 });
 </script>
 
@@ -347,11 +474,20 @@ watch(periodId, async () => {
         <select v-if="periods.length" v-model="periodId" class="btn">
           <option v-for="p in periods" :key="p.id" :value="p.id">{{ p.label }}</option>
         </select>
-        <RouterLink class="btn" :to="{ name: 'marks', params: { id: classeId } }">
-          Saisie des notes
-        </RouterLink>
-        <button class="btn" type="button" :disabled="!periodId || previewing" @click="runPreview">
-          {{ previewing ? "Calcul…" : "Recalculer" }}
+        <!--
+          "Saisie des notes" and "Recalculer" are gone.
+          The first is on the marks grid below, where somebody who wants to type
+          is already looking. The second was a button asking the operator to
+          re-run something the screen recomputes on arrival and after every act
+          — a control whose only honest label would have been "try again".
+        -->
+        <button
+          v-if="manifest"
+          class="btn"
+          type="button"
+          @click="showManifest = !showManifest"
+        >
+          {{ showManifest ? "Masquer le procès-verbal" : "Procès-verbal" }}
         </button>
         <RouterLink
           v-if="state.started"
@@ -372,15 +508,15 @@ watch(periodId, async () => {
       beside "Saisie des notes".
     -->
     <div v-if="periodId" class="council">
-      <div class="council-step" :class="{ 'is-done': !!council && council.marksIn.subjects > 0 }">
+      <div class="council-step" :class="{ 'is-done': !!council?.allSubmitted }">
         <span class="council-n">1</span>
         <div>
-          <strong>Les notes</strong>
+          <strong>Les notes remises</strong>
           <span v-if="council">
-            {{ council.marksIn.subjects }}/{{ council.marksIn.of }} matière(s) ·
-            {{ council.marksIn.marks }} note(s)
+            {{ council.subjects.filter((x) => x.submitted).length }}/{{ council.marksIn.of }}
+            matière(s) verrouillée(s)
             <template v-if="council.unsubmitted">
-              · {{ council.unsubmitted }} épreuve(s) non remise(s)
+              · {{ council.unsubmitted }} épreuve(s) encore ouverte(s)
             </template>
           </span>
           <span v-else>{{ roster.length }} élève(s)</span>
@@ -421,22 +557,40 @@ watch(periodId, async () => {
       <span v-if="!mayFreeze" class="hint council-go">
         Le gel des bulletins demande le droit « conseil de classe ».
       </span>
-      <button
-        v-else
-        class="btn primary council-go"
-        type="button"
-        :disabled="issuing || !preview || state.complete"
-        @click="issue"
-      >
-        <span v-if="issuing" class="btn-spin" aria-hidden="true" />
-        {{
-          issuing ? "Publication…"
-          : state.started ? `Figer les ${state.left} restant(s)`
-          : "Figer les bulletins"
-        }}
-      </button>
+      <template v-else>
+        <!-- A mistake found after the freeze. Not "delete and redo": the sheets
+             go back to draft, the marks move again, and the reason goes in the
+             minutes — a documented correction rather than a silent rewrite. -->
+        <button
+          v-if="state.started"
+          class="btn ghost council-go"
+          type="button"
+          :disabled="!!acting"
+          @click="unfreezing = { reason: '' }"
+        >Rouvrir les bulletins</button>
+        <button
+          class="btn primary"
+          :class="{ 'council-go': !state.started }"
+          type="button"
+          :disabled="issuing || !preview || state.complete || !council?.allSubmitted"
+          :title="
+            council && !council.allSubmitted
+              ? 'Toutes les matières doivent être remises avant le gel'
+              : undefined
+          "
+          @click="issue"
+        >
+          <span v-if="issuing" class="btn-spin" aria-hidden="true" />
+          {{
+            issuing ? "Publication…"
+            : state.started ? `Figer les ${state.left} restant(s)`
+            : "Figer les bulletins"
+          }}
+        </button>
+      </template>
     </div>
 
+    <Alert v-if="notice" kind="ok" @close="notice = null">{{ notice }}</Alert>
     <Alert v-if="error" kind="error" @close="error = null">{{ error }}</Alert>
     <Alert v-if="issued !== null" kind="ok" :auto-dismiss="0" @close="issued = null">
       <template v-if="issued.issued">
@@ -449,6 +603,105 @@ watch(periodId, async () => {
       </template>
       <RouterLink :to="{ name: 'bulletins', params: { id: classeId } }">Imprimer →</RouterLink>
     </Alert>
+    <!--
+      LA REMISE — subject by subject, and the council's own override.
+
+      A conseil sits on marks that are finished. "Remettre" is the teacher's
+      act, but a teacher on sick leave, or one who typed the marks and never
+      pressed anything, used to stop the whole meeting. So whoever chairs it can
+      hand a subject over in their place — and reopen one when the council finds
+      a mistake, with a reason that goes in the minutes. Nothing is corrected
+      quietly here: every lock and unlock is a line somebody can read back.
+    -->
+    <div v-if="council && council.subjects.length" class="card is-grid">
+      <div class="card-head">
+        <span>Remise des notes</span>
+        <span class="unit-meta">
+          {{ council.subjects.filter((x) => x.submitted).length }}/{{ council.subjects.length }}
+          matière(s) verrouillée(s)
+        </span>
+      </div>
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr>
+              <th class="c-name">Matière</th>
+              <th class="c-num">Épreuves</th>
+              <th class="c-num">Notes</th>
+              <th class="c-text">État</th>
+              <th v-if="mayFreeze" class="c-text" />
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="s in council.subjects" :key="s.courseOfferingId">
+              <td class="c-name">{{ s.name }}</td>
+              <td class="c-num">{{ s.marked }} / {{ s.assessments }}</td>
+              <td class="c-num">{{ s.marks || "—" }}</td>
+              <td class="c-text">
+                <span v-if="!s.marks" class="cell-sub">rien de saisi</span>
+                <span v-else-if="s.unsubmitted" class="pill warn">{{ s.unsubmitted }} non remise(s)</span>
+                <span v-else class="pill ok">remis</span>
+              </td>
+              <td v-if="mayFreeze" class="c-text">
+                <button
+                  v-if="s.submitted"
+                  class="btn sm ghost"
+                  type="button"
+                  :disabled="!!acting"
+                  @click="unlocking = { id: s.courseOfferingId, name: s.name, reason: '' }"
+                >Rouvrir</button>
+                <button
+                  v-else-if="s.marks"
+                  class="btn sm"
+                  type="button"
+                  :disabled="acting === s.courseOfferingId"
+                  @click="submitSubject(s.courseOfferingId, s.name)"
+                >
+                  <span v-if="acting === s.courseOfferingId" class="btn-spin" aria-hidden="true" />
+                  Remettre
+                </button>
+                <RouterLink
+                  v-else
+                  class="btn sm ghost"
+                  :to="{ name: 'marks', params: { id: classeId } }"
+                >Saisir</RouterLink>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!--
+      LE PROCÈS-VERBAL. Who handed what over, what was reopened and why, what
+      the council said about each pupil, when the bulletins were frozen. The
+      minutes are the only place that answers "who changed this mark, and on
+      whose authority" once the term is over — which is the question that
+      actually gets asked, months later, by a family.
+    -->
+    <div v-if="showManifest && manifest" class="card is-grid">
+      <div class="card-head">
+        <span>Procès-verbal du conseil</span>
+        <span class="unit-meta">
+          {{ MANIFEST_FR[manifest.session.status] ?? manifest.session.status }} ·
+          {{ manifest.entries.length }} acte(s)
+        </span>
+      </div>
+      <ol v-if="manifest.entries.length" class="minutes">
+        <li v-for="e in manifest.entries" :key="e.id">
+          <span class="minutes-when">{{ stamp(e.at) }}</span>
+          <span class="minutes-what">
+            <strong>{{ MANIFEST_FR[e.kind] ?? e.kind }}</strong>
+            <template v-if="e.subject"> — {{ e.subject }}</template>
+            <template v-else-if="e.student"> — {{ e.student }}</template>
+            <span v-if="e.note" class="minutes-note">{{ e.note }}</span>
+          </span>
+          <span class="minutes-who">{{ e.by ?? "—" }}</span>
+        </li>
+      </ol>
+      <div v-else class="empty">Le conseil n'a encore rien inscrit.</div>
+    </div>
+
     <!--
       THE NOTES, as the class sheet shows them.
 
@@ -488,7 +741,7 @@ watch(periodId, async () => {
           <RouterLink
             v-else-if="council.blocked === 'NO_PROGRAMME'"
             class="btn primary"
-            :to="{ name: 'action', params: { id: 'create-offering' }, query: { scope: classe?.parentId } }"
+            :to="{ name: 'subjects' }"
           >Programmer les matières</RouterLink>
           <RouterLink
             v-else
@@ -496,33 +749,6 @@ watch(periodId, async () => {
             :to="{ name: 'enroll' }"
           >Inscrire des élèves</RouterLink>
         </div>
-      </div>
-
-      <!-- What IS in, subject by subject: a council that cannot sit still
-           needs to see which teacher it is waiting on. -->
-      <div v-if="council.subjects.length" class="table-wrap">
-        <table class="data">
-          <thead>
-            <tr>
-              <th class="c-name">Matière</th>
-              <th class="c-num">Épreuves</th>
-              <th class="c-num">Notes</th>
-              <th class="c-text">État</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="s in council.subjects" :key="s.courseOfferingId">
-              <td class="c-name">{{ s.name }}</td>
-              <td class="c-num">{{ s.marked }} / {{ s.assessments }}</td>
-              <td class="c-num">{{ s.marks || "—" }}</td>
-              <td class="c-text">
-                <span v-if="!s.marks" class="cell-sub">rien de saisi</span>
-                <span v-else-if="s.unsubmitted" class="pill warn">{{ s.unsubmitted }} non remise(s)</span>
-                <span v-else class="pill ok">remis</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
       </div>
     </div>
 
@@ -548,6 +774,7 @@ watch(periodId, async () => {
               <th>Abs. (h)</th>
               <th class="c-text">Proposition</th>
               <th class="c-text">Décision du conseil</th>
+              <th class="c-text">Observation</th>
               <th class="c-text">Bulletin</th>
             </tr>
           </thead>
@@ -583,6 +810,25 @@ watch(periodId, async () => {
                 <span v-else class="cell-sub">
                   {{ DECISIONS.find((d) => d.id === decisions[s.studentId])?.label ?? "—" }}
                 </span>
+              </td>
+              <!-- What the council wants the family to read. Written here
+                   because this is where the council is looking at the pupil,
+                   and printed later on the bulletin. -->
+              <td class="c-text">
+                <button
+                  v-if="mayFreeze"
+                  class="btn sm ghost obs-cell"
+                  type="button"
+                  :disabled="!!acting"
+                  @click="observing = {
+                    studentId: s.studentId,
+                    name: byStudent.get(s.studentId)
+                      ? names(byStudent.get(s.studentId)!)
+                      : s.studentId,
+                    text: observationOf.get(s.studentId) ?? '',
+                  }"
+                >{{ observationOf.get(s.studentId) ?? "Ajouter…" }}</button>
+                <span v-else class="cell-sub">{{ observationOf.get(s.studentId) ?? "—" }}</span>
               </td>
               <!-- Per pupil, because freezing is per pupil: a class where three
                    are frozen and the rest are not is a normal state now. -->
@@ -627,5 +873,69 @@ watch(periodId, async () => {
         </table>
       </div>
     </div>
+
+    <!-- Reopening a subject: the reason is the point, so it is required. -->
+    <ConfirmDialog
+      v-if="unlocking"
+      :title="`Rouvrir ${unlocking.name}`"
+      :subtitle="classe?.name"
+      confirm-label="Rouvrir"
+      :busy="!!acting"
+      :confirm-disabled="!unlocking.reason.trim()"
+      @close="unlocking = null"
+      @confirm="unlockSubject"
+    >
+      <p>
+        Les notes de cette matière redeviennent modifiables. Le motif ci-dessous
+        est inscrit au procès-verbal du conseil, avec votre nom et l'heure.
+      </p>
+      <textarea
+        v-model="unlocking.reason"
+        rows="3"
+        placeholder="Motif — erreur de saisie sur la composition, note manquante…"
+      />
+    </ConfirmDialog>
+
+    <ConfirmDialog
+      v-if="observing"
+      :title="`Observation — ${observing.name}`"
+      :subtitle="classe?.name"
+      confirm-label="Enregistrer"
+      :busy="!!acting"
+      :confirm-disabled="!observing.text.trim()"
+      @close="observing = null"
+      @confirm="saveObservation"
+    >
+      <p>Ce texte sera imprimé sur le bulletin de l'élève.</p>
+      <textarea
+        v-model="observing.text"
+        rows="3"
+        placeholder="Encouragements du conseil, avertissement de travail…"
+      />
+    </ConfirmDialog>
+
+    <ConfirmDialog
+      v-if="unfreezing"
+      title="Rouvrir les bulletins figés"
+      :subtitle="classe?.name"
+      confirm-label="Rouvrir"
+      danger
+      :busy="!!acting"
+      :confirm-disabled="!unfreezing.reason.trim()"
+      @close="unfreezing = null"
+      @confirm="unfreeze"
+    >
+      <p>
+        Les bulletins repassent en brouillon et les notes redeviennent
+        modifiables. Ceux déjà imprimés ou remis restent entre les mains des
+        familles : le conseil devra les remplacer. Le motif est inscrit au
+        procès-verbal.
+      </p>
+      <textarea
+        v-model="unfreezing.reason"
+        rows="3"
+        placeholder="Motif — note d'EPS inversée entre deux élèves…"
+      />
+    </ConfirmDialog>
   </div>
 </template>

@@ -349,6 +349,21 @@ const DECISIONS: Record<string, string> = {
         </div>
       </section>
 
+      <!--
+        WHICH MEETING VALIDATED THIS.
+
+        A bulletin's authority is not its numbers — anybody can compute those —
+        it is that a conseil de classe sat, deliberated and froze it on a given
+        day. Printing the date makes the sheet answer "who validated this?" on
+        its own, and the QR below leads to the register that proves it.
+      -->
+      <div v-if="bulletin.council?.heldAt" class="bulletin-council">
+        Validé par le conseil de classe du
+        {{ new Date(bulletin.council.heldAt).toLocaleDateString("fr-FR", {
+          day: "numeric", month: "long", year: "numeric",
+        }) }}
+      </div>
+
       <!-- Signature blocks. A bulletin nobody signed is a printout. -->
       <!--
         Nobody signs a provisional bulletin, so it does not offer the lines.
