@@ -1303,6 +1303,37 @@ export interface CouncilState {
   blocked: "NO_PUPILS" | "NO_PROGRAMME" | "NO_MARKS" | null;
 }
 
+/** What the counter's search box answers with. */
+export interface ReinscriptionLookup {
+  candidates: {
+    studentId: string;
+    matricule: string;
+    lastName: string;
+    firstName: string;
+    /** Where they are now — derived, never asked for. */
+    enrolled: {
+      complex: string | null;
+      school: string | null;
+      classe: { id: string; name: string };
+      year: { id: string; label: string; closed: boolean };
+      period: { id: string; label: string; status: string | null } | null;
+    };
+    /** Still owed on the year they are in. */
+    owesXaf: number;
+    /** The one or two things that may be opened. Empty means `blocked` says why. */
+    options: {
+      kind: "PERIOD" | "YEAR";
+      id: string;
+      label: string;
+      detail: string;
+      /** Where a year move would put them. */
+      classeId?: string | null;
+    }[];
+    blocked: string | null;
+    fee: { id: string; name: string; code: string } | null;
+  }[];
+}
+
 export interface PeriodRegistrationPlan {
   period: {
     id: string; label: string; sequence: number; startsOn: string; endsOn: string;
@@ -2521,6 +2552,32 @@ export const academics = {
     ),
 
   /**
+   * THE YEAR BOUNDARY, for a pupil who already exists.
+   *
+   * Same endpoint as an inscription and the same promise — the API takes the
+   * enrolment and the money as one act — with `studentId` instead of a person:
+   * this pupil has been at the school for years, and creating them again would
+   * be a second file for the same child.
+   */
+  reinscribeYear: (body: {
+    studentId: string;
+    academicYearId: string;
+    classeId: string;
+    isRepeating?: boolean;
+    payment?: {
+      amountXaf: number;
+      method: PaymentMethod;
+      feeTypeId?: string;
+      reference?: string;
+    };
+  }) =>
+    request<{
+      id: string; studentId: string;
+      payment: { id: string; amountXaf: number } | null;
+      receipt: { id: string; number: string } | null;
+    }>("/enrollment", { method: "POST", body: JSON.stringify(body) }),
+
+  /**
    * ONE STUDENT COMING BACK, and the fee taken with them — atomically.
    *
    * Réinscription is sanctioned by a payment, the way inscription is: the two
@@ -2572,6 +2629,19 @@ export const academics = {
     ),
 
   /** And writes it, exactly as it was approved on screen. */
+  /**
+   * ONE SEARCH BOX: a matricule (dashes optional) or a name.
+   *
+   * The answer carries where the pupil IS — école, année, période — and the one
+   * or two things they may legitimately be réinscrit into. Nothing to pick
+   * before typing; see the API's reinscriptionLookup.
+   */
+  reinscriptionLookup: (q: string, limit?: number) =>
+    request<ReinscriptionLookup>(
+      `/academics/reinscription/lookup?q=${encodeURIComponent(q)}` +
+        (limit ? `&limit=${limit}` : ""),
+    ),
+
   rollover: (
     toYearId: string,
     moves: { studentId: string; toClasseId: string; isRepeating?: boolean }[],

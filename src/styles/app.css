@@ -6377,6 +6377,64 @@ table.data td.is-muted {
 }
 .verify-foot { margin-bottom: 0; }
 
+/*
+ * ── THE VERIFICATION PAGE ON A TELEPHONE ──
+ *
+ * Almost nobody reads this on a computer. It is reached by pointing a phone at
+ * a QR code printed on a bulletin — in a courtyard, at a counter, at the gate
+ * of another school — and the desktop layout answered that with a five-column
+ * table at 360px, which is either unreadable or sideways. Both make an
+ * authentic document look like a broken one.
+ *
+ * So: the card goes edge to edge, the identity pairs go two-up, and each
+ * subject becomes its own small block carrying the words for its figures.
+ */
+@media (max-width: 640px) {
+  .verify { padding: var(--s3) var(--s2) var(--s6); }
+  .verify-card { padding: var(--s4); }
+  .verify-title { font-size: var(--t-body); line-height: 1.3; }
+
+  /* Two identity pairs per line rather than one long wrapping row. */
+  .verify-id {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--s3) var(--s4);
+  }
+  .verify-id dd { overflow-wrap: anywhere; }
+
+  /* One block per subject, each figure labelled by its own column heading. */
+  .verify-table thead { display: none; }
+  .verify-table,
+  .verify-table tbody,
+  .verify-table tr,
+  .verify-table td { display: block; width: 100%; }
+  .verify-table tr {
+    padding: var(--s3) 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .verify-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--s3);
+    padding: 1px 0;
+    border: 0;
+  }
+  .verify-table td::before {
+    content: attr(data-label);
+    font-size: var(--t-micro);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+  }
+  /* The subject name is the block's title, not one more labelled figure. */
+  .verify-table td:first-child {
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .verify-table td:first-child::before { content: none; }
+  .verify-table .c-num { text-align: right; }
+}
+
 /* ── le conseil de classe, as three steps ──
    The meeting has an order and the screen says it: marks, deliberation, freeze.
    Before this the page was a row of equal-looking buttons and the council
@@ -6460,6 +6518,68 @@ table.data td.is-muted {
   padding: var(--s2) var(--s3); border-radius: var(--r2); cursor: pointer;
 }
 .decide-opt:hover { background: var(--surface-2); }
+
+/* ── réinscription: one box, one pupil, one act ── */
+.reins-search { display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s4); }
+.reins-box {
+  flex: 1;
+  font-size: var(--t-lead);
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.reins-box:focus { outline: 2px solid var(--primary); outline-offset: 1px; }
+
+.reins-hits { list-style: none; margin: 0; padding: 0; }
+.reins-hits li { border-top: 1px solid var(--line-soft); }
+.reins-hits li:first-child { border-top: 0; }
+.reins-hits button {
+  display: flex; flex-direction: column; gap: 2px;
+  width: 100%; text-align: left;
+  padding: var(--s3) var(--s4);
+  background: none; border: 0; color: inherit; cursor: pointer; font: inherit;
+}
+.reins-hits button:hover { background: var(--surface-2); }
+.reins-hit-name { font-weight: 600; }
+
+/* Where the pupil is — read, never asked for. */
+.reins-where {
+  display: flex; flex-wrap: wrap; gap: var(--s3) var(--s6);
+  margin: 0; padding: var(--s4);
+  border-bottom: 1px solid var(--line-soft);
+}
+.reins-where div { display: flex; flex-direction: column; gap: 2px; }
+.reins-where dt {
+  font-size: var(--t-micro); text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+.reins-where dd { margin: 0; font-weight: 600; }
+.reins-where .is-danger { color: var(--danger); }
+
+/* The valid next steps, and only those. */
+.reins-options { display: grid; gap: var(--s2); padding: var(--s4) var(--s4) 0; }
+.reins-option {
+  display: flex; align-items: flex-start; gap: var(--s3);
+  padding: var(--s3); border: 1px solid var(--line); border-radius: var(--radius);
+  cursor: pointer;
+}
+.reins-option.is-on { border-color: var(--primary); background: var(--primary-soft); }
+.reins-option span { display: flex; flex-direction: column; gap: 2px; }
+
+.reins-pay { display: flex; flex-wrap: wrap; gap: var(--s3); padding: var(--s4); }
+.reins-pay .field { flex: 1 1 9rem; }
+.reins-actions {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2);
+  padding: 0 var(--s4) var(--s3);
+}
+.reins-fill { flex: 1; }
+
+@media (max-width: 640px) {
+  .reins-where { gap: var(--s3) var(--s4); }
+  .reins-actions .btn { flex: 1 1 auto; justify-content: center; }
+}
 
 /* The réinscription form: three fields on one line inside the dialog. */
 .confirm-body .field-row { display: flex; gap: var(--s3); flex-wrap: wrap; margin: var(--s3) 0; }

@@ -85,13 +85,22 @@ const day = (v: string | null) =>
             <th class="c-num">Moy. classe</th><th class="c-num">Rang</th>
           </tr>
         </thead>
+        <!--
+          `data-label` carries each column's heading down to the phone.
+
+          This page is reached by scanning a printed bulletin, which happens on
+          a telephone in a courtyard, not at a desk: under 640px the table
+          becomes one block per subject and every figure keeps the word that
+          says what it is. A five-column grid at 360px is either unreadable or
+          sideways, and both make the document look forged.
+        -->
         <tbody>
           <tr v-for="l in doc.lines" :key="l.subjectCode">
-            <td>{{ l.subjectName }}</td>
-            <td class="c-num">{{ num(l.coefficient) }}</td>
-            <td class="c-num">{{ num(l.score) }}</td>
-            <td class="c-num">{{ num(l.classAvg) }}</td>
-            <td class="c-num">{{ l.rank ?? "—" }}</td>
+            <td data-label="Matière">{{ l.subjectName }}</td>
+            <td class="c-num" data-label="Coef.">{{ num(l.coefficient) }}</td>
+            <td class="c-num" data-label="Note">{{ num(l.score) }}</td>
+            <td class="c-num" data-label="Moy. classe">{{ num(l.classAvg) }}</td>
+            <td class="c-num" data-label="Rang">{{ l.rank ?? "—" }}</td>
           </tr>
         </tbody>
       </table>
