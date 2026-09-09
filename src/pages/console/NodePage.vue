@@ -20,6 +20,7 @@ import {
 } from "../../components/sheet/columns";
 import TimetableGrid from "../../components/sheet/TimetableGrid.vue";
 import Alert from "../../components/ui/Alert.vue";
+import NoCurrentPeriod from "../../components/console/NoCurrentPeriod.vue";
 
 /**
  * One unit: what it is, what it holds, and everything that can be done to it.
@@ -415,6 +416,8 @@ watch(subjectId, () => void loadSheet());
  * trimestre at a time.
  */
 const periodId = ref<string | null>(null);
+/** The school declared no période en cours — the grid is on a guess. */
+const noCurrentPeriod = ref(false);
 watch(sheet, (s) => {
   if (!s?.periods.length) {
     periodId.value = null;
@@ -423,15 +426,17 @@ watch(sheet, (s) => {
   if (s.periods.some((p) => p.id === periodId.value)) return;
 
   /*
-   * The période with something in it, not simply the last one.
+   * THE PÉRIODE THE SCHOOL DECLARED, first.
    *
-   * Opening on the last was the first guess and it opened on an empty grid all
-   * through Trimestre 1 — the trimestre nobody has marked yet is exactly the
-   * one nobody wants to look at. The last période that HAS evaluations is the
-   * one a teacher was working in.
+   * Then the one with something in it: opening on the last was the original
+   * guess and it showed an empty grid all through Trimestre 1 — the trimestre
+   * nobody has marked yet is exactly the one nobody wants to look at. Both are
+   * inferences; the school's own declaration is not, so it wins.
    */
+  const declared = s.periods.find((p) => p.current);
   const withMarks = [...s.periods].reverse().find((p) => p.assessments.length);
-  periodId.value = (withMarks ?? s.periods[0]!).id;
+  noCurrentPeriod.value = !declared && s.periods.length > 0;
+  periodId.value = (declared ?? withMarks ?? s.periods[0]!).id;
 });
 
 const tabs = computed<SheetTab[]>(() => {
@@ -798,6 +803,12 @@ const dueNow = computed(() => ledger.value?.totals.dueNowXaf ?? null);
         </div>
       </div>
 
+      <!-- Only on the Notes tab: the other column sets have no période. -->
+      <NoCurrentPeriod
+        v-if="noCurrentPeriod && tab === 'grades'"
+        what="la feuille de notes"
+        :guessed="sheet?.periods.find((p) => p.id === periodId)?.label ?? null"
+      />
       <Alert v-if="notice" kind="ok" @close="notice = null">{{ notice }}</Alert>
       <Alert v-if="markError" kind="error" @close="markError = null">{{ markError }}</Alert>
 

@@ -6600,7 +6600,6 @@ table.data td.is-muted {
 }
 .reins-diff.is-ok { color: var(--ok); }
 .reins-diff.is-danger { color: var(--danger); }
-.reins-foot { margin: 0 var(--s4) var(--s4); }
 
 /* Where the pupil is — read, never asked for. */
 .reins-where {
@@ -6631,7 +6630,7 @@ table.data td.is-muted {
 .reins-pay .field { flex: 1 1 9rem; }
 .reins-actions {
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2);
-  padding: 0 var(--s4) var(--s3);
+  padding: 0 var(--s4) var(--s4);
 }
 .reins-fill { flex: 1; }
 

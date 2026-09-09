@@ -120,7 +120,21 @@ async function resolveOptions(out: Record<string, { value: string; label: string
         for (const unit of [...org.ancestors(props.scopeId)].reverse()) {
           const rows = await api.academics.periods(unit.id, year).catch(() => []);
           if (rows.length) {
-            out[f.key] = rows.map((r) => ({ value: r.id, label: r.label }));
+            /*
+             * THE DECLARED PÉRIODE IS THE DEFAULT, and it says so.
+             *
+             * Every form that asks for a période used to leave it blank and
+             * let the operator pick — usually the first row, which is the 1er
+             * trimestre in mai. The school declares which one it is in; the
+             * form opens on that and marks it, so overriding it is a choice
+             * rather than an accident.
+             */
+            out[f.key] = rows.map((r) => ({
+              value: r.id,
+              label: r.activatedAt ? `${r.label} — en cours` : r.label,
+            }));
+            const current = rows.find((r) => r.activatedAt);
+            if (current && !values.value[f.key]) values.value[f.key] = current.id;
             break;
           }
         }
@@ -152,7 +166,8 @@ async function resolveOptions(out: Record<string, { value: string; label: string
  */
 const EMPTY_REASON: Record<string, string> = {
   years: "Aucune année scolaire ouverte.",
-  periodsOfScope: "Aucune période définie pour cette année sur ce cycle.",
+  periodsOfScope:
+    "Aucune période définie pour cette année sur ce cycle — ouvrez le calendrier pour en créer une.",
   offeringsOfScope: "Aucune matière programmée sur ce niveau.",
   assessmentTypes: "Aucun type d'évaluation — créez-en un d'abord.",
   subjects: "Aucune matière au catalogue.",

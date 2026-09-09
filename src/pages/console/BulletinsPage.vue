@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 import * as api from "../../lib/api";
 import BulletinSheet from "../../components/bulletin/BulletinSheet.vue";
+import NoCurrentPeriod from "../../components/console/NoCurrentPeriod.vue";
 
 /**
  * The print run.
@@ -22,6 +23,8 @@ const sheets = ref<api.MarkSheet[]>([]);
 /** Bulletins the conseil took back to correct: not printable until re-frozen. */
 const reopened = ref(0);
 const periods = ref<api.Period[]>([]);
+/** True when the school has declared no période en cours — see the banner. */
+const noCurrent = ref(false);
 const years = ref<api.AcademicYear[]>([]);
 const ancestors = ref<api.OrgUnit[]>([]);
 
@@ -73,16 +76,6 @@ async function load() {
  * So: the période containing today, else the last one already started, else the
  * first. Bulletins are printed while the term is on or just after it.
  */
-function currentPeriod(list: api.Period[]): string | null {
-  if (!list.length) return null;
-  const today = Date.now();
-  const holdingToday = list.find(
-    (p) => new Date(p.startsOn).getTime() <= today && today <= new Date(p.endsOn).getTime(),
-  );
-  if (holdingToday) return holdingToday.id;
-  const started = list.filter((p) => new Date(p.startsOn).getTime() <= today);
-  return (started[started.length - 1] ?? list[0])?.id ?? null;
-}
 
 async function loadPeriods() {
   sheets.value = [];
@@ -90,7 +83,17 @@ async function loadPeriods() {
   if (!yearId.value || !cycleId.value) return;
   try {
     periods.value = await api.academics.periods(cycleId.value, yearId.value);
-    periodId.value = currentPeriod(periods.value);
+    /*
+     * THE PÉRIODE THE SCHOOL DECLARED — not one guessed from today's date.
+     *
+     * A print run opening on the wrong trimestre prints the wrong bulletins,
+     * and the old guess ("the one containing today, else the last started")
+     * disagreed with the conseil screen whenever a term ran late. When nothing
+     * is declared the guess is still shown, and the banner says it is one.
+     */
+    const declared = api.currentPeriodOf(periods.value);
+    noCurrent.value = declared === null;
+    periodId.value = (declared ?? api.guessPeriodOf(periods.value))?.id ?? null;
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Chargement impossible.";
   }
@@ -157,6 +160,12 @@ watch(periodId, () => void loadSheets());
     </div>
 
     <div v-if="error" class="form-error no-print">{{ error }}</div>
+
+    <NoCurrentPeriod
+      v-if="noCurrent && periods.length"
+      what="l'impression des bulletins"
+      :guessed="periods.find((p) => p.id === periodId)?.label ?? null"
+    />
 
     <div v-if="reopened" class="alert is-warn no-print">
       {{ reopened }} bulletin(s) ont été rouverts par le conseil et ne sont pas

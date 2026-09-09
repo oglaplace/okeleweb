@@ -4,6 +4,7 @@ import { RouterLink, useRoute } from "vue-router";
 import * as api from "../../lib/api";
 import Alert from "../../components/ui/Alert.vue";
 import ConfirmDialog from "../../components/ui/ConfirmDialog.vue";
+import NoCurrentPeriod from "../../components/console/NoCurrentPeriod.vue";
 import DataSheet from "../../components/sheet/DataSheet.vue";
 import { studentTabs, flattenStudentRow } from "../../components/sheet/columns";
 import { useMarkEntry } from "../../lib/markEntry";
@@ -37,6 +38,8 @@ const classe = ref<api.OrgUnit | null>(null);
 const ancestors = ref<api.OrgUnit[]>([]);
 const years = ref<api.AcademicYear[]>([]);
 const periods = ref<api.Period[]>([]);
+/** The school declared no période en cours — the banner says so. */
+const noCurrent = ref(false);
 const roster = ref<api.RosterRow[]>([]);
 
 /**
@@ -187,22 +190,21 @@ async function loadYearScoped() {
      * trimestre; opening on the 1er showed an empty screen for a term that
      * was over and deliberated.
      */
-    periodId.value = currentPeriod(periodList);
+    /*
+     * THE PÉRIODE THE SCHOOL DECLARED.
+     *
+     * A conseil held in février deliberates the trimestre the school says it
+     * is in — not the one today's date lands in, which was the old guess and
+     * which disagreed with the print run whenever a term ran late.
+     */
+    const declared = api.currentPeriodOf(periodList);
+    noCurrent.value = declared === null && periodList.length > 0;
+    periodId.value = (declared ?? api.guessPeriodOf(periodList))?.id ?? null;
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Chargement impossible.";
   }
 }
 
-function currentPeriod(list: api.Period[]): string | null {
-  if (!list.length) return null;
-  const today = Date.now();
-  const holding = list.find(
-    (p) => new Date(p.startsOn).getTime() <= today && today <= new Date(p.endsOn).getTime(),
-  );
-  if (holding) return holding.id;
-  const started = list.filter((p) => new Date(p.startsOn).getTime() <= today);
-  return (started[started.length - 1] ?? list[0])?.id ?? null;
-}
 
 /**
  * What is already FROZEN for this période.
@@ -886,6 +888,11 @@ watch(periodId, async () => {
       </template>
     </div>
 
+    <NoCurrentPeriod
+      v-if="noCurrent"
+      what="le conseil de classe"
+      :guessed="periods.find((p) => p.id === periodId)?.label ?? null"
+    />
     <Alert v-if="notice" kind="ok" @close="notice = null">{{ notice }}</Alert>
     <Alert v-if="error" kind="error" @close="error = null">{{ error }}</Alert>
     <Alert v-if="marks.error.value" kind="error" @close="marks.error.value = null">

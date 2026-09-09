@@ -236,63 +236,26 @@ export const ACTIONS: ActionSpec[] = [
       }),
   },
   {
-    id: "create-period",
-    label: "Créer une période",
-    group: "structure",
-    icon: "clock",
-    summary: "Trimestre ou semestre, sur une école. Un bulletin est un document de période.",
     /**
-     * AN ÉCOLE, because an établissement runs ONE calendar.
+     * ONE SCREEN FOR THE CALENDAR — voir, créer, activer, verrouiller.
      *
-     * Its trimestres start and end on the same days for every cycle inside it,
-     * the rentrée is one date, the conseils are held in the same week.
-     * Declaring them per cycle meant writing the same three dates three times
-     * and letting them drift apart — and a bulletin whose trimestre ran to
-     * different dates from the class next door is not comparable with it.
+     * These were two blind forms. « Créer une période » asked for a year, a
+     * kind, a label, a rank and two dates with nothing on screen to say what
+     * the school already had, so schools ended up with two "Trimestre 2" a
+     * fortnight apart. « Verrouiller » offered a dropdown of names with no
+     * dates and no order. Both decisions need the same picture, so they are
+     * the same screen — which is also where the school now declares which
+     * période it is actually in.
      */
-    scope: ["SCHOOL"],
-    fields: [
-      { key: "academicYearId", label: "Année scolaire", type: "select", source: "years", required: true },
-      {
-        key: "kind", label: "Type", type: "select", required: true, default: "TRIMESTRE",
-        // ANNEE is gone from the console: three trimestres or two semestres,
-        // and the API refuses a fourth of either.
-        options: [
-          { value: "TRIMESTRE", label: "Trimestre (3 par an)" },
-          { value: "SEMESTRE", label: "Semestre (2 par an)" },
-        ],
-      },
-      { key: "label", label: "Libellé", type: "text", required: true, hint: "Trimestre 1" },
-      { key: "sequence", label: "Rang", type: "number", required: true, default: 1 },
-      { key: "startsOn", label: "Début", type: "date", required: true },
-      { key: "endsOn", label: "Fin", type: "date", required: true },
-    ],
-    submit: (scopeId, v) =>
-      api.academics.createPeriod({
-        orgUnitId: scopeId!,
-        academicYearId: v.academicYearId!,
-        kind: v.kind as "TRIMESTRE" | "SEMESTRE",
-        label: v.label!,
-        sequence: num(v.sequence)!,
-        startsOn: v.startsOn!,
-        endsOn: v.endsOn!,
-      }),
-  },
-  {
-    id: "lock-period",
-    label: "Verrouiller une période",
+    id: "calendar",
+    label: "Calendrier et périodes",
     group: "structure",
-    icon: "lock",
+    icon: "calendar",
     summary:
-      "Après le conseil : les notes de la période deviennent non modifiables. " +
-      "C'est aussi ici qu'une année scolaire se clôture.",
-    // Where the calendar lives — see create-period.
-    scope: ["SCHOOL"],
-    fields: [
-      { key: "academicYearId", label: "Année scolaire", type: "select", source: "years", required: true },
-      { key: "periodId", label: "Période", type: "select", source: "periodsOfScope", required: true },
-    ],
-    submit: (_s, v) => api.academics.lockPeriod(v.periodId!),
+      "Les trimestres ou semestres de l'établissement : créer, activer celui " +
+      "en cours, verrouiller ceux dont les notes sont définitives.",
+    scope: null,
+    route: "calendar",
   },
   {
     /**

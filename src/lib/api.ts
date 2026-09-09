@@ -623,6 +623,8 @@ export interface SheetPeriod {
   assessments: SheetAssessment[];
   /** A locked période is read-only everywhere, the sheet included. */
   locked: boolean;
+  /** The one the school declared current — the sheet opens on it. */
+  current?: boolean;
 }
 
 /**
@@ -2483,6 +2485,64 @@ export interface Period {
   startsOn: string;
   endsOn: string;
   lockedAt: string | null;
+  /**
+   * NON-NULL on the ONE période the school declared current for its calendar.
+   *
+   * Every screen used to work this out from today's date and they could
+   * disagree with each other on the same afternoon. See `currentPeriodOf`,
+   * which is now the single answer to "which période does this open on?".
+   */
+  activatedAt?: string | null;
+}
+
+/**
+ * WHICH PÉRIODE A SCREEN OPENS ON — one answer, everywhere.
+ *
+ * The school's declaration first. Null when nothing is current, and that is
+ * deliberately not papered over: a screen that quietly falls back to the first
+ * trimestre writes marks into a term that ended in décembre. Callers show
+ * `NO_CURRENT_PERIOD` instead and send the operator to activate one.
+ */
+export function currentPeriodOf(list: Period[]): Period | null {
+  return list.find((p) => p.activatedAt) ?? null;
+}
+
+/**
+ * The best guess when the school has declared nothing — clearly a guess.
+ *
+ * Kept for the screens that must show SOMETHING (a read-only report), never
+ * for the ones that write. The one in progress, else the last one started.
+ */
+export function guessPeriodOf(list: Period[]): Period | null {
+  const today = Date.now();
+  const holding = list.find(
+    (p) => new Date(p.startsOn).getTime() <= today && today <= new Date(p.endsOn).getTime(),
+  );
+  if (holding) return holding;
+  const started = list.filter((p) => new Date(p.startsOn).getTime() <= today);
+  return started[started.length - 1] ?? list[0] ?? null;
+}
+
+/** Every période an établissement runs, grouped by the unit that owns it. */
+export interface Calendar {
+  year: { id: string; label: string; isCurrent: boolean; closed: boolean } | null;
+  years: { id: string; label: string; isCurrent: boolean; closed: boolean }[];
+  groups: {
+    orgUnit: { id: string; name: string; kind: string };
+    periods: {
+      id: string;
+      label: string;
+      kind: string;
+      sequence: number;
+      startsOn: string;
+      endsOn: string;
+      locked: boolean;
+      current: boolean;
+      activatedAt: string | null;
+    }[];
+  }[];
+  /** False when nothing is current anywhere in this scope. */
+  hasCurrent: boolean;
 }
 
 /**
@@ -2769,6 +2829,21 @@ export const academics = {
   createSubject: (body: { code: string; name: string }) =>
     request<Subject>("/academics/subjects", { method: "POST", body: JSON.stringify(body) }),
 
+  /**
+   * THE WHOLE CALENDAR of an établissement — every période grouped by the unit
+   * that owns it, with what is current and what is locked.
+   */
+  calendar: (orgUnitId: string, academicYearId?: string) =>
+    request<Calendar>(
+      `/academics/calendar?orgUnitId=${encodeURIComponent(orgUnitId)}` +
+        (academicYearId ? `&academicYearId=${encodeURIComponent(academicYearId)}` : ""),
+    ),
+
+  /** Makes one période THE current one for its calendar. */
+  activatePeriod: (periodId: string) =>
+    request<Period>(`/academics/periods/${encodeURIComponent(periodId)}/activate`,
+                    { method: "PATCH" }),
+
   createPeriod: (body: {
     orgUnitId: string;
     academicYearId: string;
@@ -2783,6 +2858,10 @@ export const academics = {
 
   lockPeriod: (id: string) =>
     request<Period>(`/academics/periods/${id}/lock`, { method: "PATCH" }),
+
+  /** The correction path after a conseil — see the calendar screen. */
+  unlockPeriod: (id: string) =>
+    request<Period>(`/academics/periods/${id}/unlock`, { method: "PATCH" }),
 
   createOffering: (body: {
     niveauId: string;

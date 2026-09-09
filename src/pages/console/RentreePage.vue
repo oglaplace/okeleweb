@@ -146,8 +146,6 @@ function select(c: Candidate) {
   // search waiting to be filled.
   feeQuery.value = c.fees.find((f) => f.id === form.value.feeTypeId)?.name ?? "";
   feeOpen.value = false;
-  // The price this pupil is charged, pre-filled — correctable, never assumed.
-  form.value.amount = expected.value;
 }
 
 async function clear() {
@@ -247,8 +245,15 @@ function chooseFee(f: Candidate["fees"][number] | null) {
   form.value.feeTypeId = f?.id ?? "";
   feeQuery.value = f?.name ?? "";
   feeOpen.value = false;
-  // Following the fee: the price it carries, until the operator types a figure.
-  form.value.amount = expected.value;
+  /*
+   * THE FEE DOES NOT TYPE THE AMOUNT.
+   *
+   * What the school charges and what the family handed over are two different
+   * facts, and pre-filling one with the other invites the operator to press
+   * enter on a figure nobody counted. The fee's price is shown beside the box
+   * — « attendu : 25 000 XAF » — and it is what the difference is measured
+   * against once the amount is entered; that is all it is for.
+   */
 }
 
 /** Same keys as the pupil search — one gesture for both lists. */
@@ -288,10 +293,7 @@ const difference = computed(() => {
   if (want === null || got === null) return null;
   return got - want;
 });
-watch([() => form.value.feeTypeId, () => form.value.option], () => {
-  // Following the fee, until the operator types their own figure.
-  if (form.value.amount === null || form.value.amount === 0) form.value.amount = expected.value;
-});
+
 
 async function confirm(withPayment: boolean) {
   const pupil = picked.value;
@@ -669,10 +671,7 @@ async function block() {
             Réinscrire et encaisser
           </button>
         </div>
-        <p class="hint reins-foot">
-          Les deux vont ensemble : si le règlement échoue, la réinscription n'a
-          pas lieu.
-        </p>
+
       </template>
     </div>
 

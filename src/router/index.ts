@@ -56,6 +56,14 @@ const router = createRouter({
          * performs once a year and had no screen for at all.
          */
         { path: "rentree", name: "rentree", component: () => import("../pages/console/RentreePage.vue") },
+        /**
+         * VOIR, CRÉER, ACTIVER, VERROUILLER — one screen.
+         *
+         * Replaces two blind forms that each asked for a période without
+         * showing any, and adds the act neither had: declaring which période
+         * the school is actually in.
+         */
+        { path: "calendrier", name: "calendar", component: () => import("../pages/console/CalendarPage.vue") },
         /** The catalogue AND its programming — see SubjectsPage. */
         { path: "matieres", name: "subjects", component: () => import("../pages/console/SubjectsPage.vue") },
         /**

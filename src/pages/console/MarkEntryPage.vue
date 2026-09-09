@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import * as api from "../../lib/api";
 import Alert from "../../components/ui/Alert.vue";
+import NoCurrentPeriod from "../../components/console/NoCurrentPeriod.vue";
 
 /**
  * Mark entry — the teacher's daily screen, and the only place marks are created.
@@ -20,6 +21,8 @@ const classeId = computed(() => String(route.params.id));
 const ancestors = ref<api.OrgUnit[]>([]);
 const years = ref<api.AcademicYear[]>([]);
 const periods = ref<api.Period[]>([]);
+/** No période declared current — marks would go into a guess. */
+const noCurrent = ref(false);
 const offerings = ref<api.CourseOffering[]>([]);
 const assessments = ref<api.Assessment[]>([]);
 const types = ref<api.AssessmentType[]>([]);
@@ -91,7 +94,17 @@ async function loadYearScoped() {
     ]);
     periods.value = periodList;
     offerings.value = offeringList;
-    periodId.value = periodList[0]?.id ?? null;
+    /*
+     * MARKS GO INTO THE PÉRIODE THE SCHOOL IS IN.
+     *
+     * This opened on `periods[0]` — the 1er trimestre, all year — so a teacher
+     * typing in mars filled a term that closed in décembre unless they noticed
+     * the selector. The school declares which one now; nothing declared shows
+     * the banner rather than a silent first row.
+     */
+    const declared = api.currentPeriodOf(periodList);
+    noCurrent.value = declared === null && periodList.length > 0;
+    periodId.value = (declared ?? api.guessPeriodOf(periodList))?.id ?? null;
     offeringId.value = offeringList[0]?.id ?? null;
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Chargement impossible.";
@@ -306,6 +319,11 @@ watch(assessmentId, () => void loadGrid());
       </button>
     </div>
 
+    <NoCurrentPeriod
+      v-if="noCurrent"
+      what="la saisie des notes"
+      :guessed="periods.find((p) => p.id === periodId)?.label ?? null"
+    />
     <Alert v-if="error" kind="error" @close="error = null">{{ error }}</Alert>
 
     <!-- A live condition. Closing it would not unlock the période, and the
