@@ -6520,17 +6520,29 @@ table.data td.is-muted {
 .decide-opt:hover { background: var(--surface-2); }
 
 /* ── réinscription: one box, one pupil, one act ── */
-.reins-search { display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s4); }
+/* The box IS the control: the card is its frame, not a container around an
+   input, so there is one border and one focus ring rather than two. */
+.reins-search {
+  display: flex; align-items: center; gap: var(--s3);
+  padding: 0 var(--s4);
+  transition: border-color 0.12s ease;
+}
+.reins-search:focus-within { border-color: var(--primary); }
+.reins-glass { width: 18px; height: 18px; color: var(--ink-3); flex: none; }
 .reins-box {
   flex: 1;
   font-size: var(--t-lead);
-  padding: var(--s3) var(--s4);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface-2);
-  color: var(--ink);
+  padding: var(--s4) 0;
+  border: 0; background: none; color: var(--ink);
 }
-.reins-box:focus { outline: 2px solid var(--primary); outline-offset: 1px; }
+.reins-box:focus { outline: none; }
+.reins-box::placeholder { color: var(--ink-3); }
+.reins-clear {
+  flex: none; width: 26px; height: 26px; line-height: 1;
+  border: 0; border-radius: 999px; cursor: pointer;
+  background: var(--surface-2); color: var(--ink-2); font-size: 17px;
+}
+.reins-clear:hover { background: var(--line); color: var(--ink); }
 
 .reins-hits { list-style: none; margin: 0; padding: 0; }
 .reins-hits li { border-top: 1px solid var(--line-soft); }
@@ -6540,9 +6552,38 @@ table.data td.is-muted {
   width: 100%; text-align: left;
   padding: var(--s3) var(--s4);
   background: none; border: 0; color: inherit; cursor: pointer; font: inherit;
+  border-left: 2px solid transparent;
 }
-.reins-hits button:hover { background: var(--surface-2); }
+/* One highlight for hover and for the keyboard cursor: two would let the mouse
+   and the arrow keys disagree about which row Entrée opens. */
+.reins-hits button.is-cursor { background: var(--surface-2); border-left-color: var(--primary); }
 .reins-hit-name { font-weight: 600; }
+.reins-hits .is-hit { color: var(--primary); font-weight: 700; }
+
+/* The form: labelled fields on one grid, so the eye reads down a column. */
+.reins-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--s3) var(--s4);
+  padding: var(--s4);
+  border-top: 1px solid var(--line-soft);
+  align-items: start;
+}
+.reins-form .field-wide { grid-column: span 2; }
+.reins-form .field { display: flex; flex-direction: column; gap: 4px; }
+.reins-form .hint { margin: 0; }
+.reins-feesearch { margin-bottom: 4px; }
+
+.reins-diff {
+  margin: 0 var(--s4) var(--s3);
+  padding: var(--s3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: var(--t-small);
+}
+.reins-diff.is-ok { color: var(--ok); }
+.reins-diff.is-danger { color: var(--danger); }
+.reins-foot { margin: 0 var(--s4) var(--s4); }
 
 /* Where the pupil is — read, never asked for. */
 .reins-where {
@@ -6557,6 +6598,7 @@ table.data td.is-muted {
 }
 .reins-where dd { margin: 0; font-weight: 600; }
 .reins-where .is-danger { color: var(--danger); }
+.reins-where .is-ok { color: var(--ok); }
 
 /* The valid next steps, and only those. */
 .reins-options { display: grid; gap: var(--s2); padding: var(--s4) var(--s4) 0; }

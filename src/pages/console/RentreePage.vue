@@ -8,38 +8,33 @@ import ConfirmDialog from "../../components/ui/ConfirmDialog.vue";
 /**
  * RÉINSCRIPTION — one box, one pupil, one act.
  *
- * The three earlier versions of this screen all made the operator supply what
- * the database already knew. The last one asked for a mode (année or période),
- * an école, a année, then a période — four choices before a name could be
- * typed, at a counter, with a parent waiting — and it let them pick a trimestre
- * the child was already sitting in.
+ * Everything the counter needs is derived from where the pupil actually is:
+ * école, année, période, what they owe, what the school charges them. The
+ * operator types a matricule (dashes optional — they are printed
+ * "M-2026-0431" and read out loud as "M20260431") or a name, and the form
+ * fills itself in with what the file says.
  *
- * So the screen is a search box. Type a matricule (the dashes are optional:
- * they are printed "M-2026-0431" and read out loud as "M20260431") or a name.
- * Everything else is derived from where the pupil actually is — école, année,
- * période — and the software offers only what may legitimately be opened next,
- * which is one thing, or two at a year boundary, or none with the reason said
- * out loud.
+ * SUGGESTIONS, NOT RULES. The période they are leaving and the one they are
+ * joining are both proposed and both editable: a family pays ahead for the
+ * whole year, a transfer arrives mid-semester, a school runs its own order.
+ * A suggestion that cannot be overridden is a rule wearing a friendly face.
  *
- * Then the money, in the same act: réinscription is sanctioned by a payment
- * and the API takes both or neither.
+ * And the money is a FEE, not a number. The type is chosen (searchably), its
+ * price for this pupil is shown, and the difference between that price and
+ * what was handed over is stated in words before anything is written — reste
+ * à payer, or avance. Both halves land together or neither does.
  */
+type Candidate = api.ReinscriptionLookup["candidates"][number];
+
 const query = ref("");
 const searching = ref(false);
-const results = ref<api.ReinscriptionLookup["candidates"]>([]);
-const picked = ref<api.ReinscriptionLookup["candidates"][number] | null>(null);
+const results = ref<Candidate[]>([]);
+const cursor = ref(0);
+const picked = ref<Candidate | null>(null);
 const working = ref(false);
 const error = ref<string | null>(null);
 const notice = ref<string | null>(null);
 const box = ref<HTMLInputElement | null>(null);
-
-/** Which of the pupil's options is being acted on. */
-const choice = ref<string | null>(null);
-const chosen = computed(
-  () => picked.value?.options.find((o) => `${o.kind}:${o.id}` === choice.value) ?? null,
-);
-
-const payment = ref({ amount: null as number | null, method: "CASH", reference: "" });
 
 const XAF = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
 const money = (v: number) => `${XAF.format(v)} XAF`;
@@ -48,48 +43,111 @@ const named = (c: { lastName: string; firstName: string }) =>
 
 onMounted(() => box.value?.focus());
 
+// ── the search ──────────────────────────────────────────────────────────────
 /**
- * Searching as they type, once there is enough to search for.
+ * Answers arrive as the reading stops, and never out of order.
  *
- * Debounced rather than behind a button: a matricule is read off a card in one
- * breath and the answer should be there when the reading stops.
+ * A matricule is read off a card in one breath, so the box searches itself
+ * rather than waiting for a button. `seq` throws away a slow answer that
+ * arrives after a faster later one — the bug where the list flickers back to
+ * what you typed three characters ago.
  */
 let timer: ReturnType<typeof setTimeout> | null = null;
+let seq = 0;
+
 watch(query, (q) => {
   if (timer) clearTimeout(timer);
-  picked.value = null;
-  if (q.trim().length < 2) { results.value = []; return; }
-  timer = setTimeout(() => void search(), 250);
+  if (picked.value) picked.value = null;
+  if (q.trim().length < 2) { results.value = []; searching.value = false; return; }
+  searching.value = true;
+  timer = setTimeout(() => void search(), 220);
 });
 
 async function search() {
   const q = query.value.trim();
   if (q.length < 2) return;
-  searching.value = true;
-  error.value = null;
+  const mine = ++seq;
   try {
     const res = await api.academics.reinscriptionLookup(q);
+    if (mine !== seq) return;
     results.value = res.candidates;
+    cursor.value = 0;
     // One hit is the common case at a counter: open it rather than making
     // somebody click the only row on screen.
     if (res.candidates.length === 1) select(res.candidates[0]!);
   } catch (e) {
+    if (mine !== seq) return;
     error.value = e instanceof api.ApiError ? e.message : "Recherche impossible.";
     results.value = [];
   } finally {
-    searching.value = false;
+    if (mine === seq) searching.value = false;
   }
 }
 
-function select(c: api.ReinscriptionLookup["candidates"][number]) {
-  picked.value = c;
-  // The first option is the one the school is collecting for right now.
-  choice.value = c.options[0] ? `${c.options[0].kind}:${c.options[0].id}` : null;
-  payment.value = { amount: null, method: "CASH", reference: "" };
+/** ↑ ↓ to move, Enter to open, Escape to clear — hands stay on the keyboard. */
+function onKey(event: KeyboardEvent) {
+  if (event.key === "Escape") { clear(); return; }
+  if (!results.value.length || picked.value) return;
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    cursor.value = (cursor.value + 1) % results.value.length;
+  } else if (event.key === "ArrowUp") {
+    event.preventDefault();
+    cursor.value = (cursor.value - 1 + results.value.length) % results.value.length;
+  } else if (event.key === "Enter") {
+    event.preventDefault();
+    const hit = results.value[cursor.value];
+    if (hit) select(hit);
+  }
 }
 
-/** Back to the box, ready for the next family. */
-async function reset() {
+/** The typed part, marked in the row — so it is obvious WHY a row matched. */
+function marked(text: string): { text: string; hit: boolean }[] {
+  const q = query.value.trim();
+  if (!q) return [{ text, hit: false }];
+  const fold = (v: string) => v.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const i = fold(text).indexOf(fold(q));
+  if (i < 0) return [{ text, hit: false }];
+  return [
+    { text: text.slice(0, i), hit: false },
+    { text: text.slice(i, i + q.length), hit: true },
+    { text: text.slice(i + q.length), hit: false },
+  ].filter((p) => p.text);
+}
+
+// ── the form, filled from the file ──────────────────────────────────────────
+const form = ref({
+  fromPeriodId: "" as string,
+  option: "" as string,
+  feeTypeId: "" as string,
+  amount: null as number | null,
+  method: "CASH",
+  reference: "",
+});
+
+function select(c: Candidate) {
+  picked.value = c;
+  const period = c.options.find((o) => o.kind === "PERIOD");
+  form.value = {
+    // Suggested: where they are, and where the school would send them next.
+    fromPeriodId: c.suggested.fromPeriodId ?? c.enrolled.period?.id ?? "",
+    option: period
+      ? `PERIOD:${c.suggested.toPeriodId ?? period.id}`
+      : c.options[0] ? `${c.options[0].kind}:${c.options[0].id}` : "",
+    // The réinscription fee, when the school has one installed.
+    feeTypeId: c.fees.find((f) => f.code === "REINSCRIPTION")?.id
+      ?? c.fees.find((f) => f.code === "INSCRIPTION")?.id
+      ?? "",
+    amount: null,
+    method: "CASH",
+    reference: "",
+  };
+  // The price this pupil is charged, pre-filled — correctable, never assumed.
+  form.value.amount = expected.value;
+  feeQuery.value = "";
+}
+
+async function clear() {
   picked.value = null;
   results.value = [];
   query.value = "";
@@ -97,44 +155,105 @@ async function reset() {
   box.value?.focus();
 }
 
+/** Every période of their calendar, for both selects. */
+const periods = computed(() => picked.value?.periods ?? []);
+
+/** The chosen target: a période of this calendar, or next year. */
+const chosen = computed(() => {
+  const [kind, id] = form.value.option.split(":");
+  if (kind === "PERIOD") {
+    const p = periods.value.find((x) => x.id === id);
+    return p ? { kind: "PERIOD" as const, id: p.id, label: p.label } : null;
+  }
+  const o = picked.value?.options.find((x) => `${x.kind}:${x.id}` === form.value.option);
+  return o ? { kind: o.kind, id: o.id, label: o.label, classeId: o.classeId } : null;
+});
+
+/** Périodes that may be joined: still open, not already registered. */
+const openPeriods = computed(() =>
+  periods.value.filter((p) => !p.closed && p.status !== "ACTIVE"),
+);
+
+const yearOption = computed(() => picked.value?.options.find((o) => o.kind === "YEAR") ?? null);
+
+// ── the money ───────────────────────────────────────────────────────────────
+const feeQuery = ref("");
+const fees = computed(() => {
+  const q = feeQuery.value.trim().toLowerCase();
+  const all = picked.value?.fees ?? [];
+  return q ? all.filter((f) => `${f.name} ${f.code}`.toLowerCase().includes(q)) : all;
+});
+const fee = computed(() => picked.value?.fees.find((f) => f.id === form.value.feeTypeId) ?? null);
+
 /**
- * THE ACT: réinscription and its fee, together or not at all.
+ * WHAT THIS COSTS, from the grille, for THIS pupil.
  *
- * Two boundaries, two endpoints, one promise — a période registration and a
- * new year's enrolment both refuse to exist without the payment that was meant
- * to accompany them. `withPayment: false` is the school that prices none.
+ * One instalment for a période — coming back for a trimestre is not paying the
+ * year — and the whole line for a year. Null when the school prices nothing,
+ * which is a real answer and not zero.
  */
+const expected = computed(() => {
+  if (!fee.value) return null;
+  return chosen.value?.kind === "YEAR" ? fee.value.totalXaf : fee.value.perTrancheXaf;
+});
+
+/** Entered minus expected: over is credit, under is what is still owed. */
+const difference = computed(() => {
+  const want = expected.value;
+  const got = form.value.amount;
+  if (want === null || got === null) return null;
+  return got - want;
+});
+watch([() => form.value.feeTypeId, () => form.value.option], () => {
+  // Following the fee, until the operator types their own figure.
+  if (form.value.amount === null || form.value.amount === 0) form.value.amount = expected.value;
+});
+
 async function confirm(withPayment: boolean) {
   const pupil = picked.value;
   const option = chosen.value;
   if (!pupil || !option || working.value) return;
-  if (withPayment && !payment.value.amount) return;
+  if (withPayment && !form.value.amount) return;
   working.value = true;
   error.value = null;
 
-  const money_ = withPayment && payment.value.amount
+  const payment = withPayment && form.value.amount
     ? {
-        amountXaf: payment.value.amount,
-        method: payment.value.method as api.PaymentMethod,
-        ...(pupil.fee ? { feeTypeId: pupil.fee.id } : {}),
-        ...(payment.value.reference.trim() ? { reference: payment.value.reference.trim() } : {}),
+        amountXaf: form.value.amount,
+        method: form.value.method as api.PaymentMethod,
+        ...(form.value.feeTypeId ? { feeTypeId: form.value.feeTypeId } : {}),
+        ...(form.value.reference.trim() ? { reference: form.value.reference.trim() } : {}),
       }
     : undefined;
 
   try {
     const res = option.kind === "PERIOD"
-      ? await api.academics.reinscribePeriod(option.id, pupil.studentId,
-          money_ ? { payment: money_ } : {})
+      ? await api.academics.reinscribePeriod(option.id, pupil.studentId, {
+          ...(form.value.fromPeriodId ? { fromPeriodId: form.value.fromPeriodId } : {}),
+          ...(payment ? { payment } : {}),
+        })
       : await api.academics.reinscribeYear({
           studentId:      pupil.studentId,
           academicYearId: option.id,
           classeId:       option.classeId ?? pupil.enrolled.classe.id,
-          ...(money_ ? { payment: money_ } : {}),
+          ...(payment ? { payment } : {}),
         });
-    notice.value = res.receipt
-      ? `${named(pupil)} réinscrit(e) — ${option.label} · reçu n° ${res.receipt.number}.`
-      : `${named(pupil)} réinscrit(e) — ${option.label}.`;
-    await reset();
+    /*
+     * WHAT THE LEDGER DID, in the ledger's own words.
+     *
+     * The form's arithmetic ("this is 5 000 more than the fee") is a guide
+     * before the write; afterwards the only honest figures are the ones the
+     * API came back with — the balance still owing on the facture, and the
+     * credit it is holding.
+     */
+    const led = res.invoice;
+    notice.value =
+      `${named(pupil)} réinscrit(e) — ${option.label}`
+      + (res.receipt ? ` · reçu n° ${res.receipt.number}` : "")
+      + (led && led.creditXaf ? ` · ${money(led.creditXaf)} portés en avance` : "")
+      + (led && led.balanceXaf ? ` · reste ${money(led.balanceXaf)} sur la facture` : "")
+      + ".";
+    await clear();
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Réinscription impossible.";
   } finally {
@@ -147,10 +266,7 @@ async function confirm(withPayment: boolean) {
  *
  * The school refuses this pupil the période until something is settled, with
  * the reason recorded against it. They stay enrolled for the year: marks are
- * still entered, factures still run, nothing is cancelled. Kept on this screen
- * because it is the same conversation at the same counter — "he cannot come
- * back until the scolarité is paid" — and the reason is required, since a
- * block nobody can explain is the state this replaced.
+ * still entered, factures still run, nothing is cancelled.
  */
 const blocking = ref<{ periodId: string; label: string; reason: string } | null>(null);
 
@@ -167,7 +283,7 @@ async function block() {
     });
     notice.value = `${named(pupil)} bloqué(e) pour ${target.label}.`;
     blocking.value = null;
-    await reset();
+    await clear();
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Opération impossible.";
   } finally {
@@ -182,8 +298,8 @@ async function block() {
       <div>
         <h1 class="page-title">Réinscription</h1>
         <div class="page-sub">
-          Tapez le matricule (avec ou sans tirets) ou le nom. Le reste — école,
-          année, période, ce qui peut être ouvert — est déduit du dossier.
+          Matricule (avec ou sans tirets) ou nom. Le reste — école, année,
+          période, tarif — est déduit du dossier.
         </div>
       </div>
     </div>
@@ -191,36 +307,67 @@ async function block() {
     <Alert v-if="notice" kind="ok" @close="notice = null">{{ notice }}</Alert>
     <Alert v-if="error" kind="error" @close="error = null">{{ error }}</Alert>
 
-    <!-- One box, focused on arrival. -->
-    <div class="card reins-search">
+    <!-- ONE BOX. ↑ ↓ to move, Entrée to open, Échap to clear. -->
+    <div class="card reins-search" :class="{ 'is-busy': searching }">
+      <svg class="reins-glass" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.7" aria-hidden="true">
+        <path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14ZM20 20l-4-4" />
+      </svg>
       <input
         ref="box"
         v-model="query"
         class="reins-box"
-        type="search"
+        type="text"
         autocomplete="off"
+        spellcheck="false"
         placeholder="M20260431, ou Mabiala Grâce…"
         aria-label="Matricule ou nom de l'élève"
+        @keydown="onKey"
       />
       <span v-if="searching" class="btn-spin" aria-hidden="true" />
+      <button
+        v-else-if="query"
+        class="reins-clear"
+        type="button"
+        aria-label="Effacer"
+        @click="clear"
+      >×</button>
     </div>
 
-    <!-- Several matches: choose. One match opens itself. -->
+    <!-- Several matches: arrow keys, or a click. -->
     <div v-if="!picked && results.length > 1" class="card is-grid">
-      <div class="card-head"><span>{{ results.length }} élève(s)</span></div>
-      <ul class="reins-hits">
-        <li v-for="c in results" :key="c.studentId">
-          <button type="button" @click="select(c)">
-            <span class="reins-hit-name">{{ named(c) }}</span>
+      <div class="card-head">
+        <span>{{ results.length }} élève(s)</span>
+        <span class="unit-meta">↑ ↓ pour choisir · Entrée pour ouvrir</span>
+      </div>
+      <ul class="reins-hits" role="listbox">
+        <li v-for="(c, i) in results" :key="c.studentId">
+          <button
+            type="button"
+            role="option"
+            :aria-selected="i === cursor"
+            :class="{ 'is-cursor': i === cursor }"
+            @mouseenter="cursor = i"
+            @click="select(c)"
+          >
+            <span class="reins-hit-name">
+              <span v-for="(part, k) in marked(`${c.lastName.toUpperCase()} ${c.firstName}`)"
+                    :key="k" :class="{ 'is-hit': part.hit }">{{ part.text }}</span>
+            </span>
             <span class="cell-sub">
-              {{ c.matricule }} · {{ c.enrolled.classe.name }} · {{ c.enrolled.year.label }}
+              <span v-for="(part, k) in marked(c.matricule)" :key="k"
+                    :class="{ 'is-hit': part.hit }">{{ part.text }}</span>
+              · {{ c.enrolled.classe.name }} · {{ c.enrolled.year.label }}
             </span>
           </button>
         </li>
       </ul>
     </div>
 
-    <div v-else-if="!picked && query.trim().length >= 2 && !searching && !results.length" class="card">
+    <div
+      v-else-if="!picked && query.trim().length >= 2 && !searching && !results.length"
+      class="card"
+    >
       <div class="empty">
         <div class="empty-title">Aucun élève trouvé</div>
         <div>
@@ -233,17 +380,17 @@ async function block() {
       </div>
     </div>
 
-    <!-- THE PUPIL, and what may be opened for them. -->
+    <!-- THE PUPIL, and the act. -->
     <div v-if="picked" class="card is-grid reins-card">
       <div class="card-head">
         <span>
           {{ named(picked) }}
           <span class="cell-sub">{{ picked.matricule }}</span>
         </span>
-        <button class="btn sm ghost" type="button" @click="reset">Changer d'élève</button>
+        <button class="btn sm ghost" type="button" @click="clear">Changer d'élève</button>
       </div>
 
-      <!-- Where they are. Read, never asked. -->
+      <!-- Where they are. Read from the file, never asked for. -->
       <dl class="reins-where">
         <div v-if="picked.enrolled.school || picked.enrolled.complex">
           <dt>Établissement</dt>
@@ -257,74 +404,133 @@ async function block() {
             <span v-if="picked.enrolled.year.closed" class="pill warn">close</span>
           </dd>
         </div>
-        <div v-if="picked.enrolled.period">
-          <dt>Période en cours</dt>
-          <dd>{{ picked.enrolled.period.label }}</dd>
-        </div>
         <div v-if="picked.owesXaf">
-          <dt>Reste dû</dt>
-          <dd class="is-danger">{{ money(picked.owesXaf) }}</dd>
+          <dt>Reste dû</dt><dd class="is-danger">{{ money(picked.owesXaf) }}</dd>
+        </div>
+        <div v-if="picked.creditXaf">
+          <dt>Avance disponible</dt><dd class="is-ok">{{ money(picked.creditXaf) }}</dd>
         </div>
       </dl>
 
-      <!-- Nothing to open, and the reason rather than an empty screen. -->
-      <div v-if="!picked.options.length" class="empty">
+      <div v-if="!picked.options.length && !openPeriods.length" class="empty">
         <div class="empty-title">Rien à ouvrir pour cet élève</div>
         <div>{{ picked.blocked }}</div>
       </div>
 
       <template v-else>
         <!--
-          THE VALID NEXT STEPS, and only those.
+          DE … VERS … — suggested from the file, and both free.
 
-          One at a trimestre boundary, two at the turn of a year. A période the
-          pupil is already registered for is not here at all — see the API,
-          which refuses it as well.
+          "De" is the période the pupil is in; "vers" is what the school is
+          collecting for. Neither is locked: a family paying ahead, a transfer
+          mid-semester, a school running its own order are all ordinary, and a
+          suggestion that cannot be overridden is a rule in disguise.
         -->
-        <div class="reins-options">
-          <label
-            v-for="o in picked.options"
-            :key="`${o.kind}:${o.id}`"
-            class="reins-option"
-            :class="{ 'is-on': choice === `${o.kind}:${o.id}` }"
-          >
-            <input v-model="choice" type="radio" :value="`${o.kind}:${o.id}`" name="option" />
-            <span>
-              <strong>{{ o.label }}</strong>
-              <span class="cell-sub">
-                {{ o.kind === "PERIOD" ? "Période" : "Année" }} · {{ o.detail }}
-              </span>
+        <div class="reins-form">
+          <div class="field">
+            <label for="re-from">Période actuelle</label>
+            <select id="re-from" v-model="form.fromPeriodId">
+              <option value="">—</option>
+              <option v-for="p in periods" :key="p.id" :value="p.id">
+                {{ p.label }}{{ p.id === picked.suggested.fromPeriodId ? " — en cours" : "" }}
+              </option>
+            </select>
+            <span class="hint">Déduite du dossier. Modifiable.</span>
+          </div>
+
+          <div class="field">
+            <label for="re-to">Réinscrire pour</label>
+            <select id="re-to" v-model="form.option">
+              <optgroup v-if="openPeriods.length" label="Périodes">
+                <option v-for="p in openPeriods" :key="p.id" :value="`PERIOD:${p.id}`">
+                  {{ p.label }}{{ p.id === picked.suggested.toPeriodId ? " — suggérée" : "" }}
+                </option>
+              </optgroup>
+              <optgroup v-if="yearOption" label="Année">
+                <option :value="`YEAR:${yearOption.id}`">
+                  {{ yearOption.label }} — {{ yearOption.detail }}
+                </option>
+              </optgroup>
+            </select>
+            <span class="hint">
+              {{ openPeriods.length }} période(s) ouverte(s) dans son calendrier.
             </span>
-          </label>
+          </div>
         </div>
 
-        <!-- The fee, taken in the same act. -->
-        <div class="reins-pay">
-          <div class="field">
-            <label for="re-amount">
-              Montant reçu
-              <span v-if="picked.fee" class="cell-sub">{{ picked.fee.name }}</span>
-              <span v-else class="cell-sub">aucun frais au tarif</span>
-            </label>
-            <input id="re-amount" v-model.number="payment.amount" type="number" min="1" step="1"
-                   placeholder="0" />
+        <!--
+          LE RÈGLEMENT — un type de frais, pas un montant en l'air.
+
+          The type carries the price the grille sets for THIS pupil, bourses
+          included, so the counter quotes what the child is charged rather than
+          a list price somebody adjusts in their head. What is typed may differ
+          — families pay in parts, and round up — and the difference is stated
+          in words before anything is written.
+        -->
+        <div class="reins-form">
+          <div class="field field-wide">
+            <label for="re-fee">Type de frais</label>
+            <!-- A filter above the list rather than a second control: a school
+                 with twenty fee types is a school where "cantine" is faster to
+                 type than to find. -->
+            <input
+              id="re-fee"
+              v-model="feeQuery"
+              class="reins-feesearch"
+              type="text"
+              autocomplete="off"
+              :placeholder="`Filtrer parmi ${picked.fees.length} type(s)…`"
+            />
+            <select v-model="form.feeTypeId" size="1" aria-label="Type de frais">
+              <option value="">Aucun — motif libre</option>
+              <option v-for="f in fees" :key="f.id" :value="f.id">
+                {{ f.name }}<template v-if="f.priced"> — {{
+                  money((chosen?.kind === "YEAR" ? f.totalXaf : f.perTrancheXaf) ?? 0)
+                }}</template><template v-else> — non tarifé</template>
+              </option>
+            </select>
           </div>
+
+          <div class="field">
+            <label for="re-amount">Montant reçu</label>
+            <input id="re-amount" v-model.number="form.amount" type="number" min="0" step="1"
+                   placeholder="0" />
+            <span v-if="expected !== null" class="hint">Attendu : {{ money(expected) }}</span>
+            <span v-else class="hint">Ce type n'est pas au tarif de cet élève.</span>
+          </div>
+
           <div class="field">
             <label for="re-method">Moyen</label>
-            <select id="re-method" v-model="payment.method">
+            <select id="re-method" v-model="form.method">
               <option v-for="(label, id) in api.PAYMENT_METHOD_FR" :key="id" :value="id">
                 {{ label }}
               </option>
             </select>
           </div>
+
           <div class="field">
             <label for="re-ref">Référence</label>
-            <input id="re-ref" v-model="payment.reference" maxlength="64" placeholder="MOMO-…" />
+            <input id="re-ref" v-model="form.reference" maxlength="64" placeholder="MOMO-…" />
           </div>
         </div>
 
+        <!-- The arithmetic, said out loud before anything is written. -->
+        <p v-if="difference !== null && difference !== 0" class="reins-diff"
+           :class="difference > 0 ? 'is-ok' : 'is-danger'">
+          <template v-if="difference > 0">
+            {{ money(difference) }} de plus que le tarif — portés en avance sur son
+            compte, et imputés sur ce qui vient à échéance en premier.
+          </template>
+          <template v-else>
+            {{ money(-difference) }} de moins que le tarif — le solde reste dû et
+            apparaît dans les impayés.
+          </template>
+        </p>
+        <p v-else-if="difference === 0" class="reins-diff is-ok">
+          Le compte est juste : {{ money(form.amount ?? 0) }}.
+        </p>
+
         <div class="reins-actions">
-          <!-- Refusing the période is the same conversation at the same desk. -->
           <button
             v-if="chosen?.kind === 'PERIOD'"
             class="btn ghost"
@@ -342,14 +548,14 @@ async function block() {
           <button
             class="btn primary"
             type="button"
-            :disabled="working || !chosen || !payment.amount"
+            :disabled="working || !chosen || !form.amount"
             @click="confirm(true)"
           >
             <span v-if="working" class="btn-spin" aria-hidden="true" />
             Réinscrire et encaisser
           </button>
         </div>
-        <p class="hint" style="margin: 0">
+        <p class="hint reins-foot">
           Les deux vont ensemble : si le règlement échoue, la réinscription n'a
           pas lieu.
         </p>

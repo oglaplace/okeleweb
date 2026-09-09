@@ -1320,6 +1320,37 @@ export interface ReinscriptionLookup {
     };
     /** Still owed on the year they are in. */
     owesXaf: number;
+    /** Money held for them that no facture has claimed yet. */
+    creditXaf: number;
+    /**
+     * Every période of their calendar, with where they stand in each.
+     *
+     * The form suggests two of them and lets the operator say otherwise — a
+     * family paying ahead, a transfer arriving mid-semester, a school that
+     * runs its own order.
+     */
+    periods: {
+      id: string;
+      label: string;
+      sequence: number;
+      startsOn: string;
+      endsOn: string;
+      status: string | null;
+      closed: boolean;
+    }[];
+    suggested: { fromPeriodId: string | null; toPeriodId: string | null };
+    /** What the school charges THIS pupil, per fee type — bourses included. */
+    fees: {
+      id: string;
+      code: string;
+      name: string;
+      recurrence: string;
+      /** One instalment: what coming back for a période costs. */
+      perTrancheXaf: number | null;
+      /** The whole line for the year, after any bourse. */
+      totalXaf: number | null;
+      priced: boolean;
+    }[];
     /** The one or two things that may be opened. Empty means `blocked` says why. */
     options: {
       kind: "PERIOD" | "YEAR";
@@ -2575,6 +2606,10 @@ export const academics = {
       id: string; studentId: string;
       payment: { id: string; amountXaf: number } | null;
       receipt: { id: string; number: string } | null;
+      invoice: {
+        id: string | null; number: string | null;
+        totalXaf: number; paidXaf: number; balanceXaf: number; creditXaf: number;
+      } | null;
     }>("/enrollment", { method: "POST", body: JSON.stringify(body) }),
 
   /**
@@ -2588,6 +2623,8 @@ export const academics = {
     periodId: string,
     studentId: string,
     opts?: {
+      /** Which période they are leaving — recorded on the registration. */
+      fromPeriodId?: string;
       note?: string;
       payment?: {
         amountXaf: number;
@@ -2602,7 +2639,15 @@ export const academics = {
       registered: boolean;
       payment: { id: string; amountXaf: number } | null;
       receipt: { id: string; number: string } | null;
-      invoice: { id: string; number: string } | null;
+      /**
+       * What the money did to the ledger — the API's answer, not the form's
+       * arithmetic. An over-payment lands as `creditXaf`, a short one leaves
+       * `balanceXaf` owing, and the confirmation says which.
+       */
+      invoice: {
+        id: string; number: string;
+        totalXaf: number; paidXaf: number; balanceXaf: number; creditXaf: number;
+      } | null;
     }>(
       `/academics/periods/${encodeURIComponent(periodId)}/reinscription`,
       { method: "POST", body: JSON.stringify({ studentId, ...opts }) },
