@@ -6572,7 +6572,24 @@ table.data td.is-muted {
 .reins-form .field-wide { grid-column: span 2; }
 .reins-form .field { display: flex; flex-direction: column; gap: 4px; }
 .reins-form .hint { margin: 0; }
-.reins-feesearch { margin-bottom: 4px; }
+/* The fee combobox: the box and its list are one control. */
+.reins-combo { position: relative; }
+.reins-combo-list {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 30;
+  list-style: none; margin: 2px 0 0; padding: 4px;
+  max-height: 15rem; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow, 0 8px 24px rgb(0 0 0 / 28%));
+}
+.reins-combo-list button {
+  display: flex; justify-content: space-between; align-items: baseline; gap: var(--s3);
+  width: 100%; text-align: left; font: inherit; color: inherit;
+  padding: var(--s2) var(--s3); border: 0; border-radius: var(--r2, 6px);
+  background: none; cursor: pointer;
+}
+.reins-combo-list button.is-cursor { background: var(--surface-2); }
+.reins-combo-list button.is-on { color: var(--primary); font-weight: 600; }
+.reins-combo-empty { padding: var(--s2) var(--s3); color: var(--ink-3); font-size: var(--t-small); }
 
 .reins-diff {
   margin: 0 var(--s4) var(--s3);

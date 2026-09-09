@@ -142,9 +142,12 @@ function select(c: Candidate) {
     method: "CASH",
     reference: "",
   };
+  // The box shows what is chosen, so it reads as a value and not as an empty
+  // search waiting to be filled.
+  feeQuery.value = c.fees.find((f) => f.id === form.value.feeTypeId)?.name ?? "";
+  feeOpen.value = false;
   // The price this pupil is charged, pre-filled — correctable, never assumed.
   form.value.amount = expected.value;
-  feeQuery.value = "";
 }
 
 async function clear() {
@@ -169,21 +172,102 @@ const chosen = computed(() => {
   return o ? { kind: o.kind, id: o.id, label: o.label, classeId: o.classeId } : null;
 });
 
-/** Périodes that may be joined: still open, not already registered. */
+/**
+ * Périodes that may be JOINED: still open, not already theirs — and never the
+ * one being left. "De X vers X" is the one thing the pair may not say, so the
+ * option is not offered rather than refused after the click.
+ */
 const openPeriods = computed(() =>
-  periods.value.filter((p) => !p.closed && p.status !== "ACTIVE"),
+  periods.value.filter(
+    (p) => !p.closed && p.status !== "ACTIVE" && p.id !== form.value.fromPeriodId,
+  ),
 );
+
+/**
+ * Where the "de" came from, in words.
+ *
+ * A counter told "2e trimestre" deserves to know whether that is the pupil's
+ * own last composition or merely today's date.
+ */
+const fromBasis = computed(() => {
+  const basis = picked.value?.enrolled.period?.basis;
+  return basis === "MARK" ? "D'après sa dernière note. Modifiable."
+    : basis === "BULLETIN" ? "D'après son dernier bulletin. Modifiable."
+    : "Aucune note ni bulletin — d'après le calendrier. Modifiable.";
+});
+
+/*
+ * Changing "de" can invalidate "vers": keep the pair legal without taking the
+ * choice away — the operator is moved off the collision, not blocked on it.
+ */
+watch(() => form.value.fromPeriodId, (from) => {
+  if (!from) return;
+  if (form.value.option === `PERIOD:${from}`) {
+    const next = openPeriods.value[0];
+    form.value.option = next ? `PERIOD:${next.id}`
+      : yearOption.value ? `YEAR:${yearOption.value.id}` : "";
+  }
+});
 
 const yearOption = computed(() => picked.value?.options.find((o) => o.kind === "YEAR") ?? null);
 
 // ── the money ───────────────────────────────────────────────────────────────
+/**
+ * ONE FIELD FOR THE FEE — type to narrow, click to choose.
+ *
+ * It was a filter box sitting above a select: two controls for one decision,
+ * and the filter looked like a second thing to fill in. This is the box you
+ * type in AND the list you pick from, which is how every other search on this
+ * screen already behaves.
+ */
 const feeQuery = ref("");
-const fees = computed(() => {
-  const q = feeQuery.value.trim().toLowerCase();
-  const all = picked.value?.fees ?? [];
-  return q ? all.filter((f) => `${f.name} ${f.code}`.toLowerCase().includes(q)) : all;
-});
+const feeOpen = ref(false);
+const feeCursor = ref(0);
+
 const fee = computed(() => picked.value?.fees.find((f) => f.id === form.value.feeTypeId) ?? null);
+const fees = computed(() => {
+  const all = picked.value?.fees ?? [];
+  const q = feeQuery.value.trim().toLowerCase();
+  /*
+   * The box holds the CHOSEN name, and opening it must not filter by that.
+   *
+   * Otherwise the list of six shows one — the one already picked — and the
+   * only way to see the others is to delete the text, which nobody guesses.
+   * The chosen name means "no filter"; anything else is a search.
+   */
+  if (!q || q === fee.value?.name.toLowerCase()) return all;
+  return all.filter((f) => `${f.name} ${f.code}`.toLowerCase().includes(q));
+});
+
+/** What a fee costs for the target on screen — one tranche, or the year. */
+const priceOf = (f: Candidate["fees"][number]) =>
+  chosen.value?.kind === "YEAR" ? f.totalXaf : f.perTrancheXaf;
+
+function chooseFee(f: Candidate["fees"][number] | null) {
+  form.value.feeTypeId = f?.id ?? "";
+  feeQuery.value = f?.name ?? "";
+  feeOpen.value = false;
+  // Following the fee: the price it carries, until the operator types a figure.
+  form.value.amount = expected.value;
+}
+
+/** Same keys as the pupil search — one gesture for both lists. */
+function onFeeKey(event: KeyboardEvent) {
+  if (event.key === "Escape") { feeOpen.value = false; return; }
+  if (!feeOpen.value) return;
+  const list = fees.value;
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    feeCursor.value = (feeCursor.value + 1) % Math.max(1, list.length);
+  } else if (event.key === "ArrowUp") {
+    event.preventDefault();
+    feeCursor.value = (feeCursor.value - 1 + list.length) % Math.max(1, list.length);
+  } else if (event.key === "Enter") {
+    event.preventDefault();
+    const hit = list[feeCursor.value];
+    if (hit) chooseFee(hit);
+  }
+}
 
 /**
  * WHAT THIS COSTS, from the grille, for THIS pupil.
@@ -432,10 +516,10 @@ async function block() {
             <select id="re-from" v-model="form.fromPeriodId">
               <option value="">—</option>
               <option v-for="p in periods" :key="p.id" :value="p.id">
-                {{ p.label }}{{ p.id === picked.suggested.fromPeriodId ? " — en cours" : "" }}
+                {{ p.label }}{{ p.id === picked.suggested.fromPeriodId ? " — déduite" : "" }}
               </option>
             </select>
-            <span class="hint">Déduite du dossier. Modifiable.</span>
+            <span class="hint">{{ fromBasis }}</span>
           </div>
 
           <div class="field">
@@ -453,7 +537,7 @@ async function block() {
               </optgroup>
             </select>
             <span class="hint">
-              {{ openPeriods.length }} période(s) ouverte(s) dans son calendrier.
+              {{ openPeriods.length }} période(s) ouverte(s) après celle-ci.
             </span>
           </div>
         </div>
@@ -468,27 +552,57 @@ async function block() {
           in words before anything is written.
         -->
         <div class="reins-form">
-          <div class="field field-wide">
+          <!--
+            ONE FIELD: the box you type in IS the list you pick from.
+
+            A filter above a select was two controls for one decision, and the
+            filter read as another thing to fill in. Twenty fee types is a
+            school where "cantine" is faster typed than found; three is a
+            school where the list is simply open.
+          -->
+          <div class="field field-wide reins-combo">
             <label for="re-fee">Type de frais</label>
-            <!-- A filter above the list rather than a second control: a school
-                 with twenty fee types is a school where "cantine" is faster to
-                 type than to find. -->
             <input
               id="re-fee"
               v-model="feeQuery"
-              class="reins-feesearch"
               type="text"
               autocomplete="off"
-              :placeholder="`Filtrer parmi ${picked.fees.length} type(s)…`"
+              role="combobox"
+              :aria-expanded="feeOpen"
+              :placeholder="`Chercher parmi ${picked.fees.length} type(s)…`"
+              @focus="($event.target as HTMLInputElement).select(); feeOpen = true; feeCursor = 0"
+              @input="feeOpen = true; feeCursor = 0"
+              @keydown="onFeeKey"
+              @blur="feeOpen = false"
             />
-            <select v-model="form.feeTypeId" size="1" aria-label="Type de frais">
-              <option value="">Aucun — motif libre</option>
-              <option v-for="f in fees" :key="f.id" :value="f.id">
-                {{ f.name }}<template v-if="f.priced"> — {{
-                  money((chosen?.kind === "YEAR" ? f.totalXaf : f.perTrancheXaf) ?? 0)
-                }}</template><template v-else> — non tarifé</template>
-              </option>
-            </select>
+            <ul v-if="feeOpen" class="reins-combo-list" role="listbox">
+              <li>
+                <button
+                  type="button"
+                  :class="{ 'is-cursor': feeCursor === -1 }"
+                  @mousedown.prevent="chooseFee(null)"
+                >Aucun — motif libre</button>
+              </li>
+              <li v-for="(f, i) in fees" :key="f.id">
+                <button
+                  type="button"
+                  role="option"
+                  :aria-selected="f.id === form.feeTypeId"
+                  :class="{ 'is-cursor': i === feeCursor, 'is-on': f.id === form.feeTypeId }"
+                  @mouseenter="feeCursor = i"
+                  @mousedown.prevent="chooseFee(f)"
+                >
+                  <span>{{ f.name }}</span>
+                  <span class="cell-sub">
+                    {{ f.priced ? money(priceOf(f) ?? 0) : "non tarifé" }}
+                  </span>
+                </button>
+              </li>
+              <li v-if="!fees.length" class="reins-combo-empty">Aucun type ne correspond.</li>
+            </ul>
+            <span class="hint">
+              {{ fee ? fee.name : "Aucun type choisi — le règlement portera un motif libre." }}
+            </span>
           </div>
 
           <div class="field">

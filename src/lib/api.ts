@@ -1316,7 +1316,17 @@ export interface ReinscriptionLookup {
       school: string | null;
       classe: { id: string; name: string };
       year: { id: string; label: string; closed: boolean };
-      period: { id: string; label: string; status: string | null } | null;
+      period: {
+        id: string;
+        label: string;
+        status: string | null;
+        /**
+         * How the période was worked out: from the pupil's last mark, from
+         * their last bulletin, or — failing both — from the wall calendar.
+         * Shown, because those deserve different amounts of trust.
+         */
+        basis: "MARK" | "BULLETIN" | "CALENDAR";
+      } | null;
     };
     /** Still owed on the year they are in. */
     owesXaf: number;
