@@ -4,6 +4,7 @@ import * as api from "../../lib/api";
 import Alert from "../../components/ui/Alert.vue";
 import ConfirmDialog from "../../components/ui/ConfirmDialog.vue";
 import { useOrgStore } from "../../stores/org";
+import { useAuthStore } from "../../stores/auth";
 
 /**
  * LE CALENDRIER — voir, créer, activer, verrouiller, au même endroit.
@@ -23,6 +24,19 @@ import { useOrgStore } from "../../stores/org";
  * bulletins, conseils, attendance and réinscription all open on it.
  */
 const org = useOrgStore();
+const auth = useAuthStore();
+
+/**
+ * READING IS FOR EVERYONE; DECLARING IS NOT.
+ *
+ * Saying which période every new record belongs to is the same authority as
+ * saying which term's marks are final — the API asks for `grading.lock` or
+ * `academics.write` and refuses the rest. A titulaire may look at the calendar
+ * and should not be offered two buttons that answer 403.
+ */
+const mayDeclare = computed(
+  () => auth.can("grading.lock") || auth.can("academics.write"),
+);
 const schools = computed(() =>
   org.ofKind(["SCHOOL", "COMPLEX", "CYCLE", "FACULTY"]).filter((u) => !u.validTo),
 );
@@ -40,8 +54,12 @@ const day = (iso: string) =>
 onMounted(async () => {
   try {
     await org.load();
+    /*
+     * Setting the unit IS the trigger — the watcher below loads on change, and
+     * calling load() here as well fired the same request twice on every visit.
+     */
     orgUnitId.value = schools.value[0]?.id ?? null;
-    await load();
+    if (!orgUnitId.value) loading.value = false;
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Chargement impossible.";
   } finally {
@@ -200,11 +218,25 @@ async function create() {
     <div v-if="calendar && !calendar.hasCurrent && calendar.groups.length" class="alert is-warn">
       <div class="alert-body">
         <strong>Aucune période en cours.</strong>
-        Activez celle dans laquelle l'établissement travaille : les notes, les
-        bulletins, le conseil de classe, les présences et les réinscriptions
-        s'ouvriront dessus au lieu de la deviner.
+        <!-- Telling somebody to press a button they are not allowed to see is
+             worse than telling them who can. -->
+        <template v-if="mayDeclare">
+          Activez celle dans laquelle l'établissement travaille : les notes, les
+          bulletins, le conseil de classe, les présences et les réinscriptions
+          s'ouvriront dessus au lieu de la deviner.
+        </template>
+        <template v-else>
+          Tant qu'elle n'est pas déclarée, les notes, les bulletins, le conseil
+          de classe et les réinscriptions devinent la période à partir de la
+          date du jour. Signalez-le à la direction.
+        </template>
       </div>
     </div>
+
+    <p v-if="!mayDeclare" class="hint" style="margin: 0 0 var(--s3)">
+      Vous consultez le calendrier. Déclarer la période en cours, en créer une ou
+      la verrouiller demande le droit « verrouiller une période ».
+    </p>
 
     <div v-if="loading" class="card"><div class="empty">Chargement…</div></div>
 
@@ -217,7 +249,7 @@ async function create() {
         </div>
         <div class="empty-actions">
           <button
-            v-if="orgUnitId"
+            v-if="orgUnitId && mayDeclare"
             class="btn primary"
             type="button"
             @click="openCreate(orgUnitId)"
@@ -230,7 +262,7 @@ async function create() {
     <div v-for="g in calendar?.groups ?? []" :key="g.orgUnit.id" class="card is-grid">
       <div class="card-head">
         <span>{{ g.orgUnit.name }}</span>
-        <button class="btn sm" type="button" @click="openCreate(g.orgUnit.id)">
+        <button v-if="mayDeclare" class="btn sm" type="button" @click="openCreate(g.orgUnit.id)">
           Créer une période
         </button>
       </div>
@@ -263,7 +295,7 @@ async function create() {
               <td>
                 <span style="display: flex; gap: var(--s2); justify-content: flex-end">
                   <button
-                    v-if="!p.current && !p.locked"
+                    v-if="mayDeclare && !p.current && !p.locked"
                     class="btn sm primary"
                     type="button"
                     :disabled="working === p.id"
@@ -273,11 +305,13 @@ async function create() {
                     Activer
                   </button>
                   <button
+                    v-if="mayDeclare"
                     class="btn sm ghost"
                     type="button"
                     :disabled="working === p.id"
                     @click="locking = { id: p.id, label: p.label, locked: p.locked }"
                   >{{ p.locked ? "Déverrouiller" : "Verrouiller" }}</button>
+                  <span v-if="!mayDeclare && !p.current && !p.locked" class="cell-sub">—</span>
                 </span>
               </td>
             </tr>
