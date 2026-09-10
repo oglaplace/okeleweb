@@ -41,6 +41,15 @@ const router = createRouter({
      */
     { path: "/b/:token", name: "verify-bulletin", component: () => import("../pages/PublicBulletinPage.vue") },
 
+    /**
+     * UN APK À FAIRE INSTALLER — de passage, et hors de tout garde.
+     *
+     * Nzela-Nzela est une autre application ; elle loge ici le temps de la
+     * mettre sur quelques téléphones. Chemin court parce qu'il se dicte au
+     * téléphone, et non listé dans la navigation : on y arrive par le lien.
+     */
+    { path: "/app", name: "download-app", component: () => import("../pages/AppDownloadPage.vue") },
+
     {
       path: "/console",
       component: () => import("../components/console/ConsoleLayout.vue"),
