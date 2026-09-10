@@ -1323,11 +1323,11 @@ export interface ReinscriptionLookup {
         label: string;
         status: string | null;
         /**
-         * How the période was worked out: from the pupil's last mark, from
-         * their last bulletin, or — failing both — from the wall calendar.
-         * Shown, because those deserve different amounts of trust.
+         * Declared by the school, or — when it has declared nothing — worked
+         * out from today's date. Shown, because those deserve different
+         * amounts of trust.
          */
-        basis: "MARK" | "BULLETIN" | "CALENDAR";
+        basis: "DECLARED" | "CALENDAR";
       } | null;
     };
     /** Still owed on the year they are in. */
@@ -1351,6 +1351,16 @@ export interface ReinscriptionLookup {
       closed: boolean;
     }[];
     suggested: { fromPeriodId: string | null; toPeriodId: string | null };
+    /**
+     * WHERE THEY ARE GOING — a suggestion, and null when nothing can be
+     * inferred honestly. Follows the money: a fee already paid for the current
+     * year means they are in place and keep their classe; an older one means a
+     * new year, so the niveau above.
+     */
+    suggestedClasseId: string | null;
+    classeBasis: "SAME_YEAR_PAID" | "NEXT_LEVEL" | "UNKNOWN";
+    /** Every classe the counter may choose from. */
+    classes: { id: string; name: string; niveau: string | null }[];
     /** What the school charges THIS pupil, per fee type — bourses included. */
     fees: {
       id: string;
@@ -2693,8 +2703,6 @@ export const academics = {
     periodId: string,
     studentId: string,
     opts?: {
-      /** Which période they are leaving — recorded on the registration. */
-      fromPeriodId?: string;
       note?: string;
       payment?: {
         amountXaf: number;

@@ -6519,6 +6519,24 @@ table.data td.is-muted {
 }
 .decide-opt:hover { background: var(--surface-2); }
 
+/* ── le calendrier: un groupe par calendrier, replié par défaut ── */
+.cal-head { padding: 0; }
+.cal-toggle {
+  display: flex; align-items: baseline; gap: var(--s3);
+  flex: 1; text-align: left; font: inherit; color: inherit;
+  padding: var(--s3) var(--s4);
+  background: none; border: 0; cursor: pointer;
+}
+.cal-toggle:hover { background: var(--surface-2); }
+.cal-toggle > span:first-of-type { font-weight: 600; }
+.cal-chevron {
+  width: 15px; height: 15px; flex: none; align-self: center;
+  color: var(--ink-3);
+  transition: transform 0.15s ease;
+}
+.cal-head.is-open .cal-chevron { transform: rotate(90deg); }
+.cal-head .btn { margin-right: var(--s4); }
+
 /* ── réinscription: one box, one pupil, one act ── */
 /* The box IS the control: the card is its frame, not a container around an
    input, so there is one border and one focus ring rather than two. */

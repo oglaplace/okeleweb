@@ -117,8 +117,9 @@ function marked(text: string): { text: string; hit: boolean }[] {
 
 // ── the form, filled from the file ──────────────────────────────────────────
 const form = ref({
-  fromPeriodId: "" as string,
   option: "" as string,
+  /** Where they are going. A field, because the counter is who knows. */
+  classeId: "" as string,
   feeTypeId: "" as string,
   amount: null as number | null,
   method: "CASH",
@@ -129,11 +130,12 @@ function select(c: Candidate) {
   picked.value = c;
   const period = c.options.find((o) => o.kind === "PERIOD");
   form.value = {
-    // Suggested: where they are, and where the school would send them next.
-    fromPeriodId: c.suggested.fromPeriodId ?? c.enrolled.period?.id ?? "",
+    // The période the school declared it is in — see the API's lookup.
     option: period
       ? `PERIOD:${c.suggested.toPeriodId ?? period.id}`
       : c.options[0] ? `${c.options[0].kind}:${c.options[0].id}` : "",
+    // Suggested from the money, and empty when nothing can be inferred.
+    classeId: c.suggestedClasseId ?? "",
     // The réinscription fee, when the school has one installed.
     feeTypeId: c.fees.find((f) => f.code === "REINSCRIPTION")?.id
       ?? c.fees.find((f) => f.code === "INSCRIPTION")?.id
@@ -170,40 +172,33 @@ const chosen = computed(() => {
   return o ? { kind: o.kind, id: o.id, label: o.label, classeId: o.classeId } : null;
 });
 
-/**
- * Périodes that may be JOINED: still open, not already theirs — and never the
- * one being left. "De X vers X" is the one thing the pair may not say, so the
- * option is not offered rather than refused after the click.
- */
+/** Périodes that may be joined: still open and not already theirs. */
 const openPeriods = computed(() =>
-  periods.value.filter(
-    (p) => !p.closed && p.status !== "ACTIVE" && p.id !== form.value.fromPeriodId,
-  ),
+  periods.value.filter((p) => !p.closed && p.status !== "ACTIVE"),
 );
 
 /**
- * Where the "de" came from, in words.
+ * Where the suggested période came from, in words.
  *
- * A counter told "2e trimestre" deserves to know whether that is the pupil's
- * own last composition or merely today's date.
+ * Declared by the school, or guessed from today's date — and a counter being
+ * told which term a pupil is joining deserves to know which of the two it is.
  */
-const fromBasis = computed(() => {
-  const basis = picked.value?.enrolled.period?.basis;
-  return basis === "MARK" ? "D'après sa dernière note. Modifiable."
-    : basis === "BULLETIN" ? "D'après son dernier bulletin. Modifiable."
-    : "Aucune note ni bulletin — d'après le calendrier. Modifiable.";
+const periodBasis = computed(() => {
+  const declared = picked.value?.enrolled.period?.basis === "DECLARED";
+  return declared
+    ? "Période en cours déclarée par l'établissement. Modifiable."
+    : "Aucune période déclarée en cours — déduite du calendrier. Modifiable.";
 });
 
-/*
- * Changing "de" can invalidate "vers": keep the pair legal without taking the
- * choice away — the operator is moved off the collision, not blocked on it.
- */
-watch(() => form.value.fromPeriodId, (from) => {
-  if (!from) return;
-  if (form.value.option === `PERIOD:${from}`) {
-    const next = openPeriods.value[0];
-    form.value.option = next ? `PERIOD:${next.id}`
-      : yearOption.value ? `YEAR:${yearOption.value.id}` : "";
+/** Why the classe is what it is — or why it is empty. */
+const classeBasis = computed(() => {
+  switch (picked.value?.classeBasis) {
+    case "SAME_YEAR_PAID":
+      return "L'inscription de l'année en cours est déjà réglée : il reste dans sa classe.";
+    case "NEXT_LEVEL":
+      return "Dernier règlement sur une année antérieure : classe suivante proposée.";
+    default:
+      return "Impossible de déduire la classe — choisissez-la.";
   }
 });
 
@@ -314,14 +309,13 @@ async function confirm(withPayment: boolean) {
 
   try {
     const res = option.kind === "PERIOD"
-      ? await api.academics.reinscribePeriod(option.id, pupil.studentId, {
-          ...(form.value.fromPeriodId ? { fromPeriodId: form.value.fromPeriodId } : {}),
-          ...(payment ? { payment } : {}),
-        })
+      ? await api.academics.reinscribePeriod(option.id, pupil.studentId,
+          payment ? { payment } : {})
       : await api.academics.reinscribeYear({
           studentId:      pupil.studentId,
           academicYearId: option.id,
-          classeId:       option.classeId ?? pupil.enrolled.classe.id,
+          // The FIELD, not the label: whatever the counter left in the box.
+          classeId:       form.value.classeId || pupil.enrolled.classe.id,
           ...(payment ? { payment } : {}),
         });
     /*
@@ -505,31 +499,26 @@ async function block() {
 
       <template v-else>
         <!--
-          DE … VERS … — suggested from the file, and both free.
+          UNE SEULE PÉRIODE, ET LA CLASSE D'ARRIVÉE.
 
-          "De" is the période the pupil is in; "vers" is what the school is
-          collecting for. Neither is locked: a family paying ahead, a transfer
-          mid-semester, a school running its own order are all ordinary, and a
-          suggestion that cannot be overridden is a rule in disguise.
+          The form used to ask where the pupil was coming FROM as well, with
+          two generations of inference behind it — the calendar, then the
+          pupil's own marks — both of which an operator had to check. The act
+          only ever needed its target, and the school now declares which
+          période it is in, so there is one field and one source.
+
+          The classe is a FIELD. It was a label, and the counter is exactly who
+          knows a pupil is repeating, changing série or leaving for another
+          school. The suggestion follows the money and says so; when nothing
+          can be inferred it is left EMPTY rather than guessed.
         -->
         <div class="reins-form">
-          <div class="field">
-            <label for="re-from">Période actuelle</label>
-            <select id="re-from" v-model="form.fromPeriodId">
-              <option value="">—</option>
-              <option v-for="p in periods" :key="p.id" :value="p.id">
-                {{ p.label }}{{ p.id === picked.suggested.fromPeriodId ? " — déduite" : "" }}
-              </option>
-            </select>
-            <span class="hint">{{ fromBasis }}</span>
-          </div>
-
           <div class="field">
             <label for="re-to">Réinscrire pour</label>
             <select id="re-to" v-model="form.option">
               <optgroup v-if="openPeriods.length" label="Périodes">
                 <option v-for="p in openPeriods" :key="p.id" :value="`PERIOD:${p.id}`">
-                  {{ p.label }}{{ p.id === picked.suggested.toPeriodId ? " — suggérée" : "" }}
+                  {{ p.label }}{{ p.id === picked.suggested.toPeriodId ? " — en cours" : "" }}
                 </option>
               </optgroup>
               <optgroup v-if="yearOption" label="Année">
@@ -538,9 +527,27 @@ async function block() {
                 </option>
               </optgroup>
             </select>
-            <span class="hint">
-              {{ openPeriods.length }} période(s) ouverte(s) après celle-ci.
+            <span class="hint">{{ periodBasis }}</span>
+          </div>
+
+          <div class="field">
+            <label for="re-classe">Classe</label>
+            <select id="re-classe" v-model="form.classeId">
+              <option value="">— à choisir —</option>
+              <option v-for="c in picked.classes" :key="c.id" :value="c.id">
+                {{ c.niveau ? `${c.niveau} · ` : "" }}{{ c.name }}{{
+                  c.id === picked.enrolled.classe.id ? " — actuelle" : ""
+                }}
+              </option>
+            </select>
+            <!-- A période registration does not move anybody; only a new
+                 year's enrolment does. Said rather than silently ignored. -->
+            <span v-if="chosen?.kind === 'PERIOD'" class="hint">
+              Réinscription à une période : l'élève reste en
+              {{ picked.enrolled.classe.name }}. La classe choisie ici ne vaut
+              que pour une réinscription d'année.
             </span>
+            <span v-else class="hint">{{ classeBasis }}</span>
           </div>
         </div>
 

@@ -84,6 +84,21 @@ async function load() {
 watch(orgUnitId, () => { yearId.value = null; void load(); });
 watch(yearId, (v, old) => { if (old !== null && v !== old) void load(); });
 
+/**
+ * EVERYTHING CLOSED ON ARRIVAL.
+ *
+ * A complex with four écoles and three trimestres each is twelve rows the
+ * operator did not ask for; they came here for one calendar. Groups open on a
+ * click and stay open — the set is keyed by unit, so re-reading after an
+ * activation does not fold everything back up under the operator's hands.
+ */
+const open = ref<Set<string>>(new Set());
+const toggle = (unitId: string) => {
+  const next = new Set(open.value);
+  if (!next.delete(unitId)) next.add(unitId);
+  open.value = next;
+};
+
 /** One période, made THE current one for its calendar. */
 async function activate(p: { id: string; label: string }) {
   if (working.value) return;
@@ -260,13 +275,32 @@ async function create() {
 
     <!-- One card per calendar: a complex with three écoles has three. -->
     <div v-for="g in calendar?.groups ?? []" :key="g.orgUnit.id" class="card is-grid">
-      <div class="card-head">
-        <span>{{ g.orgUnit.name }}</span>
-        <button v-if="mayDeclare" class="btn sm" type="button" @click="openCreate(g.orgUnit.id)">
-          Créer une période
+      <!--
+        The heading IS the control: one click opens the calendar, and the
+        summary line means a closed group still answers the question most
+        visits are about — how many périodes, and which one is current.
+      -->
+      <div class="card-head cal-head" :class="{ 'is-open': open.has(g.orgUnit.id) }">
+        <button class="cal-toggle" type="button" @click="toggle(g.orgUnit.id)">
+          <svg class="cal-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.8" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
+          <span>{{ g.orgUnit.name }}</span>
+          <span class="cell-sub">
+            {{ g.periods.length }} période(s)
+            <template v-if="g.periods.find((p) => p.current)">
+              · {{ g.periods.find((p) => p.current)!.label }} en cours
+            </template>
+            <template v-else>· aucune en cours</template>
+          </span>
         </button>
+        <button
+          v-if="mayDeclare && open.has(g.orgUnit.id)"
+          class="btn sm"
+          type="button"
+          @click="openCreate(g.orgUnit.id)"
+        >Créer une période</button>
       </div>
-      <div class="table-wrap">
+      <div v-if="open.has(g.orgUnit.id)" class="table-wrap">
         <table class="data">
           <thead>
             <tr>
