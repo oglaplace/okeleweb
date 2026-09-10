@@ -4,6 +4,7 @@ import * as api from "../../lib/api";
 import Alert from "../../components/ui/Alert.vue";
 import PaymentDialog from "../../components/finance/PaymentDialog.vue";
 import ReceiptSheet from "../../components/finance/ReceiptSheet.vue";
+import { useBanner } from "../../lib/banner";
 
 /**
  * IMPAYÉS — the worklist, not a report.
@@ -27,8 +28,7 @@ const years = ref<api.AcademicYear[]>([]);
 const yearId = ref<string | null>(null);
 const data = ref<api.Unpaid | null>(null);
 const loading = ref(true);
-const error = ref<string | null>(null);
-const notice = ref<string | null>(null);
+const { notice, error } = useBanner();
 const query = ref("");
 
 /**

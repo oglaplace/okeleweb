@@ -7,6 +7,7 @@ import { useBusyStore } from "../../stores/busy";
 import { useOrgStore } from "../../stores/org";
 import UnitSelect from "../../components/structure/UnitSelect.vue";
 import Alert from "../../components/ui/Alert.vue";
+import { useBanner } from "../../lib/banner";
 
 /**
  * A term's worth of people, from a spreadsheet.
@@ -30,8 +31,7 @@ const fileName = ref<string | null>(null);
 const headings = ref<string[]>([]);
 const rows = ref<Record<string, string>[]>([]);
 const report = ref<api.ImportReport | null>(null);
-const error = ref<string | null>(null);
-const notice = ref<string | null>(null);
+const { notice, error } = useBanner();
 const working = ref(false);
 
 const classes = ref<{ id: string; label: string }[]>([]);

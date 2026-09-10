@@ -89,11 +89,14 @@ async function loadPeriods() {
      * A print run opening on the wrong trimestre prints the wrong bulletins,
      * and the old guess ("the one containing today, else the last started")
      * disagreed with the conseil screen whenever a term ran late. When nothing
-     * is declared the guess is still shown, and the banner says it is one.
+     * is declared, nothing opens: the banner sends the operator to the
+     * calendar rather than printing a term nobody chose.
      */
     const declared = api.currentPeriodOf(periods.value);
     noCurrent.value = declared === null;
-    periodId.value = (declared ?? api.guessPeriodOf(periods.value))?.id ?? null;
+    // The declaration or nothing: a screen that falls back to the wall
+    // calendar writes into a trimestre that ended in décembre.
+    periodId.value = declared?.id ?? null;
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Chargement impossible.";
   }
@@ -164,7 +167,6 @@ watch(periodId, () => void loadSheets());
     <NoCurrentPeriod
       v-if="noCurrent && periods.length"
       what="l'impression des bulletins"
-      :guessed="periods.find((p) => p.id === periodId)?.label ?? null"
     />
 
     <div v-if="reopened" class="alert is-warn no-print">

@@ -21,6 +21,7 @@ import {
 import TimetableGrid from "../../components/sheet/TimetableGrid.vue";
 import Alert from "../../components/ui/Alert.vue";
 import NoCurrentPeriod from "../../components/console/NoCurrentPeriod.vue";
+import { useBanner, exclusive } from "../../lib/banner";
 
 /**
  * One unit: what it is, what it holds, and everything that can be done to it.
@@ -77,8 +78,7 @@ const teachers = ref<{ id: string; label: string }[]>([]);
 const years = ref<api.AcademicYear[]>([]);
 const yearId = ref<string | null>(null);
 const loading = ref(true);
-const error = ref<string | null>(null);
-const notice = ref<string | null>(null);
+const { notice, error } = useBanner();
 
 async function load() {
   loading.value = true;
@@ -426,17 +426,17 @@ watch(sheet, (s) => {
   if (s.periods.some((p) => p.id === periodId.value)) return;
 
   /*
-   * THE PÉRIODE THE SCHOOL DECLARED, first.
+   * THE PÉRIODE THE SCHOOL DECLARED, and no other.
    *
-   * Then the one with something in it: opening on the last was the original
-   * guess and it showed an empty grid all through Trimestre 1 — the trimestre
-   * nobody has marked yet is exactly the one nobody wants to look at. Both are
-   * inferences; the school's own declaration is not, so it wins.
+   * Two fallbacks used to sit here — the last période with marks in it, then
+   * simply the first row — and both are inferences about a school that the
+   * school itself has already answered. When it has not, the grid stays shut
+   * and the banner sends the operator to the calendar: marks written into a
+   * trimestre that ended in décembre are unpicked by hand.
    */
-  const declared = s.periods.find((p) => p.current);
-  const withMarks = [...s.periods].reverse().find((p) => p.assessments.length);
+  const declared = s.periods.find((p) => p.current) ?? null;
   noCurrentPeriod.value = !declared && s.periods.length > 0;
-  periodId.value = (declared ?? withMarks ?? s.periods[0]!).id;
+  periodId.value = declared?.id ?? null;
 });
 
 const tabs = computed<SheetTab[]>(() => {
@@ -683,6 +683,8 @@ const marks = useMarkEntry({
 const markState = marks.state;
 const markSavedAt = marks.savedAt;
 const markError = marks.error;
+// The grid's own errors land in the same slot as the page's.
+exclusive({ notice, error, markError });
 const onEdit = marks.onEdit;
 const flushMarks = marks.flush;
 
@@ -807,7 +809,6 @@ const dueNow = computed(() => ledger.value?.totals.dueNowXaf ?? null);
       <NoCurrentPeriod
         v-if="noCurrentPeriod && tab === 'grades'"
         what="la feuille de notes"
-        :guessed="sheet?.periods.find((p) => p.id === periodId)?.label ?? null"
       />
       <Alert v-if="notice" kind="ok" @close="notice = null">{{ notice }}</Alert>
       <Alert v-if="markError" kind="error" @close="markError = null">{{ markError }}</Alert>

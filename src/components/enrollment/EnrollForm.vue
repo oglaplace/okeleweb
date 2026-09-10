@@ -7,6 +7,7 @@ import PhoneInput from "../ui/PhoneInput.vue";
 import UnitSelect from "../structure/UnitSelect.vue";
 import Alert from "../ui/Alert.vue";
 import PhotoInput from "../ui/PhotoInput.vue";
+import { useBanner, exclusive } from "../../lib/banner";
 
 /**
  * Enrol one pupil — the form, wherever it is shown.
@@ -40,8 +41,7 @@ const org = useOrgStore();
 
 const years = ref<api.AcademicYear[]>([]);
 const loading = ref(true);
-const error = ref<string | null>(null);
-const notice = ref<string | null>(null);
+const { notice, error } = useBanner();
 const working = ref(false);
 
 /** One tuteur as the form holds it, before it is worth sending. */
@@ -139,6 +139,8 @@ const day = (iso: string) =>
 const photo = ref<string | null>(null);
 /** Enrolled, but the photo did not go up — a warning, never an error. */
 const photoWarning = ref<string | null>(null);
+// The photo's complaint shares the one banner slot above the form.
+exclusive({ notice, error, photoWarning });
 
 /** Only to tell "no class exists" apart from "none chosen yet". */
 const classes = computed(() => org.ofKind(["CLASSE"]).filter((u) => !u.validTo));

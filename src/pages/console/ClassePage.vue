@@ -11,6 +11,7 @@ import { useMarkEntry } from "../../lib/markEntry";
 import type { SheetGroup, SheetTab } from "../../components/sheet/columns";
 import SheetTabs from "../../components/sheet/SheetTabs.vue";
 import { useAuthStore } from "../../stores/auth";
+import { useBanner, exclusive } from "../../lib/banner";
 
 /**
  * LE CONSEIL DE CLASSE — the meeting, as a screen.
@@ -80,9 +81,7 @@ const loading = ref(true);
 const previewing = ref(false);
 const issuing = ref(false);
 const issued = ref<{ issued: number; alreadyIssued: number } | null>(null);
-const error = ref<string | null>(null);
-/** What just happened, said once and dismissible. */
-const notice = ref<string | null>(null);
+const { notice, error } = useBanner();
 
 /** Bulletins already frozen for the période on screen — the council's state. */
 const frozen = ref<api.MarkSheet[]>([]);
@@ -199,7 +198,9 @@ async function loadYearScoped() {
      */
     const declared = api.currentPeriodOf(periodList);
     noCurrent.value = declared === null && periodList.length > 0;
-    periodId.value = (declared ?? api.guessPeriodOf(periodList))?.id ?? null;
+    // The declaration or nothing: a screen that falls back to the wall
+    // calendar writes into a trimestre that ended in décembre.
+    periodId.value = declared?.id ?? null;
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Chargement impossible.";
   }
@@ -299,6 +300,10 @@ const marks = useMarkEntry({
   // The council's own reload: the sheet, and everything that reads from it.
   reload: async () => { await refresh(); },
 });
+
+// Four banners used to be able to stack above this sheet — the page's own two,
+// the grid's, and the issue receipt. One slot, last one wins.
+exclusive({ notice, error, issued, marksError: marks.error });
 
 const marksRows = computed(() =>
   marks.apply((sheet.value?.rows ?? []).map((row) => {
@@ -891,14 +896,13 @@ watch(periodId, async () => {
     <NoCurrentPeriod
       v-if="noCurrent"
       what="le conseil de classe"
-      :guessed="periods.find((p) => p.id === periodId)?.label ?? null"
     />
     <Alert v-if="notice" kind="ok" @close="notice = null">{{ notice }}</Alert>
     <Alert v-if="error" kind="error" @close="error = null">{{ error }}</Alert>
     <Alert v-if="marks.error.value" kind="error" @close="marks.error.value = null">
       {{ marks.error.value }}
     </Alert>
-    <Alert v-if="issued !== null" kind="ok" :auto-dismiss="0" @close="issued = null">
+    <Alert v-if="issued !== null" kind="ok" @close="issued = null">
       <template v-if="issued.issued">
         {{ issued.issued }} bulletin(s) figé(s)<template v-if="issued.alreadyIssued">,
         {{ issued.alreadyIssued }} l'étaient déjà</template>.

@@ -6,6 +6,7 @@ import { useBusyStore } from "../../stores/busy";
 import PhoneInput from "../../components/ui/PhoneInput.vue";
 import { ESTABLISHMENT_LABELS, TIER_LABELS, TIER_NOTES } from "./labels";
 import Alert from "../../components/ui/Alert.vue";
+import { useBanner } from "../../lib/banner";
 
 /**
  * One établissement's registration record.
@@ -22,8 +23,7 @@ const id = route.params.id as string;
 
 const data = ref<api.TenantDetail | null>(null);
 const loading = ref(true);
-const error = ref<string | null>(null);
-const notice = ref<string | null>(null);
+const { notice, error } = useBanner();
 
 // Add-administrator form.
 const adding = ref(false);

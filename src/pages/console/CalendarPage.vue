@@ -5,6 +5,7 @@ import Alert from "../../components/ui/Alert.vue";
 import ConfirmDialog from "../../components/ui/ConfirmDialog.vue";
 import { useOrgStore } from "../../stores/org";
 import { useAuthStore } from "../../stores/auth";
+import { useBanner } from "../../lib/banner";
 
 /**
  * LE CALENDRIER — voir, créer, activer, verrouiller, au même endroit.
@@ -45,8 +46,7 @@ const yearId = ref<string | null>(null);
 const calendar = ref<api.Calendar | null>(null);
 const loading = ref(true);
 const working = ref<string | null>(null);
-const error = ref<string | null>(null);
-const notice = ref<string | null>(null);
+const { notice, error } = useBanner();
 
 const day = (iso: string) =>
   new Date(iso).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "2-digit" });

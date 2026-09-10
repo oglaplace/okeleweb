@@ -7,6 +7,7 @@ import UpgradeDialog from "../../components/structure/UpgradeDialog.vue";
 import Icon from "../../components/ui/Icon.vue";
 import { KIND_FR } from "../../components/structure/kinds";
 import Alert from "../../components/ui/Alert.vue";
+import { useBanner } from "../../lib/banner";
 
 /**
  * Structure: what the établissement is made of, and how to add to it.
@@ -25,8 +26,7 @@ const busy = useBusyStore();
 const units = ref<api.TreeUnit[]>([]);
 const state = ref<api.Completeness | null>(null);
 const loading = ref(true);
-const error = ref<string | null>(null);
-const notice = ref<string | null>(null);
+const { notice, error } = useBanner();
 
 async function reload() {
   loading.value = true;

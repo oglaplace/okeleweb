@@ -6,6 +6,7 @@ import { useBusyStore } from "../../stores/busy";
 import { KIND_FR } from "../../components/structure/kinds";
 import Alert from "../../components/ui/Alert.vue";
 import PhotoInput from "../../components/ui/PhotoInput.vue";
+import { useBanner, exclusive } from "../../lib/banner";
 
 /**
  * Staff, and where they are posted.
@@ -20,8 +21,7 @@ const busy = useBusyStore();
 const staff = ref<api.StaffMember[]>([]);
 const units = ref<{ id: string; label: string }[]>([]);
 const loading = ref(true);
-const error = ref<string | null>(null);
-const notice = ref<string | null>(null);
+const { notice, error } = useBanner();
 
 const adding = ref(false);
 const working = ref(false);
@@ -37,6 +37,7 @@ const assignForm = ref({ orgUnitId: "", role: "Enseignant" });
 /** The staff portrait — optional, exactly as for a pupil. See PhotoInput. */
 const photo = ref<string | null>(null);
 const photoWarning = ref<string | null>(null);
+exclusive({ notice, error, photoWarning });
 
 /**
  * The portraits already on file, keyed by personId.

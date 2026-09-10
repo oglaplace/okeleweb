@@ -4,6 +4,7 @@ import * as api from "../../lib/api";
 import Alert from "../../components/ui/Alert.vue";
 import PaymentDialog from "../../components/finance/PaymentDialog.vue";
 import ReceiptSheet from "../../components/finance/ReceiptSheet.vue";
+import { useBanner } from "../../lib/banner";
 
 /**
  * LE GUICHET — take money from whoever is standing at the counter.
@@ -26,8 +27,7 @@ const years = ref<api.AcademicYear[]>([]);
 const yearId = ref<string | null>(null);
 const rows = ref<api.Payable[]>([]);
 const loading = ref(true);
-const error = ref<string | null>(null);
-const notice = ref<string | null>(null);
+const { notice, error } = useBanner();
 const query = ref("");
 
 const XAF = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });

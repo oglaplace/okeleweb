@@ -104,7 +104,9 @@ async function loadYearScoped() {
      */
     const declared = api.currentPeriodOf(periodList);
     noCurrent.value = declared === null && periodList.length > 0;
-    periodId.value = (declared ?? api.guessPeriodOf(periodList))?.id ?? null;
+    // The declaration or nothing: a screen that falls back to the wall
+    // calendar writes into a trimestre that ended in décembre.
+    periodId.value = declared?.id ?? null;
     offeringId.value = offeringList[0]?.id ?? null;
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Chargement impossible.";
@@ -322,7 +324,6 @@ watch(assessmentId, () => void loadGrid());
     <NoCurrentPeriod
       v-if="noCurrent"
       what="la saisie des notes"
-      :guessed="periods.find((p) => p.id === periodId)?.label ?? null"
     />
     <Alert v-if="error" kind="error" @close="error = null">{{ error }}</Alert>
 

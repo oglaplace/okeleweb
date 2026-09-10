@@ -6,6 +6,7 @@ import { useBusyStore } from "../../stores/busy";
 import { useOrgStore } from "../../stores/org";
 import { KIND_FR } from "../structure/kinds";
 import Alert from "../ui/Alert.vue";
+import { useBanner } from "../../lib/banner";
 
 /**
  * The fields of one action, wherever it was triggered from.
@@ -45,8 +46,7 @@ const options = ref<Record<string, { value: string; label: string }[]>>({});
  */
 const loadingOptions = ref(false);
 const working = ref(false);
-const error = ref<string | null>(null);
-const notice = ref<string | null>(null);
+const { notice, error } = useBanner();
 
 /** Fields whose options depend on the chosen scope must reload when it moves. */
 const SCOPE_BOUND = new Set(["periodsOfScope", "offeringsOfScope", "assessmentTypes"]);

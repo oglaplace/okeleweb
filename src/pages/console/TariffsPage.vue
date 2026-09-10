@@ -8,6 +8,7 @@ import { KIND_FR, type TariffKind } from "../../components/structure/kinds";
 import TariffTree, { type TreeNode } from "../../components/finance/TariffTree.vue";
 import ConfirmDialog from "../../components/ui/ConfirmDialog.vue";
 import { useAuthStore } from "../../stores/auth";
+import { useBanner } from "../../lib/banner";
 
 /**
  * LA GRILLE TARIFAIRE — the organisation, priced.
@@ -42,8 +43,7 @@ const years = ref<api.AcademicYear[]>([]);
 const yearId = ref<string | null>(null);
 const grid = ref<api.TariffGrid | null>(null);
 const loading = ref(true);
-const error = ref<string | null>(null);
-const notice = ref<string | null>(null);
+const { notice, error } = useBanner();
 
 const XAF = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
 const money = (v: number) => XAF.format(v);

@@ -17,8 +17,6 @@ import { RouterLink } from "vue-router";
 defineProps<{
   /** What the operator was trying to do, for the sentence. */
   what?: string;
-  /** Shown as a fallback: the screen still works, on a guess. */
-  guessed?: string | null;
 }>();
 </script>
 
@@ -27,8 +25,9 @@ defineProps<{
     <div class="alert-body">
       <strong>Aucune période en cours.</strong>
       L'établissement n'a pas déclaré la période dans laquelle il travaille, donc
-      {{ what ?? "cet écran" }} ne sait pas sur laquelle s'ouvrir<template v-if="guessed">
-        — il affiche « {{ guessed }} », déduit du calendrier</template>.
+      {{ what ?? "cet écran" }} n'a pas de période sur laquelle s'ouvrir — et rien
+      n'est déduit du calendrier à sa place. Déclarez la période en cours : l'écran
+      s'ouvre dessus.
       <RouterLink :to="{ name: 'calendar' }">Ouvrir le calendrier →</RouterLink>
     </div>
   </div>

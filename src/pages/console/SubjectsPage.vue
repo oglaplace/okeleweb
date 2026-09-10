@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import * as api from "../../lib/api";
 import Alert from "../../components/ui/Alert.vue";
+import { useBanner } from "../../lib/banner";
 
 /**
  * MATIÈRES — the catalogue and its programming, in one screen.
@@ -30,8 +31,7 @@ const refreshing = ref(false);
 
 const loading = ref(true);
 const busy = ref<string | null>(null);
-const error = ref<string | null>(null);
-const notice = ref<string | null>(null);
+const { notice, error } = useBanner();
 const query = ref("");
 
 const shown = computed(() => {

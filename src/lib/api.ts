@@ -1318,47 +1318,24 @@ export interface ReinscriptionLookup {
       school: string | null;
       classe: { id: string; name: string };
       year: { id: string; label: string; closed: boolean };
-      period: {
-        id: string;
-        label: string;
-        status: string | null;
-        /**
-         * Declared by the school, or — when it has declared nothing — worked
-         * out from today's date. Shown, because those deserve different
-         * amounts of trust.
-         */
-        basis: "DECLARED" | "CALENDAR";
-      } | null;
+      /**
+       * The période the school DECLARED it is working in, and null when it has
+       * declared none. Never deduced from today's date — see currentPeriodOf.
+       */
+      period: { id: string; label: string; status: string | null } | null;
     };
     /** Still owed on the year they are in. */
     owesXaf: number;
     /** Money held for them that no facture has claimed yet. */
     creditXaf: number;
     /**
-     * Every période of their calendar, with where they stand in each.
-     *
-     * The form suggests two of them and lets the operator say otherwise — a
-     * family paying ahead, a transfer arriving mid-semester, a school that
-     * runs its own order.
-     */
-    periods: {
-      id: string;
-      label: string;
-      sequence: number;
-      startsOn: string;
-      endsOn: string;
-      status: string | null;
-      closed: boolean;
-    }[];
-    suggested: { fromPeriodId: string | null; toPeriodId: string | null };
-    /**
      * WHERE THEY ARE GOING — a suggestion, and null when nothing can be
-     * inferred honestly. Follows the money: a fee already paid for the current
-     * year means they are in place and keep their classe; an older one means a
-     * new year, so the niveau above.
+     * inferred honestly. It follows the last bulletin: one issued for the year
+     * in progress means the pupil is already in it and keeps their classe; an
+     * older one means a new year, so the niveau above.
      */
     suggestedClasseId: string | null;
-    classeBasis: "SAME_YEAR_PAID" | "NEXT_LEVEL" | "UNKNOWN";
+    classeBasis: "SAME_YEAR" | "NEXT_LEVEL" | "UNKNOWN";
     /** Every classe the counter may choose from. */
     classes: { id: string; name: string; niveau: string | null }[];
     /** What the school charges THIS pupil, per fee type — bourses included. */
@@ -2515,22 +2492,6 @@ export interface Period {
  */
 export function currentPeriodOf(list: Period[]): Period | null {
   return list.find((p) => p.activatedAt) ?? null;
-}
-
-/**
- * The best guess when the school has declared nothing — clearly a guess.
- *
- * Kept for the screens that must show SOMETHING (a read-only report), never
- * for the ones that write. The one in progress, else the last one started.
- */
-export function guessPeriodOf(list: Period[]): Period | null {
-  const today = Date.now();
-  const holding = list.find(
-    (p) => new Date(p.startsOn).getTime() <= today && today <= new Date(p.endsOn).getTime(),
-  );
-  if (holding) return holding;
-  const started = list.filter((p) => new Date(p.startsOn).getTime() <= today);
-  return started[started.length - 1] ?? list[0] ?? null;
 }
 
 /** Every période an établissement runs, grouped by the unit that owns it. */

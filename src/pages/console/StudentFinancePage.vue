@@ -7,6 +7,7 @@ import Alert from "../../components/ui/Alert.vue";
 import PaymentDialog from "../../components/finance/PaymentDialog.vue";
 import ReceiptSheet from "../../components/finance/ReceiptSheet.vue";
 import ConfirmDialog from "../../components/ui/ConfirmDialog.vue";
+import { useBanner } from "../../lib/banner";
 
 /**
  * ONE PUPIL'S MONEY — the échéancier, every règlement, and the reçus.
@@ -31,8 +32,7 @@ const yearParam = computed(() =>
 
 const led = ref<api.StudentLedger | null>(null);
 const loading = ref(true);
-const error = ref<string | null>(null);
-const notice = ref<string | null>(null);
+const { notice, error } = useBanner();
 
 async function load() {
   loading.value = true;

@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import * as api from "../../lib/api";
 import Alert from "../../components/ui/Alert.vue";
+import { useBanner, exclusive } from "../../lib/banner";
 
 /**
  * ONE PUPIL'S DOSSIER — the folder a secretary keeps, on a screen.
@@ -25,8 +26,7 @@ const router = useRouter();
 const studentId = computed(() => String(route.params.id));
 const dossier = ref<api.StudentDossier | null>(null);
 const loading = ref(true);
-const error = ref<string | null>(null);
-const notice = ref<string | null>(null);
+const { notice, error } = useBanner();
 
 async function load() {
   loading.value = true;
@@ -129,6 +129,7 @@ function jump(id: string) {
  */
 const photoBusy = ref(false);
 const photoError = ref<string | null>(null);
+exclusive({ notice, error, photoError });
 
 async function onPickPhoto(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0];

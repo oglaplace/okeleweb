@@ -3,7 +3,9 @@ import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { RouterLink } from "vue-router";
 import * as api from "../../lib/api";
 import Alert from "../../components/ui/Alert.vue";
+import NoCurrentPeriod from "../../components/console/NoCurrentPeriod.vue";
 import ConfirmDialog from "../../components/ui/ConfirmDialog.vue";
+import { useBanner } from "../../lib/banner";
 
 /**
  * RÉINSCRIPTION — one box, one pupil, one act.
@@ -32,8 +34,7 @@ const results = ref<Candidate[]>([]);
 const cursor = ref(0);
 const picked = ref<Candidate | null>(null);
 const working = ref(false);
-const error = ref<string | null>(null);
-const notice = ref<string | null>(null);
+const { notice, error } = useBanner();
 const box = ref<HTMLInputElement | null>(null);
 
 const XAF = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
@@ -128,12 +129,10 @@ const form = ref({
 
 function select(c: Candidate) {
   picked.value = c;
-  const period = c.options.find((o) => o.kind === "PERIOD");
+  // The période the school declared it is in, when it is open to them.
+  const first = c.options.find((o) => o.kind === "PERIOD") ?? c.options[0];
   form.value = {
-    // The période the school declared it is in — see the API's lookup.
-    option: period
-      ? `PERIOD:${c.suggested.toPeriodId ?? period.id}`
-      : c.options[0] ? `${c.options[0].kind}:${c.options[0].id}` : "",
+    option: first ? `${first.kind}:${first.id}` : "",
     // Suggested from the money, and empty when nothing can be inferred.
     classeId: c.suggestedClasseId ?? "",
     // The réinscription fee, when the school has one installed.
@@ -158,51 +157,41 @@ async function clear() {
   box.value?.focus();
 }
 
-/** Every période of their calendar, for both selects. */
-const periods = computed(() => picked.value?.periods ?? []);
-
-/** The chosen target: a période of this calendar, or next year. */
+/**
+ * The chosen target — one of the API's own options and nothing else.
+ *
+ * This used to build its own list of périodes out of the pupil's calendar and
+ * let the operator pick any that were still open. That is inference: the
+ * school declares which période it is working in, and a réinscription belongs
+ * to THAT one. The API sends it (and next year, when the year is ending); the
+ * form no longer has an opinion.
+ */
 const chosen = computed(() => {
-  const [kind, id] = form.value.option.split(":");
-  if (kind === "PERIOD") {
-    const p = periods.value.find((x) => x.id === id);
-    return p ? { kind: "PERIOD" as const, id: p.id, label: p.label } : null;
-  }
   const o = picked.value?.options.find((x) => `${x.kind}:${x.id}` === form.value.option);
   return o ? { kind: o.kind, id: o.id, label: o.label, classeId: o.classeId } : null;
 });
 
-/** Périodes that may be joined: still open and not already theirs. */
-const openPeriods = computed(() =>
-  periods.value.filter((p) => !p.closed && p.status !== "ACTIVE"),
-);
-
 /**
- * Where the suggested période came from, in words.
+ * Whether the school has said which période it is in.
  *
- * Declared by the school, or guessed from today's date — and a counter being
- * told which term a pupil is joining deserves to know which of the two it is.
+ * Nothing is deduced when it has not: the form offers the année if there is
+ * one and otherwise sends the operator to the calendar, which is a
+ * thirty-second fix and the only one that leaves the school's own answer in
+ * the database.
  */
-const periodBasis = computed(() => {
-  const declared = picked.value?.enrolled.period?.basis === "DECLARED";
-  return declared
-    ? "Période en cours déclarée par l'établissement. Modifiable."
-    : "Aucune période déclarée en cours — déduite du calendrier. Modifiable.";
-});
+const declaredPeriod = computed(() => picked.value?.enrolled.period ?? null);
 
 /** Why the classe is what it is — or why it is empty. */
 const classeBasis = computed(() => {
   switch (picked.value?.classeBasis) {
-    case "SAME_YEAR_PAID":
-      return "L'inscription de l'année en cours est déjà réglée : il reste dans sa classe.";
+    case "SAME_YEAR":
+      return "Son dernier bulletin porte sur l'année en cours : il reste dans sa classe.";
     case "NEXT_LEVEL":
-      return "Dernier règlement sur une année antérieure : classe suivante proposée.";
+      return "Son dernier bulletin porte sur une année antérieure : classe suivante proposée.";
     default:
       return "Impossible de déduire la classe — choisissez-la.";
   }
 });
-
-const yearOption = computed(() => picked.value?.options.find((o) => o.kind === "YEAR") ?? null);
 
 // ── the money ───────────────────────────────────────────────────────────────
 /**
@@ -492,7 +481,14 @@ async function block() {
         </div>
       </dl>
 
-      <div v-if="!picked.options.length && !openPeriods.length" class="empty">
+      <!--
+        Nothing declared: the banner, not a deduced période. The counter can
+        still open next year from here if the year is ending; everything else
+        waits on one click in the calendar.
+      -->
+      <NoCurrentPeriod v-if="!declaredPeriod" what="la réinscription à une période" />
+
+      <div v-if="!picked.options.length" class="empty">
         <div class="empty-title">Rien à ouvrir pour cet élève</div>
         <div>{{ picked.blocked }}</div>
       </div>
@@ -509,25 +505,26 @@ async function block() {
 
           The classe is a FIELD. It was a label, and the counter is exactly who
           knows a pupil is repeating, changing série or leaving for another
-          school. The suggestion follows the money and says so; when nothing
-          can be inferred it is left EMPTY rather than guessed.
+          school. The suggestion follows the last bulletin and says so; when
+          nothing can be inferred it is left EMPTY rather than guessed.
         -->
         <div class="reins-form">
           <div class="field">
             <label for="re-to">Réinscrire pour</label>
             <select id="re-to" v-model="form.option">
-              <optgroup v-if="openPeriods.length" label="Périodes">
-                <option v-for="p in openPeriods" :key="p.id" :value="`PERIOD:${p.id}`">
-                  {{ p.label }}{{ p.id === picked.suggested.toPeriodId ? " — en cours" : "" }}
-                </option>
-              </optgroup>
-              <optgroup v-if="yearOption" label="Année">
-                <option :value="`YEAR:${yearOption.id}`">
-                  {{ yearOption.label }} — {{ yearOption.detail }}
-                </option>
-              </optgroup>
+              <option
+                v-for="o in picked.options"
+                :key="`${o.kind}:${o.id}`"
+                :value="`${o.kind}:${o.id}`"
+              >{{ o.label }} — {{ o.detail }}</option>
             </select>
-            <span class="hint">{{ periodBasis }}</span>
+            <span v-if="declaredPeriod" class="hint">
+              {{ declaredPeriod.label }} est la période en cours déclarée par
+              l'établissement : c'est la seule dans laquelle on réinscrit.
+            </span>
+            <span v-else class="hint">
+              Aucune période en cours n'est déclarée — seule l'année peut être ouverte.
+            </span>
           </div>
 
           <div class="field">
