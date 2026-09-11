@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import * as api from "../../lib/api";
 import PhoneInput from "../../components/ui/PhoneInput.vue";
 import { useBusyStore } from "../../stores/busy";
@@ -7,6 +7,7 @@ import { KIND_FR } from "../../components/structure/kinds";
 import Alert from "../../components/ui/Alert.vue";
 import PhotoInput from "../../components/ui/PhotoInput.vue";
 import { useBanner, exclusive } from "../../lib/banner";
+import { useAuthStore } from "../../stores/auth";
 
 /**
  * Staff, and where they are posted.
@@ -19,7 +20,7 @@ import { useBanner, exclusive } from "../../lib/banner";
 const busy = useBusyStore();
 
 const staff = ref<api.StaffMember[]>([]);
-const units = ref<{ id: string; label: string }[]>([]);
+const units = ref<{ id: string; label: string; kind: api.OrgUnitKind; path: string }[]>([]);
 const loading = ref(true);
 const { notice, error } = useBanner();
 
@@ -29,6 +30,43 @@ const form = ref({
   lastName: "", firstName: "", phone: "", type: "PERMANENT" as api.StaffMember["type"],
   baseAmountXaf: "", orgUnitId: "", role: "Enseignant",
 });
+
+/**
+ * Once the contract is chosen by hand, the posting stops proposing one.
+ *
+ * Otherwise picking "6e A" after correcting the contract would silently undo
+ * the correction, which is the way a suggestion turns into a bug report.
+ */
+const typeChosen = ref(false);
+watch(() => form.value.orgUnitId, (unitId) => {
+  if (typeChosen.value || !unitId) return;
+  const suggestion = suggestedType(unitId);
+  if (suggestion) form.value.type = suggestion;
+});
+
+/**
+ * What the amount means — the whole point of this turn.
+ *
+ * One column in the database (`baseAmountXaf`) holds two different things, and
+ * the form asked for it as "Salaire de base (XAF)" either way. A vacataire's
+ * 2 000 F an hour went into the same box as a titulaire's 250 000 F a month and
+ * the list printed both under "Salaire", where the first reads as a starvation
+ * wage and the second as a fortune. The field says which it wants.
+ */
+const AMOUNT_FR = {
+  HOURLY: {
+    label: "Taux horaire (XAF / heure)",
+    hint: "Payé sur les heures faites : voir « Heures et paie » plus bas.",
+    placeholder: "2 000",
+  },
+  FIXED: {
+    label: "Salaire mensuel (XAF)",
+    hint: "Montant brut versé chaque mois, quelles que soient les heures.",
+    placeholder: "250 000",
+  },
+} as const;
+const amountBasis = computed(() => (form.value.type === "VACATAIRE" ? "HOURLY" : "FIXED"));
+const amount = computed(() => AMOUNT_FR[amountBasis.value]);
 
 /** Assignment being added to an existing employment. */
 const assigning = ref<string | null>(null);
@@ -110,8 +148,57 @@ async function loadUnits() {
       parts.unshift(parent.name);
       cursor = parent.parentId;
     }
-    return { id: u.id, label: `${parts.join(" / ")} · ${KIND_FR[u.kind]}` };
+    return {
+      id: u.id,
+      label: `${parts.join(" / ")} · ${KIND_FR[u.kind]}`,
+      kind: u.kind,
+      // The whole branch, lowercased: what tells a primaire from a collège is
+      // the CYCLE's name — "Primaire", "Collège", "Lycée" — and a classe two
+      // levels below it carries none of that in its own.
+      path: [...parts, ...ancestorKinds(u.id, byId)].join(" ").toLowerCase(),
+    };
   });
+}
+
+/** The kinds along a unit's branch, so FACULTY anywhere above is visible. */
+function ancestorKinds(id: string, byId: Map<string, api.TreeUnit>): string[] {
+  const kinds: string[] = [];
+  let cursor: string | null = id;
+  for (let i = 0; cursor && i < 12; i++) {
+    const unit: api.TreeUnit | undefined = byId.get(cursor);
+    if (!unit) break;
+    kinds.push(unit.kind);
+    cursor = unit.parentId;
+  }
+  return kinds;
+}
+
+/**
+ * COMMENT CETTE AFFECTATION PAIE, D'HABITUDE.
+ *
+ * A primaire titulaire holds one class all week and draws a monthly salary; at
+ * the collège, at the lycée and in the supérieur the school buys hours — a
+ * vacataire takes eight of maths across three classes and is paid for those
+ * eight. The form used to open on "Permanent" for everyone, so the hourly half
+ * of the staff — most of a private Brazzaville school — was hired on the wrong
+ * contract and the number typed next to it meant a month instead of an hour.
+ *
+ * A SUGGESTION, and never more: an école pays whoever it likes however it
+ * likes, a primaire keeps a vacataire for English, and a lycée puts its censeur
+ * on salary. Choosing a posting proposes the usual contract; touching the
+ * contract yourself ends the proposing, for good, on this form.
+ */
+function suggestedType(unitId: string): api.StaffMember["type"] | null {
+  const unit = units.value.find((u) => u.id === unitId);
+  if (!unit) return null;
+  // The supérieur is structural — FACULTY, FILIERE and PARCOURS exist nowhere
+  // else in the tree — so it is read from the kinds rather than from a name.
+  if (/FACULTY|FILIERE|PARCOURS/.test(unit.path.toUpperCase())) return "VACATAIRE";
+  if (/primaire|présco|presco|maternelle|garderie/.test(unit.path)) return "PERMANENT";
+  if (/collège|college|lycée|lycee|secondaire|supérieur|superieur/.test(unit.path)) {
+    return "VACATAIRE";
+  }
+  return null;
 }
 
 async function load() {
@@ -208,6 +295,65 @@ async function unassign(id: string) {
   }
 }
 
+/* ── HEURES ET PAIE ────────────────────────────────────────────────────────
+ *
+ * The other half of the fix. Knowing that 2 000 F is an hourly rate is only
+ * useful if something multiplies it by the hours, and until now nothing did:
+ * the office took the grid off the wall, counted the mardis of the month by
+ * hand and wrote a figure. The API counts them — off the PUBLISHED timetable,
+ * inside the trimestres, or off the register of lessons where the school keeps
+ * one — and says which source it used, because a payroll figure whose
+ * provenance is not on screen is one that gets redone by hand anyway.
+ */
+const auth = useAuthStore();
+const maySeePay = computed(() => auth.can("finance.read"));
+
+/** A month, because that is the unit a school pays in. `<input type=month>`. */
+const month = ref(new Date().toISOString().slice(0, 7));
+const pay = ref<api.Workload | null>(null);
+const payLoading = ref(false);
+const payOpen = ref(false);
+
+/** Last day of the month, without a date library: day 0 of the next one. */
+function bounds(value: string): { from: string; to: string } {
+  const [y, m] = value.split("-").map(Number);
+  const last = new Date(Date.UTC(y!, m!, 0)).getUTCDate();
+  return { from: `${value}-01`, to: `${value}-${String(last).padStart(2, "0")}` };
+}
+
+async function loadPay() {
+  if (!maySeePay.value) return;
+  payLoading.value = true;
+  try {
+    const { from, to } = bounds(month.value);
+    pay.value = await api.people.workload(from, to);
+  } catch (e) {
+    error.value = e instanceof api.ApiError ? e.message : "Calcul des heures impossible.";
+    pay.value = null;
+  } finally {
+    payLoading.value = false;
+  }
+}
+
+watch([month, payOpen], () => {
+  if (payOpen.value) void loadPay();
+});
+
+/** Minutes as a school says them: "6 h", "6 h 30". */
+const hours = (min: number) =>
+  min === 0 ? "—" : `${Math.floor(min / 60)} h${min % 60 ? ` ${min % 60}` : ""}`;
+
+const BASIS_FR: Record<api.Workload["rows"][number]["hoursBasis"], string> = {
+  SESSIONS: "séances pointées",
+  TIMETABLE: "emploi du temps",
+  NONE: "aucune heure",
+};
+
+/** What the school owes for the month — the number the payroll is run on. */
+const payTotal = computed(() =>
+  (pay.value?.rows ?? []).reduce((sum, r) => sum + r.payXaf, 0),
+);
+
 const xaf = (n: number) => `${n.toLocaleString("fr-FR")} F`;
 const TYPE_FR: Record<api.StaffMember["type"], string> = {
   PERMANENT: "Permanent",
@@ -257,15 +403,26 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
         </div>
         <div class="field-row">
           <div class="field"><label for="s-ty">Contrat</label>
-            <select id="s-ty" v-model="form.type">
-              <option value="PERMANENT">Permanent</option>
-              <option value="VACATAIRE">Vacataire</option>
+            <select id="s-ty" v-model="form.type" @change="typeChosen = true">
+              <option value="PERMANENT">Permanent — salaire mensuel</option>
+              <option value="VACATAIRE">Vacataire — payé à l'heure</option>
               <option value="STAGIAIRE">Stagiaire</option>
             </select>
-            <span class="hint">Le vacataire est payé sur les heures faites.</span>
+            <span class="hint">
+              Primaire et préscolaire au mois ; collège, lycée et supérieur à
+              l'heure. L'affectation propose, vous décidez.
+            </span>
           </div>
-          <div class="field"><label for="s-sa">Salaire de base (XAF)</label>
-            <input id="s-sa" v-model="form.baseAmountXaf" inputmode="numeric" /></div>
+          <div class="field">
+            <label for="s-sa">{{ amount.label }}</label>
+            <input
+              id="s-sa"
+              v-model="form.baseAmountXaf"
+              inputmode="numeric"
+              :placeholder="amount.placeholder"
+            />
+            <span class="hint">{{ amount.hint }}</span>
+          </div>
         </div>
         <div class="field-row">
           <div class="field"><label for="s-ou">Première affectation</label>
@@ -307,7 +464,7 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
             <tr>
               <th class="c-name">Personne</th>
               <th class="c-text">Contrat</th>
-              <th>Salaire</th>
+              <th>Rémunération</th>
               <th class="c-text">Affectations</th>
             </tr>
           </thead>
@@ -342,7 +499,12 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
                 </span>
               </td>
               <td class="c-text">{{ TYPE_FR[s.type] }}</td>
-              <td>{{ xaf(s.baseAmountXaf) }}</td>
+              <!-- The unit, always: the same column holds 2 000 F an hour and
+                   250 000 F a month, and they are not comparable numbers. -->
+              <td>
+                {{ xaf(s.baseAmountXaf) }}
+                <span class="cell-sub">{{ s.type === "VACATAIRE" ? "par heure" : "par mois" }}</span>
+              </td>
               <td class="c-text">
                 <span v-for="a in s.assignments" :key="a.id" class="pill" style="margin-right: 4px">
                   {{ a.orgUnit.name }} · {{ a.role }}
@@ -377,6 +539,88 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
           </tbody>
         </table>
       </div>
+    </div>
+
+    <!--
+      HEURES ET PAIE DU MOIS.
+
+      Collapsed until asked for: most visits to this screen are to hire someone
+      or fix a posting, and the payroll is a monthly errand. Behind finance.read
+      because every figure in it is francs.
+    -->
+    <div v-if="maySeePay" class="card is-grid" style="margin-top: var(--s4)">
+      <div class="card-head cal-head" :class="{ 'is-open': payOpen }">
+        <button class="cal-toggle" type="button" @click="payOpen = !payOpen">
+          <svg class="cal-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.8" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
+          <span>Heures et paie</span>
+          <span class="unit-meta">
+            {{ pay ? `${xaf(payTotal)} pour ${pay.rows.length} personne(s)`
+                   : "calculé sur l'emploi du temps publié" }}
+          </span>
+        </button>
+        <input v-if="payOpen" v-model="month" type="month" class="btn" aria-label="Mois" />
+      </div>
+
+      <template v-if="payOpen">
+        <div v-if="payLoading" class="card-body stack">
+          <div class="skeleton" style="width: 40%" /><div class="skeleton" style="width: 65%" />
+        </div>
+
+        <div v-else-if="!pay || !pay.rows.length" class="empty">
+          <div class="empty-title">Rien à payer sur ce mois</div>
+          <div>Aucun contrat en cours sur cette période.</div>
+        </div>
+
+        <template v-else>
+          <div class="table-wrap">
+            <table class="data">
+              <thead>
+                <tr>
+                  <th class="c-name">Personne</th>
+                  <th class="c-text">Base</th>
+                  <th class="c-num">Prévu</th>
+                  <th class="c-num">Fait</th>
+                  <th class="c-num">À payer</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="r in pay.rows" :key="r.employmentId">
+                  <td class="c-name">
+                    <span class="cell-strong">{{ r.lastName.toUpperCase() }} {{ r.firstName }}</span>
+                    <span class="cell-sub">{{ TYPE_FR[r.type] }}</span>
+                  </td>
+                  <td class="c-text">
+                    {{ r.payBasis === "HOURLY" ? `${xaf(r.rateXaf)} / heure` : "Salaire mensuel" }}
+                    <span v-if="r.payBasis === 'HOURLY'" class="cell-sub">
+                      {{ BASIS_FR[r.hoursBasis] }}<template v-if="r.draftSlots">
+                        · {{ r.draftSlots }} créneau(x) non publié(s)</template>
+                    </span>
+                  </td>
+                  <td class="c-num">{{ hours(r.plannedMinutes) }}</td>
+                  <td class="c-num">{{ hours(r.taughtMinutes) }}</td>
+                  <td class="c-num">{{ xaf(r.payXaf) }}</td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td class="c-name"><span class="cell-strong">Total</span></td>
+                  <td class="c-text" /><td class="c-num" /><td class="c-num" />
+                  <td class="c-num"><span class="cell-strong">{{ xaf(payTotal) }}</span></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <!-- Why a total is lower than the office expects, and which screen
+               fixes it. The API writes these; the page only shows them. -->
+          <div v-if="pay.notes.length" class="card-body">
+            <p v-for="(n, i) in pay.notes" :key="i" class="verify-sub" style="margin: 0 0 4px">
+              {{ n }}
+            </p>
+          </div>
+        </template>
+      </template>
     </div>
   </div>
 </template>

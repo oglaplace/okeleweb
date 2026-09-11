@@ -483,6 +483,41 @@ export interface StaffMember {
   }[];
 }
 
+/**
+ * HEURES ET PAIE — the hourly half of a payroll, computed rather than guessed.
+ *
+ * `baseAmountXaf` is a monthly gross for a PERMANENT and an HOURLY RATE for a
+ * VACATAIRE, so the second one means nothing until it is multiplied by hours.
+ * The API works those out from the published timetable, or from the register
+ * of lessons where the school keeps one, and says which it used.
+ */
+export interface Workload {
+  from: string;
+  to: string;
+  year: { id: string; label: string } | null;
+  rows: {
+    employmentId: string;
+    personId: string;
+    lastName: string;
+    firstName: string;
+    type: StaffMember["type"];
+    /** Monthly gross, or the hourly rate — read `payBasis`. */
+    rateXaf: number;
+    plannedMinutes: number;
+    taughtMinutes: number;
+    /** SESSIONS beats TIMETABLE; NONE means neither had anything to say. */
+    hoursBasis: "SESSIONS" | "TIMETABLE" | "NONE";
+    payBasis: "HOURLY" | "FIXED";
+    payableMinutes: number;
+    payXaf: number;
+    slots: number;
+    /** Créneaux skipped because their classe's week is still a draft. */
+    draftSlots: number;
+  }[];
+  /** What would make these figures wrong, in the API's own words. */
+  notes: string[];
+}
+
 export interface ImportReport {
   /** Which spreadsheet column was read as which field. Shown before writing. */
   mapping: Record<string, string | null>;
@@ -543,6 +578,23 @@ export const people = {
     if (opts.orgUnitId) qs.set("orgUnitId", opts.orgUnitId);
     const suffix = qs.toString();
     return request<StaffMember[]>(`/people/staff${suffix ? `?${suffix}` : ""}`);
+  },
+
+  /**
+   * Hours and pay over a range. `from`/`to` are ISO dates, inclusive.
+   *
+   * Behind finance.read: this answers in francs, and a censeur who may post a
+   * teacher has no business reading what the school pays them.
+   */
+  workload: (
+    from: string,
+    to: string,
+    opts: { orgUnitId?: string; employmentId?: string } = {},
+  ) => {
+    const q = new URLSearchParams({ from, to });
+    if (opts.orgUnitId) q.set("orgUnitId", opts.orgUnitId);
+    if (opts.employmentId) q.set("employmentId", opts.employmentId);
+    return request<Workload>(`/people/workload?${q}`);
   },
 
   createStaff: (body: {
