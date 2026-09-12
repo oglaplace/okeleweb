@@ -68,6 +68,68 @@ const AMOUNT_FR = {
 const amountBasis = computed(() => (form.value.type === "VACATAIRE" ? "HOURLY" : "FIXED"));
 const amount = computed(() => AMOUNT_FR[amountBasis.value]);
 
+/** The digits the office typed, as a number. One parse, used everywhere. */
+const amountXaf = computed(() => Number(form.value.baseAmountXaf.replace(/\D/g, "")) || 0);
+
+/**
+ * Grouped as it is typed — 250000 and 25000 are one keystroke apart on screen
+ * and a factor of ten in the payroll.
+ */
+function onAmountInput(event: Event) {
+  const digits = (event.target as HTMLInputElement).value.replace(/\D/g, "").slice(0, 9);
+  form.value.baseAmountXaf = digits ? Number(digits).toLocaleString("fr-FR") : "";
+}
+
+/* ── CE QUE CETTE EMBAUCHE VA COÛTER ───────────────────────────────────────
+ *
+ * The form asks for a rate; the question behind the form is what the rate adds
+ * up to. Nothing answered it, so the office typed a number and worked out the
+ * consequence on paper — which is the same gap the pay panel below was built
+ * to close, one step earlier.
+ *
+ * It is answerable for a salaried hire and NOT for an hourly one, and the form
+ * says so rather than splitting the difference. A monthly salary times the
+ * months left in the year is arithmetic. A vacataire's year depends on how many
+ * hours they end up holding, which is not known until they are posted and the
+ * grid is drawn — so the annual figure stays blank, with a line saying when it
+ * will appear. A plausible invented total is worse than none: it gets budgeted
+ * against, found wrong, and then nothing on the screen is trusted again.
+ */
+const year = ref<api.AcademicYear | null>(null);
+
+/**
+ * Employer charges on top of gross — CNSS retraite, allocations familiales,
+ * accidents du travail. The server owns the rate (it can be set per tenant);
+ * this is the national default, used until the pay panel has been asked.
+ */
+const DEFAULT_CHARGE_RATE = 0.2028;
+const chargeRate = ref(DEFAULT_CHARGE_RATE);
+
+/** Whole months from today to the end of the year, the current one included. */
+const monthsLeft = computed(() => {
+  if (!year.value) return null;
+  const end = new Date(year.value.endsOn);
+  const now = new Date();
+  // A hire made after the year has ended belongs to the next one; until that
+  // year exists there is nothing honest to project.
+  if (end < now) return null;
+  const months =
+    (end.getFullYear() - now.getFullYear()) * 12 + (end.getMonth() - now.getMonth()) + 1;
+  return Math.max(1, months);
+});
+
+/** null = not answerable yet, and the template says why. */
+const projection = computed(() => {
+  if (amountBasis.value === "HOURLY" || !amountXaf.value || !monthsLeft.value) return null;
+  const gross = amountXaf.value * monthsLeft.value;
+  return {
+    months: monthsLeft.value,
+    gross,
+    cost: Math.round(gross * (1 + chargeRate.value)),
+    monthlyCost: Math.round(amountXaf.value * (1 + chargeRate.value)),
+  };
+});
+
 /** Assignment being added to an existing employment. */
 const assigning = ref<string | null>(null);
 const assignForm = ref({ orgUnitId: "", role: "Enseignant" });
@@ -216,7 +278,14 @@ async function load() {
 }
 
 onMounted(async () => {
-  await Promise.all([load(), loadUnits().catch(() => {})]);
+  await Promise.all([
+    load(),
+    loadUnits().catch(() => {}),
+    api.academics
+      .years()
+      .then((ys) => { year.value = ys.find((y) => y.isCurrent) ?? null; })
+      .catch(() => {}),
+  ]);
 });
 
 const canAdd = computed(
@@ -231,7 +300,6 @@ async function add() {
   working.value = true;
   error.value = null;
   try {
-    const salary = Number(form.value.baseAmountXaf.replace(/\D/g, "")) || 0;
     const created = await busy.run(
       () =>
         api.people.createStaff({
@@ -241,7 +309,7 @@ async function add() {
             ...(form.value.phone ? { phone: form.value.phone.trim() } : {}),
           },
           type: form.value.type,
-          baseAmountXaf: salary,
+          baseAmountXaf: amountXaf.value,
           ...(form.value.orgUnitId
             ? { assignment: { orgUnitId: form.value.orgUnitId, role: form.value.role.trim() } }
             : {}),
@@ -310,6 +378,19 @@ const maySeePay = computed(() => auth.can("finance.read"));
 
 /** A month, because that is the unit a school pays in. `<input type=month>`. */
 const month = ref(new Date().toISOString().slice(0, 7));
+
+/**
+ * MOIS OU ANNÉE — the same endpoint, asked a bigger question.
+ *
+ * "What do I owe in mars" and "what does my staff cost me this year" are the
+ * same arithmetic over a different range, and the API already takes two dates
+ * with a 400-day ceiling. So the annual figure — the one a director actually
+ * budgets on — costs one toggle, no endpoint, no new model.
+ *
+ * The year is the ACADEMIC year, not January to December: a school commits to
+ * a rentrée, and a calendar year cuts that commitment in half.
+ */
+const scope = ref<"MONTH" | "YEAR">("MONTH");
 const pay = ref<api.Workload | null>(null);
 const payLoading = ref(false);
 const payOpen = ref(false);
@@ -321,12 +402,25 @@ function bounds(value: string): { from: string; to: string } {
   return { from: `${value}-01`, to: `${value}-${String(last).padStart(2, "0")}` };
 }
 
+/**
+ * The range being asked about, or null when the year is wanted and none is
+ * declared — the button is disabled in that case rather than silently
+ * falling back to the month, which would show a monthly figure under an
+ * annual heading.
+ */
+const range = computed<{ from: string; to: string } | null>(() => {
+  if (scope.value === "MONTH") return bounds(month.value);
+  if (!year.value) return null;
+  return { from: year.value.startsOn.slice(0, 10), to: year.value.endsOn.slice(0, 10) };
+});
+
 async function loadPay() {
-  if (!maySeePay.value) return;
+  if (!maySeePay.value || !range.value) return;
   payLoading.value = true;
   try {
-    const { from, to } = bounds(month.value);
-    pay.value = await api.people.workload(from, to);
+    pay.value = await api.people.workload(range.value.from, range.value.to);
+    // The server owns the rate; the hiring projection above follows it.
+    chargeRate.value = pay.value.chargeRate;
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Calcul des heures impossible.";
     pay.value = null;
@@ -335,7 +429,7 @@ async function loadPay() {
   }
 }
 
-watch([month, payOpen], () => {
+watch([month, scope, payOpen], () => {
   if (payOpen.value) void loadPay();
 });
 
@@ -345,13 +439,28 @@ const hours = (min: number) =>
 
 const BASIS_FR: Record<api.Workload["rows"][number]["hoursBasis"], string> = {
   SESSIONS: "séances pointées",
+  EXCEPTIONS: "emploi du temps, corrigé",
   TIMETABLE: "emploi du temps",
   NONE: "aucune heure",
 };
 
-/** What the school owes for the month — the number the payroll is run on. */
+/**
+ * Two totals, because they are two different questions.
+ *
+ * `payTotal` is what leaves for the teachers; `costTotal` adds the employer's
+ * own charges — CNSS — and is what the school actually spends. Showing only the
+ * first is how a budget comes up a fifth short.
+ */
 const payTotal = computed(() =>
   (pay.value?.rows ?? []).reduce((sum, r) => sum + r.payXaf, 0),
+);
+const costTotal = computed(() =>
+  (pay.value?.rows ?? []).reduce((sum, r) => sum + r.costXaf, 0),
+);
+const chargePct = computed(() =>
+  `${((pay.value?.chargeRate ?? chargeRate.value) * 100).toLocaleString("fr-FR", {
+    maximumFractionDigits: 2,
+  })} %`,
 );
 
 const xaf = (n: number) => `${n.toLocaleString("fr-FR")} F`;
@@ -417,12 +526,44 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
             <label for="s-sa">{{ amount.label }}</label>
             <input
               id="s-sa"
-              v-model="form.baseAmountXaf"
+              :value="form.baseAmountXaf"
               inputmode="numeric"
               :placeholder="amount.placeholder"
+              @input="onAmountInput"
             />
             <span class="hint">{{ amount.hint }}</span>
           </div>
+        </div>
+
+        <!-- CE QUE ÇA COÛTE, pendant qu'on le tape. A number typed with no
+             consequence on screen is a number checked on paper afterwards. -->
+        <div v-if="amountXaf" class="cost-note">
+          <template v-if="projection">
+            <div class="cost-line">
+              <span>Coût jusqu'à la fin de l'année</span>
+              <strong>{{ xaf(projection.cost) }}</strong>
+            </div>
+            <span class="hint">
+              {{ xaf(amountXaf) }} × {{ projection.months }} mois
+              = {{ xaf(projection.gross) }} brut, plus {{ chargePct }} de charges
+              patronales — soit {{ xaf(projection.monthlyCost) }} par mois pour l'école.
+            </span>
+          </template>
+          <template v-else-if="amountBasis === 'HOURLY'">
+            <div class="cost-line">
+              <span>Coût annuel</span>
+              <strong class="muted">à déterminer</strong>
+            </div>
+            <span class="hint">
+              Un vacataire est payé sur les heures qu'il tient : le coût annuel
+              apparaîtra dans « Heures et paie » dès qu'il sera affecté et que
+              l'emploi du temps de ses classes sera publié.
+              {{ xaf(amountXaf) }} de l'heure, charges patronales en sus.
+            </span>
+          </template>
+          <span v-else class="hint">
+            Aucune année scolaire en cours : le coût annuel ne peut pas être calculé.
+          </span>
         </div>
         <div class="field-row">
           <div class="field"><label for="s-ou">Première affectation</label>
@@ -555,11 +696,25 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
                stroke-width="1.8" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
           <span>Heures et paie</span>
           <span class="unit-meta">
-            {{ pay ? `${xaf(payTotal)} pour ${pay.rows.length} personne(s)`
+            {{ pay ? `${xaf(costTotal)} pour ${pay.rows.length} personne(s)`
                    : "calculé sur l'emploi du temps publié" }}
           </span>
         </button>
-        <input v-if="payOpen" v-model="month" type="month" class="btn" aria-label="Mois" />
+        <div v-if="payOpen" class="pay-scope">
+          <!-- Same endpoint, wider range. See `scope` in the script. -->
+          <div class="seg" role="group" aria-label="Période">
+            <button type="button" class="seg-btn" :class="{ on: scope === 'MONTH' }"
+                    @click="scope = 'MONTH'">Mois</button>
+            <button type="button" class="seg-btn" :class="{ on: scope === 'YEAR' }"
+                    :disabled="!year" @click="scope = 'YEAR'"
+                    :title="year ? `Année ${year.label}` : 'Aucune année scolaire en cours'">
+              Année
+            </button>
+          </div>
+          <input v-if="scope === 'MONTH'" v-model="month" type="month" class="btn"
+                 aria-label="Mois" />
+          <span v-else-if="year" class="unit-meta">{{ year.label }}</span>
+        </div>
       </div>
 
       <template v-if="payOpen">
@@ -568,7 +723,9 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
         </div>
 
         <div v-else-if="!pay || !pay.rows.length" class="empty">
-          <div class="empty-title">Rien à payer sur ce mois</div>
+          <div class="empty-title">
+            Rien à payer sur {{ scope === "YEAR" ? "cette année" : "ce mois" }}
+          </div>
           <div>Aucun contrat en cours sur cette période.</div>
         </div>
 
@@ -580,8 +737,9 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
                   <th class="c-name">Personne</th>
                   <th class="c-text">Base</th>
                   <th class="c-num">Prévu</th>
-                  <th class="c-num">Fait</th>
+                  <th class="c-num">Retenu</th>
                   <th class="c-num">À payer</th>
+                  <th class="c-num">Coût école</th>
                 </tr>
               </thead>
               <tbody>
@@ -598,15 +756,29 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
                     </span>
                   </td>
                   <td class="c-num">{{ hours(r.plannedMinutes) }}</td>
-                  <td class="c-num">{{ hours(r.taughtMinutes) }}</td>
+                  <td class="c-num">
+                    {{ hours(r.payableMinutes) }}
+                    <!-- The adjustment spelled out: a teacher asking why the
+                         figure moved should read the answer, not ask twice. -->
+                    <span v-if="r.cancelledMinutes || r.extraMinutes" class="cell-sub">
+                      <template v-if="r.cancelledMinutes">− {{ hours(r.cancelledMinutes) }} annulé</template>
+                      <template v-if="r.cancelledMinutes && r.extraMinutes"> · </template>
+                      <template v-if="r.extraMinutes">+ {{ hours(r.extraMinutes) }} en plus</template>
+                    </span>
+                  </td>
                   <td class="c-num">{{ xaf(r.payXaf) }}</td>
+                  <td class="c-num">{{ xaf(r.costXaf) }}</td>
                 </tr>
               </tbody>
               <tfoot>
                 <tr>
-                  <td class="c-name"><span class="cell-strong">Total</span></td>
+                  <td class="c-name">
+                    <span class="cell-strong">Total</span>
+                    <span class="cell-sub">dont {{ chargePct }} de charges patronales</span>
+                  </td>
                   <td class="c-text" /><td class="c-num" /><td class="c-num" />
                   <td class="c-num"><span class="cell-strong">{{ xaf(payTotal) }}</span></td>
+                  <td class="c-num"><span class="cell-strong">{{ xaf(costTotal) }}</span></td>
                 </tr>
               </tfoot>
             </table>
@@ -624,3 +796,35 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* The running total under the amount field — a consequence, not a form field,
+   so it is set apart from the inputs rather than looking like another one. */
+.cost-note {
+  margin: calc(var(--s2) * -1) 0 var(--s4);
+  padding: var(--s3);
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+}
+.cost-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: var(--s1);
+}
+.cost-line strong {
+  font-size: var(--t-body);
+  font-variant-numeric: tabular-nums;
+}
+.cost-line .muted {
+  color: var(--ink-3);
+  font-weight: 500;
+}
+.pay-scope {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+</style>

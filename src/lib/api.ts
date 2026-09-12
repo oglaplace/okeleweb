@@ -488,8 +488,10 @@ export interface StaffMember {
  *
  * `baseAmountXaf` is a monthly gross for a PERMANENT and an HOURLY RATE for a
  * VACATAIRE, so the second one means nothing until it is multiplied by hours.
- * The API works those out from the published timetable, or from the register
- * of lessons where the school keeps one, and says which it used.
+ * The API works those out from the published timetable, corrected by whatever
+ * séances the school pointed (annulations subtract, remplacements add), and
+ * says which basis it used. `costXaf` is the gross plus employer charges —
+ * what the school actually spends, which is never what the teacher receives.
  */
 export interface Workload {
   from: string;
@@ -504,18 +506,28 @@ export interface Workload {
     /** Monthly gross, or the hourly rate — read `payBasis`. */
     rateXaf: number;
     plannedMinutes: number;
+    /** Heures pointées que la grille ne promettait pas (remplacement, rattrapage). */
+    extraMinutes: number;
+    /** Heures promises par la grille qu'une séance annulée a reprises. */
+    cancelledMinutes: number;
     taughtMinutes: number;
-    /** SESSIONS beats TIMETABLE; NONE means neither had anything to say. */
-    hoursBasis: "SESSIONS" | "TIMETABLE" | "NONE";
+    /** EXCEPTIONS = la grille corrigée par les séances pointées. */
+    hoursBasis: "SESSIONS" | "EXCEPTIONS" | "TIMETABLE" | "NONE";
     payBasis: "HOURLY" | "FIXED";
     payableMinutes: number;
+    /** Brut — ce que touche l'enseignant. */
     payXaf: number;
+    /** Brut + charges patronales — ce que ça coûte à l'école. */
+    costXaf: number;
     slots: number;
     /** Créneaux skipped because their classe's week is still a draft. */
     draftSlots: number;
   }[];
   /** What would make these figures wrong, in the API's own words. */
   notes: string[];
+  /** Employer charges as a fraction of gross — so the screen can name it. */
+  chargeRate: number;
+  hoursMode: "TIMETABLE" | "SESSIONS";
 }
 
 export interface ImportReport {

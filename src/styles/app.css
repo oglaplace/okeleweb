@@ -1619,6 +1619,46 @@ table.data td.c-text {
   cursor: pointer;
 }
 
+/* ---------- segmented control ----------
+   Two or three mutually exclusive ranges, where a <select> would hide the
+   options and radios would cost a legend. Used by Heures et paie (mois/année). */
+.seg {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.seg-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--t-small);
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.seg-btn:hover:not(:disabled):not(.on) {
+  color: var(--ink);
+}
+.seg-btn.on {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-xs);
+}
+.seg-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.seg-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
 /* ---------- loading ---------- */
 .spinner {
   width: 18px;
