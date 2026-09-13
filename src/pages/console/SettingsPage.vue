@@ -4,6 +4,7 @@ import * as api from "../../lib/api";
 import Alert from "../../components/ui/Alert.vue";
 import Icon from "../../components/ui/Icon.vue";
 import PhoneInput from "../../components/ui/PhoneInput.vue";
+import DialogShell from "../../components/ui/DialogShell.vue";
 import { useAuthStore } from "../../stores/auth";
 import { useBusyStore } from "../../stores/busy";
 import { useBanner } from "../../lib/banner";
@@ -34,10 +35,18 @@ const mayAdmin = computed(() => auth.isComplexAdmin);
 const me = ref({ fullName: "", email: "" });
 const savingMe = ref(false);
 
+/*
+ * Compared against what the account ACTUALLY holds, both sides.
+ *
+ * This read `email.trim() !== ""` — "dirty whenever the box has anything in
+ * it" — which was wrong in both directions: you could not clear an address,
+ * and because the box was never filled from the profile in the first place,
+ * saving a corrected name posted `email: null` and silently wiped one.
+ */
 const meDirty = computed(
   () =>
     me.value.fullName.trim() !== (auth.profile?.fullName ?? "") ||
-    me.value.email.trim() !== "",
+    me.value.email.trim() !== (auth.profile?.email ?? ""),
 );
 
 async function saveMe() {
@@ -52,7 +61,10 @@ async function saveMe() {
       }),
       { title: "Mise à jour du compte", detail: "Enregistrement de vos informations." },
     );
-    if (auth.profile) auth.profile.fullName = updated.fullName;
+    if (auth.profile) {
+      auth.profile.fullName = updated.fullName;
+      auth.profile.email = updated.email ?? null;
+    }
     me.value.email = updated.email ?? "";
     notice.value = "Compte mis à jour.";
   } catch (e) {
@@ -72,8 +84,23 @@ const mine = computed(() =>
   catalogue.value.filter((p) => auth.can(p.key)),
 );
 
+/*
+ * ON N'OFFRE QUE CE QU'ON DÉTIENT.
+ *
+ * The API refuses granting a permission the caller does not hold, so showing
+ * the full catalogue would be showing boxes that can only produce an error.
+ * A director sees everything because they hold everything; a chef comptable
+ * sees the finance rows and nothing else.
+ */
+const grantable = computed(() =>
+  catalogue.value.filter((p) => auth.can(p.key)),
+);
 const inGroup = (g: api.PermissionGroup) =>
-  catalogue.value.filter((p) => p.group === g);
+  grantable.value.filter((p) => p.group === g);
+/** Groups with nothing in them for this caller are not shown at all. */
+const visibleGroups = computed(() =>
+  groups.value.filter((g) => inGroup(g.id).length > 0),
+);
 
 /* ── l'équipe ────────────────────────────────────────────────────────────── */
 const members = ref<api.TeamMember[]>([]);
@@ -88,6 +115,8 @@ const editingMember = computed(() =>
 );
 
 function startEdit(m: api.TeamMember) {
+  // The API decides; this only stops the click reaching a refusal.
+  if (!m.manageable) return;
   editing.value = m.accountId;
   draft.value = new Set(m.permissions);
   draftRole.value = m.role === "Sans rôle" ? "" : m.role;
@@ -99,6 +128,19 @@ function toggle(key: string) {
   else next.add(key);
   draft.value = next;
 }
+
+/**
+ * Cocher TOUT revient à se donner un égal — et un égal ne se modifie plus.
+ *
+ * The consequence of the peer rule, said before the click rather than
+ * discovered afterwards: promote somebody to your own set and neither of you
+ * can touch the other again.
+ */
+const makesPeer = computed(() => {
+  const held = auth.profile?.permissions ?? [];
+  if (!held.length) return false;
+  return held.every((p) => draft.value.has(p)) && draft.value.size >= held.length;
+});
 
 /** Has anything actually changed? Saving an unchanged list is a wasted write. */
 const dirty = computed(() => {
@@ -144,7 +186,7 @@ async function toggleActive(m: api.TeamMember) {
 
 /* ── inviter ─────────────────────────────────────────────────────────────── */
 const inviting = ref(false);
-const invite = ref({ fullName: "", phone: "", role: "Personnel" });
+const invite = ref({ fullName: "", phone: "", email: "", role: "Personnel" });
 const invitePerms = ref<Set<string>>(new Set());
 
 const canInvite = computed(
@@ -159,6 +201,9 @@ async function sendInvite() {
       () => api.team.invite({
         fullName: invite.value.fullName.trim(),
         phone: invite.value.phone.trim(),
+        // Optional, and null rather than "" when left blank — an empty string
+        // is not an address and the column should say so.
+        email: invite.value.email.trim() || null,
         role: invite.value.role.trim() || "Personnel",
         permissions: [...invitePerms.value],
       }),
@@ -167,7 +212,7 @@ async function sendInvite() {
     notice.value =
       `${invite.value.fullName} peut maintenant se connecter avec ce numéro.`;
     inviting.value = false;
-    invite.value = { fullName: "", phone: "", role: "Personnel" };
+    invite.value = { fullName: "", phone: "", email: "", role: "Personnel" };
     invitePerms.value = new Set();
     await loadTeam();
   } catch (e) {
@@ -191,6 +236,7 @@ async function loadTeam() {
 
 onMounted(async () => {
   me.value.fullName = auth.profile?.fullName ?? "";
+  me.value.email = auth.profile?.email ?? "";
   try {
     const cat = await api.team.catalogue();
     catalogue.value = cat.permissions;
@@ -295,13 +341,19 @@ const when = (iso: string | null) =>
             <span class="hint">C'est avec ce numéro qu'il ou elle se connectera.</span>
           </div>
           <div class="field">
+            <label for="inv-mail">E-mail</label>
+            <input id="inv-mail" v-model="invite.email" type="email" autocomplete="off"
+                   placeholder="facultatif" />
+            <span class="hint">Pour les documents. La connexion reste par téléphone.</span>
+          </div>
+          <div class="field">
             <label for="inv-role">Fonction</label>
             <input id="inv-role" v-model="invite.role" autocomplete="off"
                    placeholder="Comptable, Censeur…" />
           </div>
         </div>
         <div class="perm-grid">
-          <div v-for="g in groups" :key="g.id" class="perm-group">
+          <div v-for="g in visibleGroups" :key="g.id" class="perm-group">
             <div class="perm-group-head">{{ g.label }}</div>
             <label v-for="p in inGroup(g.id)" :key="p.key" class="perm-row">
               <input type="checkbox" :checked="invitePerms.has(p.key)" @change="toggleInvite(p.key)" />
@@ -341,70 +393,93 @@ const when = (iso: string | null) =>
             </tr>
           </thead>
           <tbody>
-            <template v-for="m in members" :key="m.accountId">
-              <tr :class="{ 'is-muted': !m.active }">
-                <td class="c-name">
-                  <span class="cell-strong">{{ m.fullName }}</span>
-                  <span class="cell-sub">
-                    {{ m.phone }}<template v-if="!m.active"> · suspendu</template>
-                  </span>
-                </td>
-                <td class="c-text">{{ m.role }}</td>
-                <td class="c-text">
-                  <span v-if="!m.permissions.length" class="cell-sub">aucun</span>
-                  <span v-else>{{ m.permissions.length }} droit(s)</span>
-                  <!-- A scoped grant is honoured by the API but not edited
-                       here; saying so beats a disabled button with no reason. -->
-                  <span v-if="m.scoped" class="cell-sub">limité à une unité</span>
-                </td>
-                <td class="c-text">{{ when(m.lastSeenAt) }}</td>
-                <td class="c-text">
-                  <div class="row-actions">
-                    <button class="btn sm" type="button" :disabled="m.scoped"
-                            @click="editing === m.accountId ? (editing = null) : startEdit(m)">
-                      {{ editing === m.accountId ? "Fermer" : "Modifier" }}
-                    </button>
-                    <button class="btn sm ghost" type="button" @click="toggleActive(m)">
-                      {{ m.active ? "Suspendre" : "Réactiver" }}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-
-              <!-- la matrice, ouverte sous la ligne -->
-              <tr v-if="editing === m.accountId">
-                <td colspan="5" class="perm-cell">
-                  <div class="field" style="max-width: 280px">
-                    <label :for="`role-${m.accountId}`">Fonction</label>
-                    <input :id="`role-${m.accountId}`" v-model="draftRole"
-                           placeholder="Comptable, Censeur…" />
-                  </div>
-                  <div class="perm-grid">
-                    <div v-for="g in groups" :key="g.id" class="perm-group">
-                      <div class="perm-group-head">{{ g.label }}</div>
-                      <label v-for="p in inGroup(g.id)" :key="p.key" class="perm-row">
-                        <input type="checkbox" :checked="draft.has(p.key)" @change="toggle(p.key)" />
-                        <span>
-                          <strong :class="{ 'is-danger': p.danger }">{{ p.label }}</strong>
-                          <span class="perm-desc">{{ p.description }}</span>
-                        </span>
-                      </label>
-                    </div>
-                  </div>
-                  <div class="row-actions">
-                    <button class="btn primary" type="button" :disabled="!dirty || saving"
-                            @click="saveGrants">
-                      Enregistrer les accès
-                    </button>
-                    <button class="btn ghost" type="button" @click="editing = null">Annuler</button>
-                  </div>
-                </td>
-              </tr>
-            </template>
+            <tr v-for="m in members" :key="m.accountId" :class="{ 'is-muted': !m.active }">
+              <td class="c-name">
+                <span class="cell-strong">{{ m.fullName }}</span>
+                <span class="cell-sub">
+                  {{ m.phone }}<template v-if="m.email"> · {{ m.email }}</template>
+                  <template v-if="!m.active"> · suspendu</template>
+                </span>
+              </td>
+              <td class="c-text">{{ m.role }}</td>
+              <td class="c-text">
+                <span v-if="!m.permissions.length" class="cell-sub">aucun</span>
+                <span v-else>{{ m.permissions.length }} droit(s)</span>
+                <!-- Why this row cannot be touched, in the API's own words.
+                     A disabled button with no reason is the thing that makes
+                     a screen feel broken. -->
+                <span v-if="m.blockedReason" class="cell-sub">{{ m.blockedReason }}</span>
+              </td>
+              <td class="c-text">{{ when(m.lastSeenAt) }}</td>
+              <td class="c-text">
+                <div class="row-actions">
+                  <button class="btn sm" type="button"
+                          :disabled="!m.manageable" :title="m.blockedReason ?? undefined"
+                          @click="startEdit(m)">
+                    Modifier
+                  </button>
+                  <button class="btn sm ghost" type="button"
+                          :disabled="!m.manageable" :title="m.blockedReason ?? undefined"
+                          @click="toggleActive(m)">
+                    {{ m.active ? "Suspendre" : "Réactiver" }}
+                  </button>
+                </div>
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>
     </div>
+
+    <!-- ── LA MATRICE, DANS UN DIALOGUE ───────────────────────────────────
+         Elle vivait dans une cellule de tableau, et c'est ce qui était cassé :
+         `.table-wrap` scrolle horizontalement et `table.data` impose 560px de
+         large, donc une grille de cinq groupes à 260px minimum poussait le
+         tableau bien au-delà de l'écran. Il fallait scroller latéralement pour
+         atteindre « Enregistrer », et les cases de droite étaient hors champ.
+         DialogShell est la surface que le reste de la console utilise déjà
+         pour exactement ça. -->
+    <DialogShell
+      v-if="editingMember"
+      :title="`Accès de ${editingMember.fullName}`"
+      :subtitle="editingMember.role"
+      :detail="editingMember.phone"
+      icon="settings"
+      wide
+      @close="editing = null"
+    >
+      <div class="field" style="max-width: 320px">
+        <label for="edit-role">Fonction</label>
+        <input id="edit-role" v-model="draftRole" placeholder="Comptable, Censeur…" />
+        <span class="hint">Le libellé affiché. Ce sont les cases ci-dessous qui décident.</span>
+      </div>
+
+      <div class="perm-grid">
+        <div v-for="g in visibleGroups" :key="g.id" class="perm-group">
+          <div class="perm-group-head">{{ g.label }}</div>
+          <label v-for="p in inGroup(g.id)" :key="p.key" class="perm-row">
+            <input type="checkbox" :checked="draft.has(p.key)" @change="toggle(p.key)" />
+            <span>
+              <strong :class="{ 'is-danger': p.danger }">{{ p.label }}</strong>
+              <span class="perm-desc">{{ p.description }}</span>
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <Alert v-if="makesPeer" kind="warn">
+        Avec toutes ces cases, cette personne aura exactement vos droits — vous
+        ne pourrez plus modifier son accès, ni elle le vôtre.
+      </Alert>
+
+      <div class="row-actions">
+        <button class="btn primary" type="button" :disabled="!dirty || saving"
+                @click="saveGrants">
+          Enregistrer les accès
+        </button>
+        <button class="btn ghost" type="button" @click="editing = null">Annuler</button>
+      </div>
+    </DialogShell>
   </div>
 </template>
 
@@ -429,15 +504,12 @@ const when = (iso: string | null) =>
   margin-top: 2px;
 }
 
-.perm-cell {
-  background: var(--surface-2);
-  padding: var(--s4);
-}
+/* In a dialog now, not a table cell — so it may use the width it needs. */
 .perm-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: var(--s4);
-  margin: var(--s3) 0;
+  margin: var(--s4) 0;
 }
 .perm-group-head {
   font-size: 10px;
@@ -454,7 +526,11 @@ const when = (iso: string | null) =>
   padding: 5px 0;
   cursor: pointer;
 }
+/* A checkbox keeps its intrinsic size — the same defence `.catalogue-item`
+   makes, for the same reason. */
 .perm-row input {
+  width: auto;
+  height: auto;
   margin-top: 3px;
   flex: none;
 }

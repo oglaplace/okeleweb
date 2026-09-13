@@ -12,6 +12,15 @@ export interface Profile {
   fullName: string;
   phone: string;
   /**
+   * Carried through because the settings screen edits it.
+   *
+   * It was dropped here while `/platform/me` was returning it all along, and
+   * the consequence was not a missing field on a screen — it was DATA LOSS:
+   * the form opened with an empty box, and saving a corrected name sent
+   * `email: null` and wiped an address nobody had touched.
+   */
+  email: string | null;
+  /**
    * True for an operator of the product itself, who belongs to no
    * établissement. They get the platform console; everyone else gets their own
    * school's.
@@ -146,6 +155,7 @@ export const useAuthStore = defineStore("auth", {
         accountId: identity.account.id,
         fullName: identity.account.fullName,
         phone: identity.account.phone,
+        email: identity.account.email ?? null,
         isPlatformAdmin: identity.account.isPlatformAdmin,
         personId: identity.account.personId ?? null,
         permissions: identity.account.permissions,

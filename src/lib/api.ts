@@ -3008,6 +3008,17 @@ export interface TeamMember {
   permissions: string[];
   /** Grant pinned to one branch of the tree — this screen will not edit it. */
   scoped: boolean;
+  /**
+   * Where this person stands relative to the signed-in user.
+   *
+   * Computed by the API, never re-derived here: two implementations of the
+   * same rule drift, and when they do the screen offers a button the API then
+   * refuses — which reads as a broken product rather than as a rule.
+   */
+  standing: "BELOW" | "PEER" | "ABOVE" | "SIDEWAYS";
+  manageable: boolean;
+  /** Why not, in words meant to be shown verbatim. Null when they may. */
+  blockedReason: string | null;
 }
 
 export const team = {
