@@ -701,11 +701,14 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
           </span>
         </button>
         <div v-if="payOpen" class="pay-scope">
-          <!-- Same endpoint, wider range. See `scope` in the script. -->
-          <div class="seg" role="group" aria-label="Période">
-            <button type="button" class="seg-btn" :class="{ on: scope === 'MONTH' }"
+          <!-- Same endpoint, wider range. See `scope` in the script.
+               `viewswitch` is the console's one segmented control — the tarifs
+               and impayés screens already use it, and a second one built here
+               is exactly the drift its own comment warns about. -->
+          <div class="viewswitch" role="group" aria-label="Période">
+            <button type="button" class="viewswitch-btn" :class="{ 'is-on': scope === 'MONTH' }"
                     @click="scope = 'MONTH'">Mois</button>
-            <button type="button" class="seg-btn" :class="{ on: scope === 'YEAR' }"
+            <button type="button" class="viewswitch-btn" :class="{ 'is-on': scope === 'YEAR' }"
                     :disabled="!year" @click="scope = 'YEAR'"
                     :title="year ? `Année ${year.label}` : 'Aucune année scolaire en cours'">
               Année

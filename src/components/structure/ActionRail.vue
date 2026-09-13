@@ -2,8 +2,12 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 import * as api from "../../lib/api";
-import { ACTIONS, GROUPS, ROUTE_NEEDS_UNIT, type ActionSpec } from "../../lib/actions";
+import { ACTIONS, GROUPS, ROUTE_NEEDS_UNIT, allowed, type ActionSpec } from "../../lib/actions";
+import { useAuthStore } from "../../stores/auth";
 import Icon from "../ui/Icon.vue";
+
+// Segmentation: the rail must not offer what the API will refuse.
+const can = useAuthStore().canAny;
 
 /**
  * The whole catalogue, grouped — the Cloud-Console shape.
@@ -65,10 +69,18 @@ function blockedReason(a: ActionSpec): string | null {
   return null;
 }
 
+/*
+ * A GROUP WITH NOTHING IN IT IS NOT A GROUP.
+ *
+ * Once the rail filters by permission, a comptable's "Notes & bulletins" is an
+ * empty accordion: it opens onto nothing and says nothing about why. Dropping
+ * the whole heading is the honest answer — the segmentation should read as "a
+ * console shaped for my job", not as "the app with holes cut in it".
+ */
 const groups = computed(() =>
   GROUPS.map((g) => ({
     ...g,
-    actions: ACTIONS.filter((a) => a.group === g.id).map((a) => ({
+    actions: ACTIONS.filter((a) => a.group === g.id && allowed(a, can)).map((a) => ({
       spec: a,
       blocked: blockedReason(a),
       // Nothing is selected in the rail, so a screen that IS about one unit
@@ -79,7 +91,7 @@ const groups = computed(() =>
           ? { name: a.route }
           : { name: "action", params: { id: a.id } },
     })),
-  })),
+  })).filter((g) => g.actions.length > 0),
 );
 
 function toggle(id: string) {
@@ -124,5 +136,13 @@ function toggle(id: string) {
         </component>
       </div>
     </div>
+
+    <!-- MON COMPTE — hors des groupes, en bas, comme partout ailleurs.
+         Never filtered: everyone may change their own name and read what
+         their own access means. The team half hides inside the page. -->
+    <RouterLink class="rail-foot" :to="{ name: 'settings' }" title="Mon compte et les accès">
+      <Icon name="settings" :size="15" class="rail-head-icon" />
+      <span class="rail-head-label">Paramètres</span>
+    </RouterLink>
   </div>
 </template>

@@ -2,7 +2,8 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import * as api from "../../lib/api";
-import { byId } from "../../lib/actions";
+import { allowed, byId } from "../../lib/actions";
+import { useAuthStore } from "../../stores/auth";
 import Icon from "../ui/Icon.vue";
 
 /**
@@ -44,6 +45,23 @@ function actionTo(actionId: string) {
   const spec = byId(actionId);
   if (!spec) return { name: "dashboard" };
   return spec.route ? { name: spec.route } : { name: "action", params: { id: actionId } };
+}
+
+/**
+ * "Corriger" only if you actually can.
+ *
+ * Readiness is complex-wide — the same findings reach everybody, because a
+ * school missing its coefficients is missing them for all of us. But the fix
+ * is not everybody's: sending a comptable to "définir un coefficient" is a
+ * link to a screen the rail deliberately hid from them, and the door they
+ * arrive at is locked. The finding still shows, so they know why the bulletins
+ * are stuck and whom to tell; only the button goes.
+ */
+const auth = useAuthStore();
+function mayFix(actionId: string | null | undefined): boolean {
+  if (!actionId) return false;
+  const spec = byId(actionId);
+  return Boolean(spec && allowed(spec, auth.canAny));
 }
 
 const STATUS_FR: Record<api.Readiness["status"], string> = {
@@ -113,7 +131,7 @@ const STATUS_FR: Record<api.Readiness["status"], string> = {
           </div>
           <p class="inbox-item-detail">{{ f.detail }}</p>
           <RouterLink
-            v-if="f.action"
+            v-if="f.action && mayFix(f.action)"
             class="inbox-item-go"
             :to="actionTo(f.action)"
             @click="open = false"

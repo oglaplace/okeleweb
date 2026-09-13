@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import * as api from "../../lib/api";
 import Alert from "../../components/ui/Alert.vue";
 import { useBanner } from "../../lib/banner";
+import SearchField from "../../components/ui/SearchField.vue";
 
 /**
  * MATIÈRES — the catalogue and its programming, in one screen.
@@ -231,7 +232,7 @@ async function saveName() {
         </div>
 
         <div class="card-body" style="padding-bottom: 0">
-          <input v-model="query" class="unpaid-search" placeholder="Filtrer…" aria-label="Filtrer" />
+          <SearchField v-model="query" placeholder="Filtrer les matières…" label="Filtrer" />
         </div>
 
         <ul class="subjects-items">

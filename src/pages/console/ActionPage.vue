@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { byId, ROUTE_NEEDS_UNIT, type ActionSpec } from "../../lib/actions";
+import { allowed, byId, ROUTE_NEEDS_UNIT, type ActionSpec } from "../../lib/actions";
+import { useAuthStore } from "../../stores/auth";
 import { useOrgStore } from "../../stores/org";
 import { KIND_FR } from "../../components/structure/kinds";
 import ActionForm from "../../components/actions/ActionForm.vue";
@@ -28,7 +29,18 @@ const route = useRoute();
 const router = useRouter();
 const org = useOrgStore();
 
-const spec = computed<ActionSpec | undefined>(() => byId(route.params.id as string));
+/*
+ * An action the operator may not perform is treated as one that does not
+ * exist — `undefined`, the same as a typo in the URL, and the page already
+ * renders "action inconnue" for that. Showing "vous n'avez pas le droit"
+ * instead would be a second, near-identical dead end to design and maintain,
+ * and it tells someone who pasted a colleague's link nothing they can act on.
+ */
+const auth = useAuthStore();
+const spec = computed<ActionSpec | undefined>(() => {
+  const found = byId(route.params.id as string);
+  return found && allowed(found, auth.canAny) ? found : undefined;
+});
 
 const scopeId = computed(() => (typeof route.query.scope === "string" ? route.query.scope : null));
 const scopeUnit = computed(() => org.byId(scopeId.value));

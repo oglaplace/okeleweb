@@ -2973,3 +2973,82 @@ export const academics = {
         `&academicYearId=${encodeURIComponent(academicYearId)}`,
     ),
 };
+
+// ─── team / accès ────────────────────────────────────────────────────────────
+
+/**
+ * QUI PEUT QUOI.
+ *
+ * The permission catalogue is fetched rather than hardcoded here. The keys the
+ * routes guard on live in the API's `permissions.ts`, and a second copy in the
+ * frontend is a copy that drifts — a permission added there and forgotten here
+ * would be one no director could ever grant, invisible and indistinguishable
+ * from a broken guard.
+ */
+export type PermissionGroup =
+  | "structure" | "scolarite" | "evaluation" | "finances" | "administration";
+
+export interface PermissionInfo {
+  key: string;
+  group: PermissionGroup;
+  label: string;
+  description: string;
+  /** Lets the holder move money or change authority itself. Shown as such. */
+  danger?: boolean;
+}
+
+export interface TeamMember {
+  accountId: string;
+  fullName: string;
+  phone: string;
+  email: string | null;
+  active: boolean;
+  lastSeenAt: string | null;
+  role: string;
+  permissions: string[];
+  /** Grant pinned to one branch of the tree — this screen will not edit it. */
+  scoped: boolean;
+}
+
+export const team = {
+  /** Behind plain auth: it describes the product, not anyone's data. */
+  catalogue: () =>
+    request<{
+      permissions: PermissionInfo[];
+      groups: { id: PermissionGroup; label: string }[];
+    }>("/team/catalogue"),
+
+  list: () => request<{ members: TeamMember[] }>("/team"),
+
+  /** The whole tick-list, not a delta — the checkboxes ARE the state. */
+  setPermissions: (accountId: string, permissions: string[], role?: string) =>
+    request<{ accountId: string; role: string; permissions: string[] }>(
+      `/team/${encodeURIComponent(accountId)}/permissions`,
+      { method: "PATCH", body: JSON.stringify({ permissions, ...(role ? { role } : {}) }) },
+    ),
+
+  setActive: (accountId: string, active: boolean) =>
+    request<{ accountId: string; active: boolean }>(
+      `/team/${encodeURIComponent(accountId)}/active`,
+      { method: "PATCH", body: JSON.stringify({ active }) },
+    ),
+
+  invite: (body: {
+    phone: string;
+    fullName: string;
+    email?: string | null;
+    role?: string;
+    permissions: string[];
+  }) =>
+    request<{ accountId: string; fullName: string; phone: string }>("/team", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  /** Your own name and e-mail. Never your own access. */
+  updateSelf: (body: { fullName?: string; email?: string | null }) =>
+    request<{ id: string; fullName: string; phone: string; email: string | null }>(
+      "/team/me",
+      { method: "PATCH", body: JSON.stringify(body) },
+    ),
+};

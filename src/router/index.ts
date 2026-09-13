@@ -57,14 +57,14 @@ const router = createRouter({
       children: [
         { path: "", name: "dashboard", component: () => import("../pages/console/DashboardPage.vue") },
         { path: "structure", name: "structure", component: () => import("../pages/console/StructurePage.vue") },
-        { path: "inscription", name: "enroll", component: () => import("../pages/console/EnrollPage.vue") },
-        { path: "personnel", name: "staff", component: () => import("../pages/console/StaffPage.vue") },
-        { path: "import", name: "import", component: () => import("../pages/console/ImportPage.vue") },
+        { path: "inscription", name: "enroll", meta: { permission: "enrollment.write" }, component: () => import("../pages/console/EnrollPage.vue") },
+        { path: "personnel", name: "staff", meta: { permission: ["structure.write", "finance.read"] }, component: () => import("../pages/console/StaffPage.vue") },
+        { path: "import", name: "import", meta: { permission: ["enrollment.write", "structure.write"] }, component: () => import("../pages/console/ImportPage.vue") },
         /**
          * The end of one year and the start of the next — the two acts a school
          * performs once a year and had no screen for at all.
          */
-        { path: "rentree", name: "rentree", component: () => import("../pages/console/RentreePage.vue") },
+        { path: "rentree", name: "rentree", meta: { permission: "enrollment.write" }, component: () => import("../pages/console/RentreePage.vue") },
         /**
          * VOIR, CRÉER, ACTIVER, VERROUILLER — one screen.
          *
@@ -72,9 +72,9 @@ const router = createRouter({
          * showing any, and adds the act neither had: declaring which période
          * the school is actually in.
          */
-        { path: "calendrier", name: "calendar", component: () => import("../pages/console/CalendarPage.vue") },
+        { path: "calendrier", name: "calendar", meta: { permission: "academics.write" }, component: () => import("../pages/console/CalendarPage.vue") },
         /** The catalogue AND its programming — see SubjectsPage. */
-        { path: "matieres", name: "subjects", component: () => import("../pages/console/SubjectsPage.vue") },
+        { path: "matieres", name: "subjects", meta: { permission: "academics.write" }, component: () => import("../pages/console/SubjectsPage.vue") },
         /**
          * One route for every declarative action — see lib/actions.ts. Actions
          * with a screen of their own keep their route above; this serves the
@@ -84,8 +84,8 @@ const router = createRouter({
         /** One unit: what it is, what it holds, and everything doable to it. */
         { path: "unit/:id", name: "unit", component: () => import("../pages/console/NodePage.vue") },
         { path: "classes/:id", name: "classe", component: () => import("../pages/console/ClassePage.vue") },
-        { path: "classes/:id/notes", name: "marks", component: () => import("../pages/console/MarkEntryPage.vue") },
-        { path: "classes/:id/bulletins", name: "bulletins", component: () => import("../pages/console/BulletinsPage.vue") },
+        { path: "classes/:id/notes", name: "marks", meta: { permission: ["grading.write", "grading.read"] }, component: () => import("../pages/console/MarkEntryPage.vue") },
+        { path: "classes/:id/bulletins", name: "bulletins", meta: { permission: ["grading.issue", "grading.read"] }, component: () => import("../pages/console/BulletinsPage.vue") },
         /**
          * ONE PUPIL'S BULLETIN — reached by clicking their row in the sheet.
          *
@@ -93,7 +93,7 @@ const router = createRouter({
          * sent, and a parent who asks for "the link to my child's bulletin"
          * should get one.
          */
-        { path: "eleve/:id/bulletin", name: "bulletin", component: () => import("../pages/console/BulletinPage.vue") },
+        { path: "eleve/:id/bulletin", name: "bulletin", meta: { permission: ["grading.issue", "grading.read"] }, component: () => import("../pages/console/BulletinPage.vue") },
         /**
          * ONE PUPIL'S DOSSIER — the whole folder, not one période of it.
          *
@@ -111,9 +111,9 @@ const router = createRouter({
          * reachable in one click from the class finance sheet and printable on
          * its own.
          */
-        { path: "eleve/:id/finances", name: "student-finance", component: () => import("../pages/console/StudentFinancePage.vue") },
+        { path: "eleve/:id/finances", name: "student-finance", meta: { permission: ["finance.read", "finance.write"] }, component: () => import("../pages/console/StudentFinancePage.vue") },
         /** Who owes what, across the whole scope the operator can see. */
-        { path: "impayes", name: "unpaid", component: () => import("../pages/console/UnpaidPage.vue") },
+        { path: "impayes", name: "unpaid", meta: { permission: ["finance.read", "finance.write"] }, component: () => import("../pages/console/UnpaidPage.vue") },
         /**
          * THE GUICHET — take money from whoever is at the counter.
          *
@@ -122,7 +122,7 @@ const router = createRouter({
          * owes nothing and is on no debtor list, and they are exactly who this
          * screen exists for.
          */
-        { path: "encaisser", name: "collect", component: () => import("../pages/console/CollectPage.vue") },
+        { path: "encaisser", name: "collect", meta: { permission: "finance.write" }, component: () => import("../pages/console/CollectPage.vue") },
         /**
          * THE PRICE LIST, as a grid rather than a form.
          *
@@ -130,7 +130,7 @@ const router = createRouter({
          * against itself — the same job as the mark sheet and the timetable,
          * and the same shape.
          */
-        { path: "tarifs", name: "tariffs", component: () => import("../pages/console/TariffsPage.vue") },
+        { path: "tarifs", name: "tariffs", meta: { permission: ["finance.read", "finance.write"] }, component: () => import("../pages/console/TariffsPage.vue") },
         /**
          * THE PRINTED GRILLE — its own address.
          *
@@ -138,7 +138,16 @@ const router = createRouter({
          * all of those want a URL. As a modal it had none, so it could not be
          * reloaded or sent. The scope travels in the query for the same reason.
          */
-        { path: "tarifs/imprimer", name: "tariffs-print", component: () => import("../pages/console/TariffPrintPage.vue") },
+        /**
+         * MON COMPTE, ET QUI PEUT QUOI.
+         *
+         * Deliberately ungated: everyone may open their own settings and read
+         * what their own ticks mean. The team half of the screen is what hides
+         * behind `team.admin`, inside the page — not here, because a director
+         * who lost that permission must still be able to change their own name.
+         */
+        { path: "parametres", name: "settings", component: () => import("../pages/console/SettingsPage.vue") },
+        { path: "tarifs/imprimer", name: "tariffs-print", meta: { permission: ["finance.read", "finance.write"] }, component: () => import("../pages/console/TariffPrintPage.vue") },
       ],
     },
 
@@ -219,6 +228,22 @@ router.beforeEach(async (to) => {
   if (to.name === "landing") return home;
   if (to.meta.requiresPlatform && !auth.isPlatformAdmin) return home;
   if (to.meta.requiresComplex && !auth.hasComplex) return home;
+
+  /*
+   * THE DEEP LINK IS THE HOLE IN THE RAIL.
+   *
+   * Hiding an action from the rail hides the button, not the address. A
+   * bookmark, a link pasted into WhatsApp by a colleague, or the browser's own
+   * history reopens /console/encaisser for someone who may not encaisser — and
+   * the screen mounts, fires its requests, and fills with error banners
+   * instead of saying no once.
+   *
+   * `meta.permission` is an array where the API's guard is an OR, mirroring
+   * `requirePermission('a','b')` exactly. The API remains the authority; this
+   * only decides which screen the operator is shown.
+   */
+  const needed = to.meta.permission as string | string[] | undefined;
+  if (needed && !auth.canAny(needed)) return home;
 
   return true;
 });

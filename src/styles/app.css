@@ -1619,46 +1619,6 @@ table.data td.c-text {
   cursor: pointer;
 }
 
-/* ---------- segmented control ----------
-   Two or three mutually exclusive ranges, where a <select> would hide the
-   options and radios would cost a legend. Used by Heures et paie (mois/année). */
-.seg {
-  display: inline-flex;
-  padding: 2px;
-  gap: 2px;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
-.seg-btn {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  color: var(--ink-2);
-  font: inherit;
-  font-size: var(--t-small);
-  padding: 4px 12px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.seg-btn:hover:not(:disabled):not(.on) {
-  color: var(--ink);
-}
-.seg-btn.on {
-  background: var(--surface);
-  color: var(--ink);
-  box-shadow: var(--shadow-xs);
-}
-.seg-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.seg-btn:focus-visible {
-  outline: none;
-  box-shadow: var(--ring);
-}
-
 /* ---------- loading ---------- */
 .spinner {
   width: 18px;
@@ -1887,6 +1847,41 @@ table.data td.c-text {
 }
 .rail-head-twist {
   flex: none;
+}
+
+/* Mon compte — set off from the groups by a rule, not by a heading: it is not
+   a domain of the school, it is the operator's own. */
+.rail-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px var(--s2);
+  margin-top: var(--s2);
+  border-top: 1px solid var(--line-soft);
+  padding-top: var(--s3);
+  border-radius: var(--radius-sm);
+  color: var(--ink-3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.rail-foot:hover {
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+.rail-foot.router-link-active {
+  color: var(--primary);
+}
+.rail-foot.router-link-active .rail-head-icon {
+  color: var(--primary);
+}
+.rail.is-collapsed .rail-foot {
+  justify-content: center;
+  padding: 9px 0;
+  padding-top: var(--s3);
 }
 
 /* ── collapsed: group icons only ── */
@@ -5360,11 +5355,6 @@ table.data td.is-muted {
   align-items: center;
   gap: var(--s3);
   flex-wrap: wrap;
-}
-.unpaid-search {
-  flex: 1;
-  min-width: 180px;
-  max-width: 320px;
 }
 .unpaid-toggle {
   display: flex;

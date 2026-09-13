@@ -45,6 +45,27 @@ export const useAuthStore = defineStore("auth", {
       (s) =>
       (permission: string): boolean =>
         s.profile?.permissions.includes(permission) ?? false,
+    /**
+     * ANY of them, mirroring `requirePermission('a','b')` on the API — which is
+     * an OR, not an AND. A screen that reads with `finance.read` OR
+     * `finance.write` must open for the holder of either; requiring both would
+     * hide the encaissement screen from the person who does the encaissement.
+     *
+     * Undefined or empty means ungated: a read-only view with no key named is
+     * open to anyone signed in, and the guard stays on the API either way.
+     */
+    canAny() {
+      return (permission?: string | string[]): boolean => {
+        if (!permission) return true;
+        const held = this.profile?.permissions ?? [];
+        const wanted = Array.isArray(permission) ? permission : [permission];
+        return wanted.length === 0 || wanted.some((p) => held.includes(p));
+      };
+    },
+    /** Who may hand out access. The gate on the whole team screen. */
+    isComplexAdmin(): boolean {
+      return this.profile?.permissions.includes("team.admin") ?? false;
+    },
     /** Initials for the avatar, from the name the account was registered under. */
     initials: (s) =>
       (s.profile?.fullName ?? "")

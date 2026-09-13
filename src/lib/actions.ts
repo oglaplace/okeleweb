@@ -120,6 +120,25 @@ export interface ActionSpec {
   /** Declared but not yet wired; the reason is shown in place of the action. */
   planned?: string;
   /**
+   * The permission this action needs. Absent = anyone signed in may see it.
+   *
+   * THE SEGMENTATION HANGS OFF THIS FIELD. The API has guarded its routes from
+   * the start — a hundred-odd of them each name a permission — but the console
+   * showed every action to everybody and let the guard refuse afterwards. A
+   * comptable saw "Conseil de classe", chose it, filled it in, and was told no
+   * at submit. An action nobody may perform is not an action; it is a trap, and
+   * the rail is where it has to be removed.
+   *
+   * Declared here rather than checked in each screen because ACTIONS is already
+   * the registry the rail, the search and the group pages all read. One field,
+   * and every one of them segments at once.
+   *
+   * An ARRAY means any-of, mirroring `requirePermission('a','b')` on the API,
+   * which is an OR. Getting that backwards would hide screens from the people
+   * who may use them — the failure that looks like a broken install.
+   */
+  permission?: string | string[];
+  /**
    * Which face of the destination to open on.
    *
    * A node page is several sheets of one workbook, so "emploi du temps" is not
@@ -152,6 +171,7 @@ export const ACTIONS: ActionSpec[] = [
      * both cases coming back costs what the grille says it costs.
      */
     id: "rentree",
+    permission: 'enrollment.write',
     label: "Réinscription",
     group: "scolarite",
     icon: "calendar",
@@ -162,6 +182,7 @@ export const ACTIONS: ActionSpec[] = [
   },
   {
     id: "create-year",
+    permission: 'academics.write',
     label: "Nouvelle année scolaire",
     group: "structure",
     icon: "calendar",
@@ -192,6 +213,7 @@ export const ACTIONS: ActionSpec[] = [
   },
   {
     id: "payment-policy",
+    permission: 'finance.write',
     label: "Modalité de paiement",
     group: "finances",
     icon: "wallet",
@@ -248,6 +270,7 @@ export const ACTIONS: ActionSpec[] = [
      * période it is actually in.
      */
     id: "calendar",
+    permission: 'academics.write',
     label: "Calendrier et périodes",
     group: "structure",
     icon: "calendar",
@@ -270,6 +293,7 @@ export const ACTIONS: ActionSpec[] = [
      * change are not a year anybody can close.
      */
     id: "close-year",
+    permission: 'academics.write',
     label: "Clôturer l'année scolaire",
     group: "structure",
     icon: "lock",
@@ -286,6 +310,7 @@ export const ACTIONS: ActionSpec[] = [
   // ── scolarité ─────────────────────────────────────────────────────────────
   {
     id: "enroll",
+    permission: 'enrollment.write',
     label: "Inscrire un élève",
     group: "scolarite",
     icon: "userPlus",
@@ -299,6 +324,7 @@ export const ACTIONS: ActionSpec[] = [
   },
   {
     id: "import-students",
+    permission: 'enrollment.write',
     label: "Importer des élèves",
     group: "scolarite",
     icon: "upload",
@@ -319,6 +345,7 @@ export const ACTIONS: ActionSpec[] = [
   // ── personnel ─────────────────────────────────────────────────────────────
   {
     id: "add-staff",
+    permission: 'structure.write',
     label: "Ajouter un personnel",
     group: "personnel",
     icon: "userPlus",
@@ -328,6 +355,7 @@ export const ACTIONS: ActionSpec[] = [
   },
   {
     id: "import-staff",
+    permission: 'structure.write',
     label: "Importer du personnel",
     group: "personnel",
     icon: "upload",
@@ -349,6 +377,7 @@ export const ACTIONS: ActionSpec[] = [
      * be repeated niveau by niveau with no view of what was already done.
      */
     id: "subjects",
+    permission: 'academics.write',
     label: "Matières et programmation",
     group: "programme",
     icon: "book",
@@ -358,6 +387,7 @@ export const ACTIONS: ActionSpec[] = [
   },
   {
     id: "set-coefficient",
+    permission: 'academics.write',
     label: "Définir un coefficient",
     group: "programme",
     icon: "settings",
@@ -380,6 +410,7 @@ export const ACTIONS: ActionSpec[] = [
   },
   {
     id: "create-assessment-type",
+    permission: 'academics.write',
     label: "Type d'évaluation",
     group: "programme",
     icon: "fileText",
@@ -409,6 +440,7 @@ export const ACTIONS: ActionSpec[] = [
   },
   {
     id: "grading-system",
+    permission: 'academics.write',
     label: "Système de notation",
     group: "evaluation",
     icon: "check",
@@ -553,6 +585,7 @@ export const ACTIONS: ActionSpec[] = [
   },
   {
     id: "timetable",
+    permission: 'structure.write',
     label: "Emploi du temps",
     group: "programme",
     icon: "calendar",
@@ -568,6 +601,7 @@ export const ACTIONS: ActionSpec[] = [
   // ── notes & bulletins ─────────────────────────────────────────────────────
   {
     id: "create-assessment",
+    permission: 'grading.write',
     label: "Créer un devoir",
     group: "evaluation",
     icon: "fileText",
@@ -594,6 +628,7 @@ export const ACTIONS: ActionSpec[] = [
   },
   {
     id: "enter-marks",
+    permission: 'grading.write',
     label: "Saisir les notes",
     group: "evaluation",
     icon: "clipboard",
@@ -612,6 +647,7 @@ export const ACTIONS: ActionSpec[] = [
      * council, so it lives on the council's screen.
      */
     id: "council",
+    permission: 'grading.issue',
     label: "Conseil de classe",
     group: "evaluation",
     icon: "check",
@@ -621,6 +657,7 @@ export const ACTIONS: ActionSpec[] = [
   },
   {
     id: "print-bulletins",
+    permission: ["grading.read", "grading.issue"],
     label: "Imprimer les bulletins",
     group: "evaluation",
     icon: "fileText",
@@ -630,18 +667,41 @@ export const ACTIONS: ActionSpec[] = [
   },
 
   // ── finances ──────────────────────────────────────────────────────────────
-  {
-    id: "seed-ledger",
-    label: "Initialiser le plan comptable",
-    group: "finances",
-    icon: "coins",
-    summary: "Le plan SYSCOHADA, une fois par établissement.",
-    scope: null,
-    fields: [],
-    submit: () => api.finance.seedLedger(),
-  },
+  /*
+   * LE PLAN COMPTABLE — retiré du rail, pas supprimé.
+   *
+   * SYSCOHADA is the accounting standard the OHADA treaty makes mandatory, and
+   * "initialiser le plan comptable" creates the chart of accounts it prescribes
+   * — 411 clients, 70 produits, 521 banque, and the rest. It is real and it is
+   * needed the day a school keeps double-entry books.
+   *
+   * It is off the rail because it does not belong next to "encaisser". It is a
+   * one-time, irreversible-feeling act, offered with no explanation, whose
+   * effect is invisible on every screen the school actually uses — nothing in
+   * the product posts to those accounts yet. An operator who clicks it learns
+   * nothing and an operator who avoids it loses nothing, which is the
+   * definition of an option that should not be in front of them.
+   *
+   * `api.finance.seedLedger()` is untouched and the endpoint still stands.
+   * Bring this back when something reads the ledger — a balance, a journal, a
+   * compte de résultat — so the action has a consequence a director can see.
+   *
+   * ponytail: hidden, not deleted. Restore by uncommenting when the P&L exists.
+   */
+  // {
+  //   id: "seed-ledger",
+  //   label: "Initialiser le plan comptable",
+  //   group: "finances",
+  //   icon: "coins",
+  //   summary: "Le plan SYSCOHADA, une fois par établissement.",
+  //   scope: null,
+  //   fields: [],
+  //   permission: "finance.admin",
+  //   submit: () => api.finance.seedLedger(),
+  // },
   {
     id: "fee-schedule",
+    permission: 'finance.write',
     label: "Grille tarifaire",
     group: "finances",
     icon: "wallet",
@@ -663,6 +723,7 @@ export const ACTIONS: ActionSpec[] = [
   },
   {
     id: "outstanding",
+    permission: ["finance.read", "finance.write"],
     label: "Impayés",
     group: "finances",
     icon: "coins",
@@ -672,6 +733,7 @@ export const ACTIONS: ActionSpec[] = [
   },
   {
     id: "record-payment",
+    permission: 'finance.write',
     label: "Enregistrer un paiement",
     group: "finances",
     icon: "receipt",
@@ -735,4 +797,22 @@ export function parseMentions(
 export const ROUTE_NEEDS_UNIT = new Set(["classe", "marks", "bulletins", "unit"]);
 
 export const byId = (id: string) => ACTIONS.find((a) => a.id === id);
+
+/**
+ * May this account see this action at all?
+ *
+ * One predicate, applied by the rail, the explorer, the node bar and the
+ * action page itself — four places that each used to render the whole
+ * registry. Kept here rather than in each component because "which actions
+ * exist for me" is a property of the registry, and four copies of the check is
+ * three chances to forget one.
+ *
+ * `can` is the auth store's `canAny`, passed in rather than imported: actions.ts
+ * is a data module and importing a Pinia store into it would make the registry
+ * depend on an initialised app.
+ */
+export const allowed = (
+  action: ActionSpec,
+  can: (permission?: string | string[]) => boolean,
+) => can(action.permission);
 export const inGroup = (group: ActionGroup) => ACTIONS.filter((a) => a.group === group);

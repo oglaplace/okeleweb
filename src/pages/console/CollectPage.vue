@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import * as api from "../../lib/api";
 import Alert from "../../components/ui/Alert.vue";
+import SearchField from "../../components/ui/SearchField.vue";
 import PaymentDialog from "../../components/finance/PaymentDialog.vue";
 import ReceiptSheet from "../../components/finance/ReceiptSheet.vue";
 import { useBanner } from "../../lib/banner";
@@ -140,15 +141,13 @@ function stateOf(r: api.Payable) {
       <div class="card-head unpaid-tools">
         <!-- The search IS the navigation: a guichet needs to find one child,
              not to page through nine hundred. -->
-        <input
+        <SearchField
           v-model="query"
-          class="unpaid-search"
-          placeholder="Nom, prénom, matricule…"
           autofocus
+          label="Chercher un élève"
+          placeholder="Nom, prénom ou matricule…"
+          :hint="query.trim() ? `${rows.length} résultat(s)` : 'Les plus récents'"
         />
-        <span class="hint">
-          {{ query.trim() ? `${rows.length} résultat(s)` : "Les élèves les plus récents" }}
-        </span>
       </div>
 
       <div v-if="loading" class="card-body stack">

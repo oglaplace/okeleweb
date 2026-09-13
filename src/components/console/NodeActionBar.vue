@@ -2,8 +2,12 @@
 import { computed, ref } from "vue";
 import { RouterLink, type RouteLocationRaw } from "vue-router";
 import * as api from "../../lib/api";
-import { ACTIONS, GROUPS, type ActionSpec } from "../../lib/actions";
+import { ACTIONS, GROUPS, allowed, type ActionSpec } from "../../lib/actions";
+import { useAuthStore } from "../../stores/auth";
 import Icon from "../ui/Icon.vue";
+
+// Segmentation: the rail must not offer what the API will refuse.
+const can = useAuthStore().canAny;
 
 /**
  * Everything doable on one node, as a menu bar above it.
@@ -65,7 +69,8 @@ const items = computed<Item[]>(() =>
       spec.id !== "explorer" &&
       // Complex-wide actions belong to the établissement, not to any node in
       // it — the rail is where those live.
-      spec.scope?.includes(props.unit.kind),
+      spec.scope?.includes(props.unit.kind) &&
+      allowed(spec, can),
   ).map((spec) => ({
     spec,
     // An action that opens in place has no destination: it is a dialog over

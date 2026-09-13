@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import * as api from "../../lib/api";
-import { ACTIONS, type ActionSpec } from "../../lib/actions";
+import { ACTIONS, allowed, type ActionSpec } from "../../lib/actions";
+import { useAuthStore } from "../../stores/auth";
 import { KIND_FR } from "./kinds";
 import Icon from "../ui/Icon.vue";
+
+// Segmentation: the rail must not offer what the API will refuse.
+const can = useAuthStore().canAny;
 
 /**
  * The tree, as a file explorer, in the main content.
@@ -63,7 +67,7 @@ export type NodeAction = "open" | "add" | "rename" | "close" | "reopen";
  */
 function specsFor(unit: api.TreeUnit): ActionSpec[] {
   return ACTIONS.filter(
-    (a) => !a.planned && !a.route && a.scope?.includes(unit.kind),
+    (a) => !a.planned && !a.route && a.scope?.includes(unit.kind) && allowed(a, can),
   );
 }
 

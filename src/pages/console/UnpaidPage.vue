@@ -5,6 +5,7 @@ import Alert from "../../components/ui/Alert.vue";
 import PaymentDialog from "../../components/finance/PaymentDialog.vue";
 import ReceiptSheet from "../../components/finance/ReceiptSheet.vue";
 import { useBanner } from "../../lib/banner";
+import SearchField from "../../components/ui/SearchField.vue";
 
 /**
  * IMPAYÉS — the worklist, not a report.
@@ -202,11 +203,10 @@ async function printReceipt() {
 
       <div class="card">
         <div class="card-head unpaid-tools">
-          <input
+          <SearchField
             v-model="query"
-            class="unpaid-search"
-            placeholder="Nom, matricule, classe…"
-            aria-label="Rechercher un élève"
+            label="Rechercher un élève"
+            placeholder="Nom, matricule ou classe…"
           />
           <!-- Three widths of the same list, and the default is the one that
                can be acted on. See `scope`. -->
