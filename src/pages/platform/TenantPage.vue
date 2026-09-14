@@ -7,6 +7,8 @@ import PhoneInput from "../../components/ui/PhoneInput.vue";
 import { ESTABLISHMENT_LABELS, TIER_LABELS, TIER_NOTES } from "./labels";
 import Alert from "../../components/ui/Alert.vue";
 import { useBanner } from "../../lib/banner";
+import DialogShell from "../../components/ui/DialogShell.vue";
+import AccessJournal from "../../components/console/AccessJournal.vue";
 
 /**
  * One établissement's registration record.
@@ -20,6 +22,117 @@ import { useBanner } from "../../lib/banner";
 const route = useRoute();
 const busy = useBusyStore();
 const id = route.params.id as string;
+
+/* ── support : les accès de cet établissement ──────────────────────────────
+ *
+ * A school phones because its only administrator has left, or because somebody
+ * holds the wrong thing and nobody inside can take it back. Until now the only
+ * answer was a psql prompt.
+ *
+ * These go through the SAME service the school's own console uses — same
+ * guards, same audit lines — with the tenant's scope opened around the call.
+ * The peer and escalation rules are lifted, because they describe colleagues
+ * acting on each other and say nothing about an operator acting on a customer.
+ * The act is written down instead of constrained: every one lands in that
+ * établissement's own journal, marked "(support)", where its members read it.
+ */
+const members = ref<api.TeamMember[]>([]);
+const events = ref<api.AccessEvent[]>([]);
+const catalogue = ref<api.PermissionInfo[]>([]);
+const permGroups = ref<{ id: api.PermissionGroup; label: string }[]>([]);
+const accessLoading = ref(true);
+
+const editing = ref<string | null>(null);
+const draft = ref<Set<string>>(new Set());
+const draftRole = ref("");
+const savingAccess = ref(false);
+
+const editingMember = computed(() =>
+  members.value.find((m) => m.accountId === editing.value) ?? null,
+);
+
+const inGroup = (g: api.PermissionGroup) =>
+  catalogue.value.filter((p) => p.group === g);
+
+function startEdit(m: api.TeamMember) {
+  editing.value = m.accountId;
+  draft.value = new Set(m.permissions);
+  draftRole.value = m.role === "Sans rôle" ? "" : m.role;
+}
+
+function togglePerm(key: string) {
+  const next = new Set(draft.value);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  draft.value = next;
+}
+
+const accessDirty = computed(() => {
+  const m = editingMember.value;
+  if (!m) return false;
+  const before = [...m.permissions].sort().join(",");
+  const after = [...draft.value].sort().join(",");
+  return before !== after || draftRole.value.trim() !== (m.role === "Sans rôle" ? "" : m.role);
+});
+
+async function loadAccess() {
+  accessLoading.value = true;
+  try {
+    const [res, cat] = await Promise.all([
+      api.platform.accounts(id),
+      catalogue.value.length
+        ? Promise.resolve({ permissions: catalogue.value, groups: permGroups.value })
+        : api.team.catalogue(),
+    ]);
+    members.value = res.members;
+    events.value = res.events;
+    catalogue.value = cat.permissions;
+    permGroups.value = cat.groups;
+  } catch (e) {
+    error.value = e instanceof api.ApiError ? e.message : "Accès illisibles.";
+  } finally {
+    accessLoading.value = false;
+  }
+}
+
+async function saveAccess() {
+  const m = editingMember.value;
+  if (!m || !accessDirty.value) return;
+  savingAccess.value = true;
+  error.value = null;
+  try {
+    await busy.run(
+      () => api.platform.setAccountPermissions(
+        id, m.accountId, [...draft.value], draftRole.value.trim() || undefined),
+      { title: "Mise à jour des accès", detail: m.fullName },
+    );
+    notice.value = `Accès de ${m.fullName} mis à jour.`;
+    editing.value = null;
+    await Promise.all([load(), loadAccess()]);
+  } catch (e) {
+    error.value = e instanceof api.ApiError ? e.message : "Mise à jour impossible.";
+  } finally {
+    savingAccess.value = false;
+  }
+}
+
+async function toggleAccountActive(m: api.TeamMember) {
+  error.value = null;
+  try {
+    await busy.run(
+      () => api.platform.setAccountActive(id, m.accountId, !m.active),
+      { title: "Mise à jour du compte", detail: m.fullName },
+    );
+    notice.value = m.active ? `${m.fullName} suspendu(e).` : `${m.fullName} réactivé(e).`;
+    await Promise.all([load(), loadAccess()]);
+  } catch (e) {
+    error.value = e instanceof api.ApiError ? e.message : "Action impossible.";
+  }
+}
+
+/** The richer row for one listed account, when access has loaded. */
+const memberOf = (accountId: string) =>
+  members.value.find((m) => m.accountId === accountId) ?? null;
 
 const data = ref<api.TenantDetail | null>(null);
 const loading = ref(true);
@@ -108,7 +221,10 @@ const initials = (name: string) =>
 const dateFmt = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString("fr-FR", { dateStyle: "medium" }) : "—";
 
-onMounted(() => void load());
+onMounted(() => {
+  void load();
+  void loadAccess();
+});
 </script>
 
 <template>
@@ -241,6 +357,7 @@ onMounted(() => void load());
                   <th>Téléphone</th>
                   <th>Dernière connexion</th>
                   <th>État</th>
+                  <th class="c-text" />
                 </tr>
               </thead>
               <tbody>
@@ -260,10 +377,37 @@ onMounted(() => void load());
                     <span v-if="a.active" class="pill ok">Actif</span>
                     <span v-else class="pill danger">Désactivé</span>
                   </td>
+                  <td class="c-text">
+                    <!-- The support console may act on ANY account here: the
+                         peer rules order colleagues, not an operator and a
+                         customer. Every click is written to the journal below. -->
+                    <div class="row-actions" v-if="memberOf(a.id)">
+                      <button class="btn sm" type="button" @click="startEdit(memberOf(a.id)!)">
+                        Accès ({{ memberOf(a.id)!.permissions.length }})
+                      </button>
+                      <button class="btn sm ghost" type="button"
+                              @click="toggleAccountActive(memberOf(a.id)!)">
+                        {{ a.active ? "Suspendre" : "Réactiver" }}
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               </tbody>
             </table>
           </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            Journal des accès
+            <span class="unit-meta">visible aussi par l'établissement</span>
+          </div>
+          <AccessJournal
+            :events="events"
+            :catalogue="catalogue"
+            :loading="accessLoading"
+            empty="Aucune modification d'accès enregistrée."
+          />
         </div>
 
         <div class="card">
@@ -311,4 +455,52 @@ onMounted(() => void load());
       </div>
     </template>
   </div>
+
+    <!-- ── LES ACCÈS, VUS DU SUPPORT ──────────────────────────────────────
+         Same matrix the school sees, and deliberately so: an operator who
+         repairs an access should be looking at exactly what its holder will
+         see afterwards. The peer and escalation rules are lifted here — they
+         order colleagues, not an operator and a customer — so every box is
+         editable, and every save is written to the journal above marked
+         "(support)". -->
+    <DialogShell
+      v-if="editingMember"
+      :title="`Accès de ${editingMember.fullName}`"
+      :subtitle="editingMember.role"
+      :detail="editingMember.phone"
+      icon="settings"
+      wide
+      @close="editing = null"
+    >
+      <div class="field" style="max-width: 320px">
+        <label for="sup-role">Fonction</label>
+        <input id="sup-role" v-model="draftRole" placeholder="Directeur, Comptable…" />
+      </div>
+
+      <div class="perm-grid">
+        <div v-for="g in permGroups" :key="g.id" class="perm-group">
+          <div class="perm-group-head">{{ g.label }}</div>
+          <label v-for="p in inGroup(g.id)" :key="p.key" class="perm-row">
+            <input type="checkbox" :checked="draft.has(p.key)" @change="togglePerm(p.key)" />
+            <span>
+              <strong :class="{ 'is-danger': p.danger }">{{ p.label }}</strong>
+              <span class="perm-desc">{{ p.description }}</span>
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <Alert kind="warn">
+        Cette modification apparaîtra dans le journal de l'établissement, à
+        votre nom, suivi de « (support) ».
+      </Alert>
+
+      <div class="row-actions">
+        <button class="btn primary" type="button"
+                :disabled="!accessDirty || savingAccess" @click="saveAccess">
+          Enregistrer les accès
+        </button>
+        <button class="btn ghost" type="button" @click="editing = null">Annuler</button>
+      </div>
+    </DialogShell>
 </template>

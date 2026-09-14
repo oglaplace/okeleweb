@@ -5,6 +5,7 @@ import Alert from "../../components/ui/Alert.vue";
 import Icon from "../../components/ui/Icon.vue";
 import PhoneInput from "../../components/ui/PhoneInput.vue";
 import DialogShell from "../../components/ui/DialogShell.vue";
+import AccessJournal from "../../components/console/AccessJournal.vue";
 import { useAuthStore } from "../../stores/auth";
 import { useBusyStore } from "../../stores/busy";
 import { useBanner } from "../../lib/banner";
@@ -178,7 +179,7 @@ async function toggleActive(m: api.TeamMember) {
   try {
     await busy.run(() => api.team.setActive(m.accountId, !m.active));
     notice.value = m.active ? `${m.fullName} suspendu(e).` : `${m.fullName} réactivé(e).`;
-    await loadTeam();
+    await Promise.all([loadTeam(), loadJournal()]);
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Action impossible.";
   }
@@ -214,7 +215,7 @@ async function sendInvite() {
     inviting.value = false;
     invite.value = { fullName: "", phone: "", email: "", role: "Personnel" };
     invitePerms.value = new Set();
-    await loadTeam();
+    await Promise.all([loadTeam(), loadJournal()]);
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Invitation impossible.";
   }
@@ -225,6 +226,28 @@ function toggleInvite(key: string) {
   if (next.has(key)) next.delete(key);
   else next.add(key);
   invitePerms.value = next;
+}
+
+/* ── le journal ──────────────────────────────────────────────────────────── */
+/**
+ * Chargé pour TOUT LE MONDE, pas seulement pour qui peut modifier les accès.
+ *
+ * A record of who was given what keeps everybody honest precisely because it is
+ * not itself privileged — and none of it is sensitive: it names permissions,
+ * never a grade, a franc or a pupil.
+ */
+const events = ref<api.AccessEvent[]>([]);
+const journalLoading = ref(true);
+
+async function loadJournal() {
+  try {
+    events.value = (await api.team.history(50)).events;
+  } catch {
+    // A trail that fails to load must not take the settings screen with it.
+    events.value = [];
+  } finally {
+    journalLoading.value = false;
+  }
 }
 
 /* ── chargement ──────────────────────────────────────────────────────────── */
@@ -241,7 +264,7 @@ onMounted(async () => {
     const cat = await api.team.catalogue();
     catalogue.value = cat.permissions;
     groups.value = cat.groups;
-    await loadTeam();
+    await Promise.all([loadTeam(), loadJournal()]);
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Chargement impossible.";
   } finally {
@@ -431,6 +454,20 @@ const when = (iso: string | null) =>
       </div>
     </div>
 
+    <!-- ── le journal ───────────────────────────────────────────────────── -->
+    <div class="card" style="margin-top: var(--s4)">
+      <div class="card-head">
+        Journal des accès
+        <span class="unit-meta">qui a changé quoi, et quand</span>
+      </div>
+      <AccessJournal
+        :events="events"
+        :catalogue="catalogue"
+        :loading="journalLoading"
+        empty="Les modifications d'accès apparaîtront ici."
+      />
+    </div>
+
     <!-- ── LA MATRICE, DANS UN DIALOGUE ───────────────────────────────────
          Elle vivait dans une cellule de tableau, et c'est ce qui était cassé :
          `.table-wrap` scrolle horizontalement et `table.data` impose 560px de
@@ -504,52 +541,6 @@ const when = (iso: string | null) =>
   margin-top: 2px;
 }
 
-/* In a dialog now, not a table cell — so it may use the width it needs. */
-.perm-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: var(--s4);
-  margin: var(--s4) 0;
-}
-.perm-group-head {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-  margin-bottom: var(--s2);
-}
-.perm-row {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--s2);
-  padding: 5px 0;
-  cursor: pointer;
-}
-/* A checkbox keeps its intrinsic size — the same defence `.catalogue-item`
-   makes, for the same reason. */
-.perm-row input {
-  width: auto;
-  height: auto;
-  margin-top: 3px;
-  flex: none;
-}
-.perm-row strong {
-  display: block;
-  font-size: var(--t-small);
-  font-weight: 600;
-  color: var(--ink);
-}
-/* Money and authority itself. Grantable like any other, just not ordinary. */
-.perm-row strong.is-danger {
-  color: var(--warn);
-}
-.perm-desc {
-  display: block;
-  font-size: var(--t-small);
-  color: var(--ink-3);
-  line-height: 1.35;
-}
 .row-actions {
   display: flex;
   gap: var(--s2);

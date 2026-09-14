@@ -1619,6 +1619,57 @@ table.data td.c-text {
   cursor: pointer;
 }
 
+/* ---------- permission matrix ----------
+   A label per permission, wrapping its own checkbox. Used by the school's
+   settings screen and by the support console, which must show the SAME grid:
+   an operator repairing an access should be looking at exactly what its holder
+   will see afterwards. */
+.perm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--s4);
+  margin: var(--s4) 0;
+}
+.perm-group-head {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: var(--s2);
+}
+.perm-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  padding: 5px 0;
+  cursor: pointer;
+}
+/* A checkbox keeps its intrinsic size — the same defence `.catalogue-item`
+   makes, for the same reason. */
+.perm-row input {
+  width: auto;
+  height: auto;
+  margin-top: 3px;
+  flex: none;
+}
+.perm-row strong {
+  display: block;
+  font-size: var(--t-small);
+  font-weight: 600;
+  color: var(--ink);
+}
+/* Money and authority itself. Grantable like any other, just not ordinary. */
+.perm-row strong.is-danger {
+  color: var(--warn);
+}
+.perm-desc {
+  display: block;
+  font-size: var(--t-small);
+  color: var(--ink-3);
+  line-height: 1.35;
+}
+
 /* ---------- loading ---------- */
 .spinner {
   width: 18px;

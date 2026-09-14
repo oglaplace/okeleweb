@@ -301,6 +301,32 @@ export const platform = {
       `/platform/tenants/${id}/admins`,
       { method: "POST", body: JSON.stringify(body) },
     ),
+
+  /* ── support : les accès d'un établissement ─────────────────────────────
+   *
+   * A school phones because its only administrator has left, or because
+   * somebody holds the wrong thing and nobody inside can take it back. These
+   * act through the same service the console uses, and every one of them lands
+   * in that établissement's own journal marked "(support)".
+   */
+  accounts: (id: string) =>
+    request<{ members: TeamMember[]; events: AccessEvent[] }>(
+      `/platform/tenants/${encodeURIComponent(id)}/accounts`,
+    ),
+
+  setAccountPermissions: (
+    id: string, accountId: string, permissions: string[], role?: string,
+  ) =>
+    request<{ accountId: string; role: string; permissions: string[] }>(
+      `/platform/tenants/${encodeURIComponent(id)}/accounts/${encodeURIComponent(accountId)}/permissions`,
+      { method: "PATCH", body: JSON.stringify({ permissions, ...(role ? { role } : {}) }) },
+    ),
+
+  setAccountActive: (id: string, accountId: string, active: boolean) =>
+    request<{ accountId: string; active: boolean }>(
+      `/platform/tenants/${encodeURIComponent(id)}/accounts/${encodeURIComponent(accountId)}/active`,
+      { method: "PATCH", body: JSON.stringify({ active }) },
+    ),
 };
 
 // ─── structure ───────────────────────────────────────────────────────────────
@@ -3021,6 +3047,27 @@ export interface TeamMember {
   blockedReason: string | null;
 }
 
+/**
+ * Une ligne du journal des accès, déjà lisible.
+ *
+ * `added` / `removed` are computed by the API rather than diffed here: what a
+ * human reads is "a gagné l'encaissement", not two lists side by side.
+ */
+export interface AccessEvent {
+  id: string;
+  at: string;
+  action: "grant.update" | "grant.invite" | "account.suspend" | "account.restore";
+  /** The frozen label — still readable after the account is gone. */
+  actor: string;
+  subject: string;
+  subjectAccountId: string;
+  role: string | null;
+  permissionsBefore: string[];
+  permissionsAfter: string[];
+  added: string[];
+  removed: string[];
+}
+
 export const team = {
   /** Behind plain auth: it describes the product, not anyone's data. */
   catalogue: () =>
@@ -3030,6 +3077,14 @@ export const team = {
     }>("/team/catalogue"),
 
   list: () => request<{ members: TeamMember[] }>("/team"),
+
+  /**
+   * The établissement's own access journal. Behind plain auth on purpose: a
+   * record of who was given what keeps people honest precisely because it is
+   * not itself privileged.
+   */
+  history: (limit = 100) =>
+    request<{ events: AccessEvent[] }>(`/team/history?limit=${limit}`),
 
   /** The whole tick-list, not a delta — the checkboxes ARE the state. */
   setPermissions: (accountId: string, permissions: string[], role?: string) =>
