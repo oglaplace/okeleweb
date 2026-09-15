@@ -357,6 +357,12 @@ export interface TreeUnit {
   capacity: number | null;
   validTo: string | null;
   depth: number;
+  /**
+   * NIVEAU only. True in préscolaire and primaire, where one titulaire teaches
+   * the whole class — which is what decides whether a lecturer is linked to a
+   * CLASSE or, above it, to named SUBJECTS.
+   */
+  singleTitulaire: boolean;
 }
 
 export interface SearchHit {
@@ -3068,7 +3074,14 @@ export interface AccessEvent {
   removed: string[];
 }
 
-/** Un rattachement matière : qui enseigne quoi, dans quelle classe. */
+/**
+ * Un rattachement vu depuis LA CLASSE — qui l'enseigne.
+ *
+ * Deux formes pour deux questions, et elles ne portent pas les mêmes champs:
+ * depuis une classe on veut le nom de l'enseignant, depuis un enseignant on
+ * veut le nom de la classe. Un seul type qui les mélange rendrait la moitié des
+ * champs optionnels et chaque lecteur responsable de deviner lesquels.
+ */
 export interface TeachingAssignment {
   id: string;
   employmentId: string;
@@ -3158,17 +3171,41 @@ export const attendance = {
     }),
 };
 
+/** Le même rattachement vu depuis L'ENSEIGNANT — ce qu'il tient, et où. */
+export interface TeachingLoad {
+  id: string;
+  courseOfferingId: string;
+  classeId: string;
+  classeName: string;
+  subject: string;
+  subjectCode: string;
+  niveau: string;
+  validFrom: string;
+  validTo: string | null;
+}
+
 export const teaching = {
   forClasse: (classeId: string) =>
     request<{ assignments: TeachingAssignment[] }>(
       `/people/teaching?classeId=${encodeURIComponent(classeId)}`,
     ),
   forEmployment: (employmentId: string) =>
-    request<{ assignments: TeachingAssignment[] }>(
+    request<{ assignments: TeachingLoad[] }>(
       `/people/teaching?employmentId=${encodeURIComponent(employmentId)}`,
     ),
+  /** Une matière, une classe. Le geste du collège et au-dessus. */
   assign: (body: { employmentId: string; courseOfferingId: string; classeId: string }) =>
     request<{ id: string }>("/people/teaching", {
+      method: "POST", body: JSON.stringify(body),
+    }),
+
+  /**
+   * Toute la classe, d'un geste. Refusé par l'API hors des niveaux à titulaire
+   * unique, où « toutes les matières » n'est pas une charge mais une faute de
+   * saisie.
+   */
+  assignWholeClasse: (body: { employmentId: string; classeId: string }) =>
+    request<{ classeId: string; subjects: number }>("/people/teaching/classe", {
       method: "POST", body: JSON.stringify(body),
     }),
   end: (id: string) =>

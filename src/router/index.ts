@@ -58,6 +58,11 @@ const router = createRouter({
         { path: "", name: "dashboard", component: () => import("../pages/console/DashboardPage.vue") },
         { path: "structure", name: "structure", component: () => import("../pages/console/StructurePage.vue") },
         { path: "inscription", name: "enroll", meta: { permission: "enrollment.write" }, component: () => import("../pages/console/EnrollPage.vue") },
+        /**
+         * QUI ENSEIGNE QUOI — le fait dont dépendent les droits d'un
+         * enseignant, ses bulletins, son appel et sa paie.
+         */
+        { path: "enseignements", name: "teaching", meta: { permission: "structure.write" }, component: () => import("../pages/console/TeachingPage.vue") },
         { path: "personnel", name: "staff", meta: { permission: ["structure.write", "finance.read"] }, component: () => import("../pages/console/StaffPage.vue") },
         { path: "import", name: "import", meta: { permission: ["enrollment.write", "structure.write"] }, component: () => import("../pages/console/ImportPage.vue") },
         /**

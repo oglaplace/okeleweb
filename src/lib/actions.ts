@@ -354,6 +354,30 @@ export const ACTIONS: ActionSpec[] = [
     route: "staff",
   },
   {
+    /*
+     * LE FAIT QUI MANQUAIT AU PRODUIT.
+     *
+     * `Ajouter un personnel` dit qu'une personne travaille ici; l'emploi du
+     * temps dit qu'un cours a lieu mardi. Ni l'un ni l'autre ne disait que
+     * M. Makaya fait les maths de la 6e A — le fait dont dépendent la portée de
+     * ses droits, ses bulletins, sa feuille d'appel et sa paie. Sans cet écran,
+     * un enseignant rattaché à rien ne peut saisir aucune note.
+     *
+     * `scope: null` : un enseignant tient des classes de PLUSIEURS écoles du
+     * complexe, donc l'écran les montre toutes et un sélecteur d'unité en tête
+     * ne ferait que cacher la moitié du travail.
+     */
+    id: "teaching-link",
+    permission: "structure.write",
+    label: "Rattacher un enseignant",
+    group: "personnel",
+    icon: "book",
+    summary:
+      "Qui enseigne quoi, et à quelle classe — toute la classe au primaire, matière par matière au-dessus.",
+    scope: null,
+    route: "teaching",
+  },
+  {
     id: "import-staff",
     permission: 'structure.write',
     label: "Importer du personnel",
