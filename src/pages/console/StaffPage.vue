@@ -6,6 +6,9 @@ import { useBusyStore } from "../../stores/busy";
 import { KIND_FR } from "../../components/structure/kinds";
 import Alert from "../../components/ui/Alert.vue";
 import PhotoInput from "../../components/ui/PhotoInput.vue";
+import UnitPicker from "../../components/ui/UnitPicker.vue";
+import DialogShell from "../../components/ui/DialogShell.vue";
+import { portraitRefusal, toPortraitDataUrl } from "../../lib/photo";
 import { useBanner, exclusive } from "../../lib/banner";
 import { useAuthStore } from "../../stores/auth";
 
@@ -171,23 +174,15 @@ async function onStaffPhoto(event: Event, personId: string) {
   if (!file) return;
 
   photoWarning.value = null;
-  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-    photoWarning.value = "Format accepté : JPEG, PNG ou WebP.";
-    return;
-  }
-  if (file.size > 2 * 1024 * 1024) {
-    photoWarning.value = `Photo trop lourde (${(file.size / 1024 / 1024).toFixed(1)} Mo, maximum 2 Mo).`;
+  const refusal = portraitRefusal(file);
+  if (refusal) {
+    photoWarning.value = refusal;
     return;
   }
 
   try {
-    const data = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(new Error("read"));
-      reader.readAsDataURL(file);
-    });
-    await api.people.setPhoto(personId, data);
+    // Réduite ici, comme partout ailleurs — voir lib/photo.ts.
+    await api.people.setPhoto(personId, await toPortraitDataUrl(file));
     const fresh = await api.people.photoObjectUrl(personId);
     if (fresh) objectUrls.push(fresh);
     photos.value = { ...photos.value, [personId]: fresh };
@@ -358,6 +353,55 @@ async function assign(employmentId: string) {
     error.value = e instanceof api.ApiError ? e.message : "Affectation impossible.";
   }
 }
+
+/* ── LA FICHE D'UN EMPLOYÉ ─────────────────────────────────────────────────
+ *
+ * Cliquer sur une ligne ne faisait rien. Ce que la ligne montre — un nom, un
+ * contrat, un montant — est ce qui tient dans un tableau; ce qu'on vient y
+ * chercher est le reste: depuis quand, jusqu'à quand, où exactement, et
+ * surtout « celui-là peut-il encore entrer dans l'application ». Cette
+ * dernière question vivait sur un autre écran, alors que c'est ici qu'on se la
+ * pose — le jour où quelqu'un s'en va.
+ */
+const opened = ref<api.StaffMember | null>(null);
+const accountBusy = ref(false);
+
+/** La fiche ouverte, relue dans la liste fraîche après chaque action. */
+const openedLive = computed(() =>
+  opened.value ? staff.value.find((s) => s.id === opened.value!.id) ?? opened.value : null,
+);
+
+/**
+ * Suspendre un accès est une modification d'autorisation, donc `team.admin` —
+ * la même clef que l'écran des accès, et pas une seconde règle à tenir.
+ */
+const mayManageAccess = computed(() => auth.can("team.admin"));
+
+async function toggleAccount(member: api.StaffMember) {
+  if (!member.account) return;
+  accountBusy.value = true;
+  error.value = null;
+  try {
+    const next = !member.account.active;
+    await busy.run(() => api.team.setActive(member.account!.id, next), {
+      title: next ? "Réactivation" : "Suspension",
+      detail: `${member.firstName} ${member.lastName}`,
+    });
+    notice.value = next
+      ? `${member.firstName} ${member.lastName} peut à nouveau se connecter.`
+      : `${member.firstName} ${member.lastName} ne peut plus se connecter. `
+        + 'Sa fiche, ses heures et son historique restent intacts.';
+    await load();
+  } catch (e) {
+    // L'API refuse le dernier team.admin et l'auto-suspension, et dit pourquoi.
+    error.value = e instanceof api.ApiError ? e.message : "Action impossible.";
+  } finally {
+    accountBusy.value = false;
+  }
+}
+
+const when = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleDateString("fr-FR") : null;
 
 async function unassign(id: string) {
   try {
@@ -572,10 +616,14 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
         </div>
         <div class="field-row">
           <div class="field"><label for="s-ou">Première affectation</label>
-            <select id="s-ou" v-model="form.orgUnitId">
-              <option value="">Aucune pour l'instant</option>
-              <option v-for="u in units" :key="u.id" :value="u.id">{{ u.label }}</option>
-            </select>
+            <!-- Un complexe porte deux cents unités : on cherche, on ne
+                 déroule pas. Voir UnitPicker. -->
+            <UnitPicker
+              id="s-ou"
+              v-model="form.orgUnitId"
+              :units="units"
+              empty-label="Aucune pour l'instant"
+            />
           </div>
           <div class="field"><label for="s-ro">Fonction</label>
             <input id="s-ro" v-model="form.role" autocomplete="off" /></div>
@@ -638,10 +686,16 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
                       @change="onStaffPhoto($event, s.personId)"
                     />
                   </label>
-                  <span class="row-text">
+                  <!-- Le nom OUVRE la fiche. C'est ce qu'on essayait de
+                       cliquer depuis le début. -->
+                  <button class="row-text is-link" type="button" @click="opened = s">
                     <span class="cell-strong">{{ s.lastName.toUpperCase() }} {{ s.firstName }}</span>
-                    <span class="cell-sub">{{ s.phone ?? "—" }}</span>
-                  </span>
+                    <span class="cell-sub">
+                      {{ s.phone ?? "—" }}
+                      <template v-if="!s.account"> · sans accès</template>
+                      <template v-else-if="!s.account.active"> · accès suspendu</template>
+                    </span>
+                  </button>
                 </span>
               </td>
               <td class="c-text">{{ TYPE_FR[s.type] }}</td>
@@ -665,12 +719,14 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
 
                 <template v-if="assigning === s.id">
                   <div class="assign-row">
-                    <select v-model="assignForm.orgUnitId">
-                      <option value="">Choisir une unité…</option>
-                      <option v-for="u in units" :key="u.id" :value="u.id">{{ u.label }}</option>
-                    </select>
+                    <UnitPicker v-model="assignForm.orgUnitId" :units="units" />
                     <input v-model="assignForm.role" placeholder="Fonction" />
-                    <button class="btn sm primary" type="button" @click="assign(s.id)">OK</button>
+                    <button
+                      class="btn sm primary"
+                      type="button"
+                      :disabled="!assignForm.orgUnitId"
+                      @click="assign(s.id)"
+                    >OK</button>
                     <button class="btn sm ghost" type="button" @click="assigning = null">×</button>
                   </div>
                 </template>
@@ -686,6 +742,78 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
         </table>
       </div>
     </div>
+
+    <!-- ── la fiche ─────────────────────────────────────────────────────── -->
+    <DialogShell
+      v-if="openedLive"
+      :title="`${openedLive.firstName} ${openedLive.lastName}`"
+      :subtitle="TYPE_FR[openedLive.type]"
+      icon="users"
+      @close="opened = null"
+    >
+      <dl class="facts">
+        <div><dt>Téléphone</dt><dd>{{ openedLive.phone ?? "—" }}</dd></div>
+        <div><dt>E-mail</dt><dd>{{ openedLive.email ?? "—" }}</dd></div>
+        <div>
+          <dt>{{ openedLive.type === "VACATAIRE" ? "Taux horaire" : "Salaire mensuel" }}</dt>
+          <dd>{{ xaf(openedLive.baseAmountXaf) }}</dd>
+        </div>
+        <div><dt>Embauché(e) le</dt><dd>{{ when(openedLive.startsOn) ?? "—" }}</dd></div>
+        <!-- Affiché seulement quand le contrat a une fin : « — » sous
+             « Fin de contrat » se lit comme une date manquante. -->
+        <div v-if="openedLive.endsOn">
+          <dt>Fin de contrat</dt><dd>{{ when(openedLive.endsOn) }}</dd>
+        </div>
+      </dl>
+
+      <div class="field" style="margin-top: var(--s3)">
+        <label>Affectations</label>
+        <div v-if="!openedLive.assignments.length" class="hint">
+          Non affecté(e). Sans affectation, cette personne n'apparaît pas dans
+          la liste des enseignants rattachables.
+        </div>
+        <div v-else>
+          <span v-for="a in openedLive.assignments" :key="a.id" class="pill" style="margin-right: 4px">
+            {{ a.orgUnit.name }} · {{ a.role }}
+          </span>
+        </div>
+      </div>
+
+      <!-- ── l'accès ── -->
+      <div class="field" style="margin-top: var(--s3)">
+        <label>Accès à l'application</label>
+        <div v-if="!openedLive.account" class="hint">
+          Aucun compte : cette personne ne peut pas se connecter. Ouvrez-lui un
+          accès depuis <strong>Paramètres → En attente d'accès</strong>.
+        </div>
+        <template v-else>
+          <div class="hint">
+            <template v-if="openedLive.account.active">
+              Peut se connecter.
+              <template v-if="openedLive.account.lastSeenAt">
+                Dernière visite le {{ when(openedLive.account.lastSeenAt) }}.
+              </template>
+              <template v-else>Ne s'est encore jamais connecté(e).</template>
+            </template>
+            <template v-else>
+              Accès suspendu : la connexion est refusée, la fiche et
+              l'historique restent intacts.
+            </template>
+          </div>
+          <div class="row-actions" style="margin-top: var(--s2)">
+            <button
+              class="btn sm"
+              type="button"
+              :disabled="!mayManageAccess || accountBusy"
+              :title="mayManageAccess ? undefined : 'Demande le droit de gérer les accès.'"
+              @click="toggleAccount(openedLive)"
+            >
+              {{ openedLive.account.active ? "Suspendre l'accès" : "Rétablir l'accès" }}
+            </button>
+          </div>
+        </template>
+      </div>
+    </DialogShell>
 
     <!--
       HEURES ET PAIE DU MOIS.

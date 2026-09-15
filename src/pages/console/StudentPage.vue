@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import * as api from "../../lib/api";
+import { portraitRefusal, toPortraitDataUrl } from "../../lib/photo";
 import Alert from "../../components/ui/Alert.vue";
 import { useBanner, exclusive } from "../../lib/banner";
 
@@ -135,15 +136,16 @@ async function onPickPhoto(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0];
   if (!file || !dossier.value) return;
   photoError.value = null;
+  const refusal = portraitRefusal(file);
+  if (refusal) {
+    photoError.value = refusal;
+    (event.target as HTMLInputElement).value = "";
+    return;
+  }
   photoBusy.value = true;
   try {
-    const data = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(new Error("Lecture impossible"));
-      reader.readAsDataURL(file);
-    });
-    await api.people.setPhoto(dossier.value.identity.personId, data);
+    await api.people.setPhoto(
+      dossier.value.identity.personId, await toPortraitDataUrl(file));
     notice.value = "Photo enregistrée.";
     await load();
   } catch (e) {

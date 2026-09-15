@@ -600,6 +600,15 @@ export interface StaffMember {
     role: string;
     orgUnit: { id: string; name: string; kind: OrgUnitKind };
   }[];
+  /**
+   * L'ACCÈS DE CETTE PERSONNE, à côté de son contrat.
+   *
+   * Null tant que personne ne lui en a ouvert un — elle travaille ici sans
+   * pouvoir se connecter, ce qui est l'état normal d'une nouvelle embauche et
+   * ce que la liste « en attente d'accès » des Paramètres réclame. Rattaché
+   * par `Account.personId` d'abord, par numéro ensuite.
+   */
+  account: { id: string; active: boolean; lastSeenAt: string | null } | null;
 }
 
 /**
@@ -703,10 +712,17 @@ export const people = {
 
   capabilities: () => request<Capabilities>("/people/capabilities"),
 
-  staff: (opts: { q?: string; orgUnitId?: string } = {}) => {
+  /**
+   * `teaching` ne garde que ceux qu'on a postés là où l'on enseigne — école,
+   * cycle, faculté, filière, parcours, niveau, classe. L'écran des
+   * enseignements proposait sinon le comptable et l'économe pour tenir les
+   * maths de la 6e A.
+   */
+  staff: (opts: { q?: string; orgUnitId?: string; teaching?: boolean } = {}) => {
     const qs = new URLSearchParams();
     if (opts.q) qs.set("q", opts.q);
     if (opts.orgUnitId) qs.set("orgUnitId", opts.orgUnitId);
+    if (opts.teaching) qs.set("teaching", "true");
     const suffix = qs.toString();
     return request<StaffMember[]>(`/people/staff${suffix ? `?${suffix}` : ""}`);
   },

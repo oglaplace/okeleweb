@@ -133,6 +133,23 @@ const targetClasse = computed(() =>
   classes.value.find((c) => c.id === target.value) ?? null,
 );
 
+/**
+ * TOUTE LA CLASSE EST DÉJÀ À LUI.
+ *
+ * Le bouton « Rattacher toute la classe » restait cliquable après l'avoir
+ * cliqué. L'API ne recrée rien, donc rien ne cassait — mais un bouton qui
+ * répond « c'est fait » à quelque chose de déjà fait ne dit pas la différence
+ * entre « ça a marché » et « ça n'a rien changé », et on reclique pour voir.
+ *
+ * Fait = chaque matière du niveau lui est rattachée dans cette classe. Tant que
+ * les matières ne sont pas chargées, on ne sait pas : on ne prétend donc rien.
+ */
+const wholeClassDone = computed(() => {
+  const c = targetClasse.value;
+  if (!c || !offerings.value.length) return false;
+  return offerings.value.every((o) => alreadyHere.value.has(o.id));
+});
+
 /** Les matières déjà rattachées ici, pour ne pas les proposer deux fois. */
 const alreadyHere = computed(() => {
   const c = targetClasse.value;
@@ -233,7 +250,16 @@ async function unlink(row: api.TeachingLoad) {
 onMounted(async () => {
   try {
     const [people, units, years] = await Promise.all([
-      api.people.staff(),
+      /*
+       * Seulement ceux qui pourraient enseigner.
+       *
+       * La liste proposait TOUT le personnel — le comptable, l'économe, le
+       * gardien — pour tenir les maths de la 6e A. Ce qui distingue un
+       * enseignant n'est pas son contrat mais son AFFECTATION: on l'a posté
+       * dans une école, un cycle, un niveau ou une classe, pas dans une
+       * direction ni un département. L'API tranche, pas l'écran.
+       */
+      api.people.staff({ teaching: true }),
       api.orgUnits.tree(),
       api.academics.years().catch(() => []),
     ]);
@@ -283,13 +309,19 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
           Enseignants
           <span class="unit-meta">{{ teachers.length }}</span>
         </div>
-        <div class="card-body" style="padding-bottom: 0">
+        <!-- La liste commençait collée sous la boîte de recherche : les deux
+             se lisaient comme un seul bloc, et la première ligne ressemblait à
+             une suggestion de saisie. -->
+        <div class="card-body" style="padding-bottom: var(--s3)">
           <SearchField v-model="query" placeholder="Nom ou fonction…" label="Chercher" />
         </div>
 
         <div v-if="!teachers.length" class="empty">
           <div class="empty-title">Personne</div>
-          <div>Ajoutez du personnel avant de le rattacher.</div>
+          <div>
+            Seul le personnel affecté à une école, un niveau ou une classe
+            apparaît ici. Affectez-le depuis <strong>Personnel</strong>.
+          </div>
         </div>
 
         <ul v-else class="teach-list">
@@ -385,11 +417,18 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
               <button
                 class="btn primary"
                 type="button"
-                :disabled="saving"
+                :disabled="saving || wholeClassDone"
+                :title="wholeClassDone
+                  ? 'Cette classe lui est déjà rattachée en entier.'
+                  : undefined"
                 @click="linkWholeClasse"
               >
-                Rattacher toute la classe
+                {{ wholeClassDone ? "Déjà rattachée" : "Rattacher toute la classe" }}
               </button>
+              <p v-if="wholeClassDone" class="hint" style="margin-top: var(--s2)">
+                {{ selected?.firstName }} tient déjà toutes les matières de cette
+                classe. Retirez-en une ci-dessus pour la rendre à quelqu'un d'autre.
+              </p>
             </template>
 
             <!-- AU-DESSUS : une matière est un choix, plusieurs en sont un aussi. -->

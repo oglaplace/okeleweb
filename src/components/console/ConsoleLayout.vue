@@ -4,6 +4,7 @@ import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
 import * as api from "../../lib/api";
 import { useAuthStore } from "../../stores/auth";
 import { tenantKeyOf } from "../../lib/api";
+import { portraitRefusal, toPortraitDataUrl } from "../../lib/photo";
 import { useDeploymentStore } from "../../stores/deployment";
 import DeploymentBadge from "./DeploymentBadge.vue";
 import ThemeToggle from "../ThemeToggle.vue";
@@ -33,13 +34,10 @@ onMounted(() => void dep.refreshForSession());
  * your name already is, and a settings screen built to hold one file input is a
  * screen nobody finds.
  *
- * Rules restated from the API for the same reason PhotoInput restates them: a
- * 3 Mo photo refused after crossing a mobile link is a wasted minute. The
- * server still enforces them.
+ * Réduite avant l'envoi comme partout ailleurs — voir lib/photo.ts. Cette
+ * pastille fait 28 px; le téléphone qui vient de prendre la photo en produit
+ * trois mille.
  */
-const MY_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
-const MY_PHOTO_MAX = 2 * 1024 * 1024;
-
 const myPhoto = ref<string | null>(null);
 const myPhotoBusy = ref(false);
 const myPhotoError = ref<string | null>(null);
@@ -66,24 +64,15 @@ async function onMyPhoto(event: Event) {
   if (!file || !personId) return;
 
   myPhotoError.value = null;
-  if (!MY_PHOTO_TYPES.includes(file.type)) {
-    myPhotoError.value = "JPEG, PNG ou WebP";
-    return;
-  }
-  if (file.size > MY_PHOTO_MAX) {
-    myPhotoError.value = "Photo trop lourde (2 Mo max)";
+  const refusal = portraitRefusal(file);
+  if (refusal) {
+    myPhotoError.value = refusal;
     return;
   }
 
   myPhotoBusy.value = true;
   try {
-    const data = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(new Error("read"));
-      reader.readAsDataURL(file);
-    });
-    await api.people.setPhoto(personId, data);
+    await api.people.setPhoto(personId, await toPortraitDataUrl(file));
     await loadMyPhoto();
   } catch (e) {
     myPhotoError.value = e instanceof api.ApiError ? e.message : "Envoi impossible";
