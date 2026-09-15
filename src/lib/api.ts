@@ -3141,6 +3141,30 @@ export interface TeamMember {
 }
 
 /**
+ * QUELQU'UN QUI TRAVAILLE ICI ET NE PEUT PAS ENCORE ENTRER.
+ *
+ * Embaucher et donner un accès sont deux écrans, et rien ne les reliait : un
+ * enseignant créé dans « Personnel » n'apparaissait nulle part ici, donc
+ * l'oubli de l'inviter ne se voyait pas — sauf par l'intéressé, à sa première
+ * tentative de connexion.
+ *
+ * Pas un compte : un employé MOINS un compte, calculé par l'API à la lecture.
+ * Il n'a donc ni accès, ni dernière visite, ni rang — et ce type ne prétend
+ * pas le contraire.
+ */
+export interface PendingMember {
+  employmentId: string;
+  personId: string;
+  fullName: string;
+  /** Ce que porte la fiche. Souvent vide : on le demande au moment d'inviter. */
+  phone: string | null;
+  email: string | null;
+  role: string;
+  unit: string | null;
+  hiredOn: string;
+}
+
+/**
  * Une ligne du journal des accès, déjà lisible.
  *
  * `added` / `removed` are computed by the API rather than diffed here: what a
@@ -3309,7 +3333,8 @@ export const team = {
       groups: { id: PermissionGroup; label: string }[];
     }>("/team/catalogue"),
 
-  list: () => request<{ members: TeamMember[] }>("/team"),
+  /** Qui peut entrer, et qui travaille ici sans le pouvoir encore. */
+  list: () => request<{ members: TeamMember[]; pending: PendingMember[] }>("/team"),
 
   /**
    * The établissement's own access journal. Behind plain auth on purpose: a
@@ -3338,6 +3363,8 @@ export const team = {
     email?: string | null;
     role?: string;
     permissions: string[];
+    /** La fiche du personnel à laquelle rattacher ce compte, si elle existe. */
+    personId?: string | null;
   }) =>
     request<{ accountId: string; fullName: string; phone: string }>("/team", {
       method: "POST",

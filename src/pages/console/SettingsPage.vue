@@ -105,6 +105,14 @@ const visibleGroups = computed(() =>
 
 /* ── l'équipe ────────────────────────────────────────────────────────────── */
 const members = ref<api.TeamMember[]>([]);
+/**
+ * Les employés sans compte.
+ *
+ * Calculés par l'API, jamais stockés : c'est l'écart entre « qui travaille
+ * ici » et « qui peut entrer », et le directeur vient sur cet écran pour le
+ * regarder. Une liste vide est une bonne nouvelle, pas un écran vide.
+ */
+const pending = ref<api.PendingMember[]>([]);
 const editing = ref<string | null>(null);
 /** The ticks being edited, before they are saved. */
 const draft = ref<Set<string>>(new Set());
@@ -187,12 +195,41 @@ async function toggleActive(m: api.TeamMember) {
 
 /* ── inviter ─────────────────────────────────────────────────────────────── */
 const inviting = ref(false);
-const invite = ref({ fullName: "", phone: "", email: "", role: "Personnel" });
+const invite = ref({
+  fullName: "", phone: "", email: "", role: "Personnel",
+  /** Renseigné quand l'invitation part d'un employé déjà en fiche. */
+  personId: null as string | null,
+});
 const invitePerms = ref<Set<string>>(new Set());
 
 const canInvite = computed(
   () => invite.value.fullName.trim().length >= 2 && invite.value.phone.trim().length >= 6,
 );
+
+/**
+ * « Donner l'accès » depuis la liste d'attente.
+ *
+ * Le même formulaire, pré-rempli avec ce que la fiche sait déjà — et
+ * `personId` emporté avec, pour que le compte créé SOIT cet employé et non
+ * un homonyme de plus dans la base.
+ */
+function grantTo(p: api.PendingMember) {
+  invite.value = {
+    fullName: p.fullName,
+    phone: p.phone ?? "",
+    email: p.email ?? "",
+    role: p.role,
+    personId: p.personId,
+  };
+  invitePerms.value = new Set();
+  inviting.value = true;
+}
+
+function cancelInvite() {
+  inviting.value = false;
+  invite.value = { fullName: "", phone: "", email: "", role: "Personnel", personId: null };
+  invitePerms.value = new Set();
+}
 
 async function sendInvite() {
   if (!canInvite.value) return;
@@ -207,14 +244,13 @@ async function sendInvite() {
         email: invite.value.email.trim() || null,
         role: invite.value.role.trim() || "Personnel",
         permissions: [...invitePerms.value],
+        personId: invite.value.personId,
       }),
       { title: "Invitation", detail: "Création du compte et des accès." },
     );
     notice.value =
       `${invite.value.fullName} peut maintenant se connecter avec ce numéro.`;
-    inviting.value = false;
-    invite.value = { fullName: "", phone: "", email: "", role: "Personnel" };
-    invitePerms.value = new Set();
+    cancelInvite();
     await Promise.all([loadTeam(), loadJournal()]);
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Invitation impossible.";
@@ -255,6 +291,7 @@ async function loadTeam() {
   if (!mayAdmin.value) return;
   const res = await api.team.list();
   members.value = res.members;
+  pending.value = res.pending;
 }
 
 onMounted(async () => {
@@ -342,6 +379,57 @@ const when = (iso: string | null) =>
       </div>
     </div>
 
+    <!-- ── en attente d'accès ───────────────────────────────────────────── -->
+    <!--
+      L'écart entre « qui travaille ici » et « qui peut entrer ».
+
+      Placé AVANT la liste de l'équipe, parce que c'est la seule chose de cet
+      écran qui demande une action : la liste du dessous décrit un état, celle-ci
+      décrit un oubli. Absente quand il n'y en a pas — un bloc « rien à faire »
+      permanent finit par ne plus être lu du tout.
+    -->
+    <div v-if="mayAdmin && pending.length" class="card" style="margin-bottom: var(--s4)">
+      <div class="card-head">
+        En attente d'accès
+        <span class="unit-meta">
+          {{ pending.length }} personne(s) du personnel n'ont pas encore de compte
+        </span>
+      </div>
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr>
+              <th class="c-name">Personne</th>
+              <th class="c-text">Fonction</th>
+              <th class="c-text">Affectation</th>
+              <th class="c-text" />
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="p in pending" :key="p.employmentId">
+              <td class="c-name">
+                <span class="cell-strong">{{ p.fullName }}</span>
+                <span class="cell-sub">
+                  <template v-if="p.phone">{{ p.phone }}</template>
+                  <!-- Dit avant le clic : le formulaire s'ouvrira avec un
+                       champ téléphone vide, et c'est par là qu'on se connecte. -->
+                  <template v-else>numéro à renseigner</template>
+                  <template v-if="p.email"> · {{ p.email }}</template>
+                </span>
+              </td>
+              <td class="c-text">{{ p.role }}</td>
+              <td class="c-text">{{ p.unit ?? "—" }}</td>
+              <td class="c-text">
+                <button class="btn sm primary" type="button" @click="grantTo(p)">
+                  Donner l'accès
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- ── l'équipe ─────────────────────────────────────────────────────── -->
     <div v-if="mayAdmin" class="card">
       <div class="card-head">
@@ -353,6 +441,13 @@ const when = (iso: string | null) =>
 
       <!-- inviter -->
       <div v-if="inviting" class="card-body" style="border-bottom: 1px solid var(--line-soft)">
+        <!-- Pré-rempli depuis la fiche : on le dit, pour que le nom qui
+             apparaît tout seul dans le formulaire ne surprenne personne. -->
+        <p v-if="invite.personId" class="verify-sub" style="margin: 0 0 var(--s3)">
+          <strong>{{ invite.fullName }}</strong> fait déjà partie du personnel.
+          Choisissez ce qu'il ou elle pourra faire, et confirmez le numéro de
+          connexion.
+        </p>
         <div class="field-row">
           <div class="field">
             <label for="inv-name">Nom complet</label>
@@ -391,7 +486,7 @@ const when = (iso: string | null) =>
           <button class="btn primary" type="button" :disabled="!canInvite" @click="sendInvite">
             Créer le compte
           </button>
-          <button class="btn ghost" type="button" @click="inviting = false">Annuler</button>
+          <button class="btn ghost" type="button" @click="cancelInvite">Annuler</button>
         </div>
       </div>
 
@@ -401,7 +496,11 @@ const when = (iso: string | null) =>
 
       <div v-else-if="!members.length" class="empty">
         <div class="empty-title">Vous êtes seul(e) pour l'instant</div>
-        <div>Invitez un collègue pour lui confier une partie du travail.</div>
+        <div v-if="pending.length">
+          Le personnel est enregistré, mais personne n'a encore de compte —
+          donnez l'accès depuis la liste ci-dessus.
+        </div>
+        <div v-else>Invitez un collègue pour lui confier une partie du travail.</div>
       </div>
 
       <div v-else class="table-wrap">

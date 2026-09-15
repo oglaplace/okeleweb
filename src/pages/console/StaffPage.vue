@@ -328,7 +328,12 @@ async function add() {
       }
     }
 
-    notice.value = `${form.value.firstName} ${form.value.lastName} ajouté(e).`;
+    // Embaucher n'ouvre aucun accès — dit ici, parce que c'est ici qu'on le
+    // croit fait. La liste « en attente d'accès » des Paramètres le rappelle
+    // au directeur; cette phrase évite d'attendre qu'il y aille.
+    notice.value =
+      `${form.value.firstName} ${form.value.lastName} ajouté(e). `
+      + 'Pour lui ouvrir la connexion, donnez-lui un accès depuis Paramètres.';
     form.value.lastName = "";
     form.value.firstName = "";
     form.value.phone = "";
