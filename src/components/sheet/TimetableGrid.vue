@@ -358,7 +358,9 @@ function openDraft(cells: { day: number; min: number }[]) {
     runs,
     inferred: runs.some((r) => r.end - r.start > STEP),
     courseOfferingId: props.offerings[0]?.id ?? "",
-    employmentId: "",
+    // Pré-rempli, pas imposé: le menu reste ouvert et « — à affecter » y est
+    // toujours, pour la matinée où c'est le remplaçant qui tient l'heure.
+    employmentId: titulaire.value?.employmentId ?? "",
     steps: 2,
     start: runs[0]!.start,
     room: "",
@@ -444,6 +446,24 @@ function common(list: string[]): string {
 }
 
 /**
+ * LE TITULAIRE DE LA CLASSE, quand il y en a un.
+ *
+ * Au primaire une seule personne tient toute la classe: son rattachement est
+ * une ligne sans matière (voir TeachingAssignment). La grille l'ignorait — elle
+ * écrivait « Enseignant à affecter » sous chaque heure et ouvrait son menu sur
+ * « — à affecter », c'est-à-dire qu'elle demandait trente fois une réponse que
+ * l'école a déjà donnée une fois.
+ *
+ * Null dès qu'il y en a deux — cas anormal au primaire, mais deviner lequel
+ * serait pire que ne pas deviner.
+ */
+const titulaire = computed(() => {
+  const held = props.staff.filter((t) => t.courseOfferingId === null);
+  const ids = new Set(held.map((t) => t.employmentId));
+  return ids.size === 1 ? held[0]! : null;
+});
+
+/**
  * Les enseignants rattachés à une matière, dédupliqués.
  *
  * Deux rattachements de la même personne à la même matière — deux séries, deux
@@ -498,7 +518,16 @@ function openEdit(slots: api.TimetableSlot[]) {
   edit.value = {
     slots,
     courseOfferingId: common(slots.map((s) => s.courseOfferingId)),
-    employmentId: common(slots.map((s) => s.employmentId ?? "")),
+    /*
+     * Vide veut dire « le titulaire », quand la classe en a un: c'est lui qui
+     * tient l'heure, la grille le dit déjà dans la cellule, et rouvrir le
+     * dialogue sur « — à affecter » le contredirait. `KEEP` — plusieurs
+     * créneaux qui ne s'accordent pas — reste `KEEP`.
+     */
+    employmentId: (() => {
+      const shared = common(slots.map((s) => s.employmentId ?? ""));
+      return shared === "" ? titulaire.value?.employmentId ?? "" : shared;
+    })(),
     room: room === KEEP ? "" : room,
     roomTouched: false,
     roomMixed: room === KEEP,
@@ -855,6 +884,21 @@ const label = computed(() => {
                   </span>
                   <span v-if="byCell.get(key(i + 1, min))!.teacher" class="tt-teacher">
                     {{ byCell.get(key(i + 1, min))!.teacher }}
+                  </span>
+                  <!--
+                    Rien n'est écrit sur le créneau, mais la classe a un
+                    titulaire: c'est lui qui tient cette heure. « Enseignant à
+                    affecter » serait faux, et l'écrire trente fois sur la
+                    semaine d'une primaire fait passer pour un travail à faire
+                    ce qui est déjà fait.
+
+                    En clair mais atténué (`is-implied`): le nom vient de la
+                    classe et non du créneau, et un jour où quelqu'un d'autre
+                    prendra l'heure, c'est ce créneau-là qui le dira.
+                  -->
+                  <span v-else-if="titulaire" class="tt-teacher is-implied"
+                        :title="`Titulaire de la classe — tient toutes les heures qui ne nomment personne.`">
+                    {{ titulaire.teacher }}
                   </span>
                   <span v-else class="tt-teacher is-missing">Enseignant à affecter</span>
                   <span v-if="byCell.get(key(i + 1, min))!.room" class="tt-room">

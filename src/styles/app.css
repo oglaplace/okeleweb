@@ -4550,6 +4550,13 @@ table.data td.is-muted {
 .tt-teacher.is-missing {
   color: var(--warn);
 }
+/* Le nom vient de la classe, pas du créneau: vrai, mais pas écrit ici. En
+   italique et atténué, c'est la seule différence qui compte à l'œil — et elle
+   suffit, puisque le titre le dit en toutes lettres. */
+.tt-teacher.is-implied {
+  color: var(--ink-3);
+  font-style: italic;
+}
 .tt-remove {
   position: absolute;
   top: 2px;
