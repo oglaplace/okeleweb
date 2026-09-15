@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
+import { RouterLink } from "vue-router";
 import * as api from "../../lib/api";
 import { useBusyStore } from "../../stores/busy";
 import { useAuthStore } from "../../stores/auth";
@@ -40,15 +41,50 @@ const state = ref<api.Completeness | null>(null);
 const loading = ref(true);
 const { notice, error } = useBanner();
 
+/**
+ * MES CLASSES ET MES MATIÈRES — ce que cet écran dit à un enseignant.
+ *
+ * Sans `structure.write`, il ne restait ici qu'un titre et la phrase
+ * « l'arborescence est à gauche » : une page qui ne répond à rien. Or la
+ * question que pose un enseignant en cliquant sur « Structure » est
+ * précisément « qu'est-ce que je tiens », et le produit connaît la réponse
+ * depuis qu'on rattache les enseignements.
+ *
+ * L'arbre de gauche est déjà borné à sa portée côté serveur (voir
+ * orgUnitsService.visibleIds) : il n'y voit que ses classes et la branche qui
+ * les nomme. Ceci est l'autre moitié — la liste, avec les matières, que
+ * l'arbre ne peut pas montrer parce qu'une matière n'est pas un nœud.
+ */
+const myLoad = ref<api.TeachingLoad[]>([]);
+
+/** Groupées par classe, comme une charge se lit. */
+const myClasses = computed(() => {
+  const groups = new Map<string, {
+    name: string; niveau: string; subjects: string[]; whole: boolean
+  }>();
+  for (const row of myLoad.value) {
+    const entry = groups.get(row.classeId)
+      ?? { name: row.classeName, niveau: row.niveau, subjects: [], whole: false };
+    if (row.wholeClasse) entry.whole = true;
+    else entry.subjects.push(row.subject);
+    groups.set(row.classeId, entry);
+  }
+  return [...groups.entries()].map(([id, g]) => ({ id, ...g }));
+});
+
 async function reload() {
   loading.value = true;
   try {
-    const [tree, completeness] = await Promise.all([
+    const [tree, completeness, load] = await Promise.all([
       busy.run(() => api.orgUnits.tree()),
-      api.orgUnits.completeness().catch(() => null),
+      // Les outils de structure seulement: inutile de le demander à qui ne
+      // peut pas s'en servir, et l'API le refuserait.
+      mayEdit.value ? api.orgUnits.completeness().catch(() => null) : null,
+      api.teaching.mine().then((r) => r.assignments).catch(() => []),
     ]);
     units.value = tree;
     state.value = completeness;
+    myLoad.value = load;
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Chargement impossible.";
   } finally {
@@ -198,8 +234,14 @@ async function install() {
       <div>
         <h1 class="page-title"><Icon name="tree" :size="19" /> Structure</h1>
         <div class="page-sub">
-          L'arborescence est à gauche. Sélectionnez-y une unité pour la consulter,
-          ou ajoutez-en une ici.
+          <template v-if="mayEdit">
+            L'arborescence est à gauche. Sélectionnez-y une unité pour la consulter,
+            ou ajoutez-en une ici.
+          </template>
+          <template v-else>
+            Ce que vous enseignez, et où. L'arborescence à gauche ne montre que
+            vos classes.
+          </template>
         </div>
       </div>
       <!-- L'ARBRE RESTE NAVIGABLE, les OUTILS non.
@@ -306,6 +348,51 @@ async function install() {
       <div class="skeleton" style="width: 40%" /><div class="skeleton" style="width: 60%" />
     </div></div>
 
+    <!-- ── mes classes ──────────────────────────────────────────────────── -->
+    <!--
+      Pour qui n'administre pas la structure, c'est TOUT l'écran — et c'était
+      une page vide. Les matières viennent avec, parce que l'arbre ne peut pas
+      les porter: une matière n'est pas un nœud.
+    -->
+    <div v-else-if="!mayEdit" class="card">
+      <div class="card-head">
+        Mes enseignements
+        <span class="unit-meta">{{ myClasses.length }} classe(s)</span>
+      </div>
+
+      <div v-if="loading" class="card-body stack">
+        <div class="skeleton" style="width: 45%" /><div class="skeleton" style="width: 60%" />
+      </div>
+
+      <div v-else-if="!myClasses.length" class="empty">
+        <div class="empty-title">Aucun enseignement rattaché</div>
+        <div>
+          Tant que rien ne vous est rattaché, vous ne pouvez saisir aucune note
+          ni faire aucun appel. Demandez-le à la direction.
+        </div>
+      </div>
+
+      <div v-else class="card-body">
+        <div v-for="c in myClasses" :key="c.id" class="teach-group">
+          <div class="teach-group-head">
+            <RouterLink :to="{ name: 'unit', params: { id: c.id } }">
+              {{ c.niveau }} · {{ c.name }}
+            </RouterLink>
+          </div>
+          <div class="teach-chips">
+            <!-- Le titulaire tient la classe, pas une liste de matières: on
+                 écrit ce qui est vrai plutôt qu'une énumération qui serait
+                 périmée à la prochaine matière ajoutée. -->
+            <span v-if="c.whole" class="teach-chip">Toutes les matières</span>
+            <span v-for="sub in c.subjects" :key="sub" class="teach-chip">{{ sub }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Après « mes enseignements » : un enseignant sans classe voit un arbre
+         vide, et « votre établissement n'a pas de structure » est alors une
+         affirmation sur l'école là où c'est un fait sur lui. -->
     <div v-else-if="!units.length" class="card">
       <div class="empty">
         <div class="empty-title">Votre établissement n'a pas encore de structure</div>

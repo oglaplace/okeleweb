@@ -141,13 +141,16 @@ const targetClasse = computed(() =>
  * répond « c'est fait » à quelque chose de déjà fait ne dit pas la différence
  * entre « ça a marché » et « ça n'a rien changé », et on reclique pour voir.
  *
- * Fait = chaque matière du niveau lui est rattachée dans cette classe. Tant que
- * les matières ne sont pas chargées, on ne sait pas : on ne prétend donc rien.
+ * Se lit désormais sur le fait lui-même: une charge « toute la classe » est UNE
+ * ligne. Il fallait auparavant vérifier que CHAQUE matière du niveau était
+ * rattachée — une question à laquelle on ne pouvait répondre qu'après avoir
+ * chargé le programme, et dont la réponse changeait toute seule dès qu'une
+ * matière était ajoutée.
  */
 const wholeClassDone = computed(() => {
   const c = targetClasse.value;
-  if (!c || !offerings.value.length) return false;
-  return offerings.value.every((o) => alreadyHere.value.has(o.id));
+  if (!c) return false;
+  return load.value.some((r) => r.classeId === c.id && r.wholeClasse);
 });
 
 /** Les matières déjà rattachées ici, pour ne pas les proposer deux fois. */
@@ -222,8 +225,9 @@ async function linkWholeClasse() {
       { title: "Rattachement", detail: `${teacher.lastName} — ${classe.label}` },
     );
     notice.value =
-      `${teacher.firstName} ${teacher.lastName} tient ${classe.label} — `
-      + `${res.subjects} matière(s).`;
+      `${teacher.firstName} ${teacher.lastName} tient ${classe.label} — toutes `
+      + 'les matières, y compris celles ajoutées plus tard.'
+      + (res.folded ? ` ${res.folded} rattachement(s) matière repliés.` : '');
     await loadFor(teacher.id);
   } catch (e) {
     // The API refuses this above the primaire, and says why.
@@ -376,7 +380,14 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
             <div v-for="g in byClasse" :key="g.id" class="teach-group">
               <div class="teach-group-head">{{ g.niveau }} · {{ g.name }}</div>
               <div class="teach-chips">
-                <span v-for="row in g.rows" :key="row.id" class="teach-chip">
+                <span
+                  v-for="row in g.rows"
+                  :key="row.id"
+                  class="teach-chip"
+                  :title="row.wholeClasse
+                    ? 'Toutes les matières de cette classe, y compris celles ajoutées plus tard.'
+                    : undefined"
+                >
                   {{ row.subject }}
                   <button
                     type="button"
@@ -526,50 +537,9 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
   min-width: 0;
 }
 
-.teach-group + .teach-group {
-  margin-top: var(--s3);
-  padding-top: var(--s3);
-  border-top: 1px solid var(--line-soft);
-}
-.teach-group-head {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-  margin-bottom: var(--s2);
-}
-.teach-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s2);
-}
-.teach-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 4px 3px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
-  font-size: var(--t-small);
-}
-.teach-chip-x {
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: var(--surface-2);
-  color: var(--ink-3);
-  cursor: pointer;
-}
-.teach-chip-x:hover {
-  background: var(--danger-soft);
-  color: var(--danger);
-}
+/* Le groupe et les pastilles vivent dans app.css : « Structure » les emploie
+   aussi pour montrer à un enseignant ce qu'il tient, et une charge
+   d'enseignement se dessine pareil des deux côtés. */
 
 /* Déjà rattachée : cochée, inerte, et elle le dit. */
 .perm-row.is-done {

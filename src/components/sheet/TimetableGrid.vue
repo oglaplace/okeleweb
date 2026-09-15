@@ -39,7 +39,12 @@ const props = defineProps<{
    * Un créneau sans enseignant reste possible — on dessine souvent la grille
    * avant de savoir qui la tiendra.
    */
-  staff: { employmentId: string; courseOfferingId: string; teacher: string }[];
+  staff: {
+    employmentId: string;
+    /** Null = toute la classe: cette personne peut tenir n'importe quelle heure. */
+    courseOfferingId: string | null;
+    teacher: string;
+  }[];
   /** Other classes of the same niveau — the copy source. */
   siblings: { id: string; name: string }[];
   /** Whether anyone outside the office can see this week yet. */
@@ -447,7 +452,9 @@ function common(list: string[]): string {
 function teachersFor(courseOfferingId: string) {
   const seen = new Set<string>();
   return props.staff
-    .filter((t) => t.courseOfferingId === courseOfferingId)
+    // Le titulaire (courseOfferingId null) tient TOUTE la classe, donc cette
+    // heure-ci aussi, quelle que soit la matière et fût-elle programmée hier.
+    .filter((t) => t.courseOfferingId === courseOfferingId || t.courseOfferingId === null)
     .filter((t) => !seen.has(t.employmentId) && seen.add(t.employmentId))
     .map((t) => ({ id: t.employmentId, label: t.teacher }));
 }

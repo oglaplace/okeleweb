@@ -266,16 +266,22 @@ function toggleInvite(key: string) {
 
 /* ── le journal ──────────────────────────────────────────────────────────── */
 /**
- * Chargé pour TOUT LE MONDE, pas seulement pour qui peut modifier les accès.
+ * RÉSERVÉ À CEUX QUI ADMINISTRENT LES ACCÈS.
  *
- * A record of who was given what keeps everybody honest precisely because it is
- * not itself privileged — and none of it is sensitive: it names permissions,
- * never a grade, a franc or a pupil.
+ * Il était chargé pour tout le monde, sur l'idée qu'un registre de qui a reçu
+ * quoi tient les gens honnêtes précisément parce qu'il n'est pas lui-même
+ * privilégié. Trop optimiste: il nomme qui peut encaisser, qui peut délibérer,
+ * qui a été suspendu — la carte de ce qu'il faudrait obtenir pour arriver à
+ * ses fins. L'API le refuse désormais; l'écran ne le demande plus.
  */
 const events = ref<api.AccessEvent[]>([]);
 const journalLoading = ref(true);
 
 async function loadJournal() {
+  if (!mayAdmin.value) {
+    journalLoading.value = false;
+    return;
+  }
   try {
     events.value = (await api.team.history(50)).events;
   } catch {
@@ -554,7 +560,7 @@ const when = (iso: string | null) =>
     </div>
 
     <!-- ── le journal ───────────────────────────────────────────────────── -->
-    <div class="card" style="margin-top: var(--s4)">
+    <div v-if="mayAdmin" class="card" style="margin-top: var(--s4)">
       <div class="card-head">
         Journal des accès
         <span class="unit-meta">qui a changé quoi, et quand</span>

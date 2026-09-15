@@ -538,7 +538,22 @@ const mayEditTimetable = computed(() => auth.can("timetable.write"));
  */
 const teachingHere = ref<api.TeachingAssignment[]>([]);
 const myOfferingIds = computed(() =>
-  teachingHere.value.filter((t) => t.mine).map((t) => t.courseOfferingId),
+  teachingHere.value
+    .filter((t) => t.mine)
+    .map((t) => t.courseOfferingId)
+    .filter((id): id is string => id !== null),
+);
+
+/**
+ * Le titulaire tient TOUTE la semaine de sa classe.
+ *
+ * Sa charge est une ligne sans matière, donc elle ne peut pas entrer dans la
+ * liste d'offerings ci-dessus — et griser toute la grille pour celui à qui
+ * elle appartient entièrement serait exactement l'inverse de ce que le
+ * surlignage sert.
+ */
+const iHoldWholeClasse = computed(() =>
+  teachingHere.value.some((t) => t.mine && t.wholeClasse),
 );
 
 /**
@@ -959,7 +974,7 @@ const dueNow = computed(() => ledger.value?.totals.dueNowXaf ?? null);
           :has-unpublished-changes="gridPending"
           :diff="gridDiff"
           :readonly="!mayEditTimetable || (!gridPublished && !gridIsDraft)"
-          :mine-offering-ids="myOfferingIds"
+          :mine-offering-ids="iHoldWholeClasse ? [] : myOfferingIds"
           @changed="(slots) => (grid = slots)"
           @published="
             (v) => {

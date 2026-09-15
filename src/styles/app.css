@@ -6973,3 +6973,53 @@ table.data td.is-muted {
 .row-text.is-link:focus-visible .cell-strong {
   text-decoration: underline;
 }
+
+
+/* ── une charge d'enseignement ────────────────────────────────────────────
+   Une classe, ses matières en pastilles. Partagé entre « Enseignements », où
+   on la compose, et « Structure », où l'enseignant la lit. Un chip de moins
+   d'un côté que de l'autre serait la même chose dessinée deux fois. */
+.teach-group + .teach-group {
+  margin-top: var(--s3);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line-soft);
+}
+.teach-group-head {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: var(--s2);
+}
+.teach-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+.teach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  font-size: var(--t-small);
+}
+.teach-chip-x {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.teach-chip-x:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}

@@ -3218,7 +3218,9 @@ export interface AccessEvent {
 export interface TeachingAssignment {
   id: string;
   employmentId: string;
-  courseOfferingId: string;
+  /** Null = toute la classe. Voir TeachingLoad.wholeClasse. */
+  courseOfferingId: string | null;
+  wholeClasse: boolean;
   subject: string;
   subjectCode: string;
   teacher: string;
@@ -3307,9 +3309,19 @@ export const attendance = {
 /** Le même rattachement vu depuis L'ENSEIGNANT — ce qu'il tient, et où. */
 export interface TeachingLoad {
   id: string;
-  courseOfferingId: string;
+  /** Null quand la charge est la CLASSE ENTIÈRE — voir `wholeClasse`. */
+  courseOfferingId: string | null;
   classeId: string;
   classeName: string;
+  /**
+   * LE TITULAIRE TIENT LA CLASSE, PAS HUIT MATIÈRES.
+   *
+   * Une seule ligne, sans matière, et toute matière programmée dans cette
+   * classe lui appartient — y compris celles ajoutées après le rattachement.
+   * `subject` vaut alors « Toutes les matières », ce que l'écran affiche tel
+   * quel plutôt que d'inventer une liste qui serait périmée demain.
+   */
+  wholeClasse: boolean;
   subject: string;
   subjectCode: string;
   niveau: string;
@@ -3326,6 +3338,15 @@ export const teaching = {
     request<{ assignments: TeachingLoad[] }>(
       `/people/teaching?employmentId=${encodeURIComponent(employmentId)}`,
     ),
+  /**
+   * Ce que le compte connecté enseigne.
+   *
+   * La console connaît un compte, pas un `employmentId` — et le lui faire
+   * deviner voudrait dire lui expédier la liste du personnel pour répondre à
+   * une question sur soi. Le serveur fait la jointure qu'il fait déjà pour
+   * chaque garde.
+   */
+  mine: () => request<{ assignments: TeachingLoad[] }>("/people/teaching/mine"),
   /** Une matière, une classe. Le geste du collège et au-dessus. */
   assign: (body: { employmentId: string; courseOfferingId: string; classeId: string }) =>
     request<{ id: string }>("/people/teaching", {
@@ -3338,7 +3359,7 @@ export const teaching = {
    * saisie.
    */
   assignWholeClasse: (body: { employmentId: string; classeId: string }) =>
-    request<{ classeId: string; subjects: number }>("/people/teaching/classe", {
+    request<{ classeId: string; id: string; folded: number }>("/people/teaching/classe", {
       method: "POST", body: JSON.stringify(body),
     }),
   end: (id: string) =>
