@@ -117,6 +117,16 @@ export function studentTabs(
     periodId: string | null;
     editable?: boolean;
     /**
+     * Whether the money columns belong on this sheet.
+     *
+     * The API stops computing them for a caller without a finance permission —
+     * a column that reads every invoice and then blanks it still read every
+     * invoice. This is the other half: with the numbers gone, a "Solde" header
+     * over an empty column reads as "nobody owes anything", which is a claim
+     * about the families rather than about the reader.
+     */
+    finance?: boolean;
+    /**
      * The conseil's own grip on the grid: a padlock per subject, open or shut.
      *
      * Locking is not editing — the council does not type marks, it decides
@@ -480,7 +490,10 @@ export function studentTabs(
         : []),
       { key: "attendanceRate", label: "Assiduité", type: "percent", width: 11 },
       { key: "absent", label: "Absences", type: "number", total: true, warnAbove: 1 },
-      { key: "balanceXaf", label: "Solde", type: "money", total: true, warnAbove: 1 },
+      ...(focus.finance === false
+        ? []
+        : [{ key: "balanceXaf", label: "Solde", type: "money" as const,
+             total: true, warnAbove: 1 }]),
       { key: "guardianPhone", label: "Tuteur", width: 16 },
     ],
   });

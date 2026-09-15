@@ -3068,6 +3068,115 @@ export interface AccessEvent {
   removed: string[];
 }
 
+/** Un rattachement matière : qui enseigne quoi, dans quelle classe. */
+export interface TeachingAssignment {
+  id: string;
+  employmentId: string;
+  courseOfferingId: string;
+  subject: string;
+  subjectCode: string;
+  teacher: string;
+  /**
+   * True when this is the signed-in caller's own hour.
+   *
+   * Answered by the API, which already resolves account → person → employments
+   * for every guard. The console knows the account and not the employment, so
+   * matching it here would mean shipping employment ids to the browser.
+   */
+  mine: boolean;
+}
+
+/* ── la feuille d'appel ───────────────────────────────────────────────────── */
+
+/** P, A, R, E — ce qu'un enseignant écrit dans une colonne. */
+export type RollState = "PRESENT" | "ABSENT" | "LATE" | "EXCUSED";
+
+export interface RollEntry {
+  studentId: string;
+  matricule: string;
+  firstName: string;
+  lastName: string;
+  /** Null until somebody has called this roll. */
+  state: RollState | null;
+  minutes: number | null;
+  reason: string | null;
+}
+
+export interface SessionRoll {
+  mode: "BY_SUBJECT";
+  sessionId: string;
+  classeId: string;
+  subject: string;
+  startsAt: string;
+  endsAt: string;
+  minutes: number;
+  entries: RollEntry[];
+}
+
+export interface DayRoll {
+  mode: "GENERAL";
+  classeId: string;
+  date: string;
+  minutes: number;
+  entries: RollEntry[];
+}
+
+export const attendance = {
+  /**
+   * GENERAL au primaire, BY_SUBJECT au-dessus.
+   *
+   * Read from `singleTitulaire` on the niveau, which the blueprints already
+   * set — the distinction was in the model before the register was.
+   */
+  mode: (classeId: string) =>
+    request<{ mode: "GENERAL" | "BY_SUBJECT" }>(
+      `/attendance/mode?classeId=${encodeURIComponent(classeId)}`,
+    ),
+
+  session: (sessionId: string) =>
+    request<SessionRoll>(`/attendance/session/${encodeURIComponent(sessionId)}`),
+
+  saveSession: (
+    sessionId: string,
+    entries: { studentId: string; state: RollState; minutes?: number | null; reason?: string | null }[],
+  ) =>
+    request<{ saved: number }>(`/attendance/session/${encodeURIComponent(sessionId)}`, {
+      method: "PUT", body: JSON.stringify({ entries }),
+    }),
+
+  day: (classeId: string, date: string) =>
+    request<DayRoll>(
+      `/attendance/day?classeId=${encodeURIComponent(classeId)}&date=${encodeURIComponent(date)}`,
+    ),
+
+  saveDay: (
+    classeId: string, date: string,
+    entries: { studentId: string; state: RollState; minutes?: number | null; reason?: string | null }[],
+  ) =>
+    request<{ saved: number }>("/attendance/day", {
+      method: "PUT", body: JSON.stringify({ classeId, date, entries }),
+    }),
+};
+
+export const teaching = {
+  forClasse: (classeId: string) =>
+    request<{ assignments: TeachingAssignment[] }>(
+      `/people/teaching?classeId=${encodeURIComponent(classeId)}`,
+    ),
+  forEmployment: (employmentId: string) =>
+    request<{ assignments: TeachingAssignment[] }>(
+      `/people/teaching?employmentId=${encodeURIComponent(employmentId)}`,
+    ),
+  assign: (body: { employmentId: string; courseOfferingId: string; classeId: string }) =>
+    request<{ id: string }>("/people/teaching", {
+      method: "POST", body: JSON.stringify(body),
+    }),
+  end: (id: string) =>
+    request<{ id: string }>(`/people/teaching/${encodeURIComponent(id)}/end`, {
+      method: "POST",
+    }),
+};
+
 export const team = {
   /** Behind plain auth: it describes the product, not anyone's data. */
   catalogue: () =>

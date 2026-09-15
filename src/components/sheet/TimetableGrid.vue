@@ -38,7 +38,26 @@ const props = defineProps<{
   /** What publishing would change, line by line. See WeekDiff. */
   diff?: api.WeekDiff | null;
   readonly?: boolean;
+  /**
+   * MES HEURES, dans la grille de toute la classe.
+   *
+   * A teacher consulting the week of a class they teach in is reading somebody
+   * else's document to find their own three hours in it. Highlighting theirs
+   * and fading the rest turns a wall of thirty lessons into the answer to the
+   * question they actually had.
+   *
+   * Course offerings rather than subjects: the same subject can be taught to a
+   * classe by two people, and only one of them is standing here on Tuesday.
+   * Empty means "no such person" — a censeur, the directrice — and nothing is
+   * faded, because for them the whole grid IS the document.
+   */
+  mineOfferingIds?: string[];
 }>();
+
+/** Whether to dim anything at all. One `mine` and the rest goes quiet. */
+const hasMine = computed(() => (props.mineOfferingIds?.length ?? 0) > 0);
+const isMine = (slot: api.TimetableSlot) =>
+  !hasMine.value || (props.mineOfferingIds ?? []).includes(slot.courseOfferingId);
 const emit = defineEmits<{
   /** The week after the change, so the page can hold it without refetching. */
   changed: [slots: api.TimetableSlot[]];
@@ -761,10 +780,13 @@ const label = computed(() => {
                 :class="{
                   'is-selected': selected.has(key(i + 1, min)),
                   'is-flash': flash.has(byCell.get(key(i + 1, min))!.id),
+                  'is-not-mine': !isMine(byCell.get(key(i + 1, min))!),
                 }"
                 :rowspan="span(byCell.get(key(i + 1, min))!)"
                 :style="{ '--tt-hue': hue(byCell.get(key(i + 1, min))!.subject.code) }"
-                :title="`${byCell.get(key(i + 1, min))!.subject.name} — cliquer pour modifier`"
+                :title="readonly
+                  ? byCell.get(key(i + 1, min))!.subject.name
+                  : `${byCell.get(key(i + 1, min))!.subject.name} — cliquer pour modifier`"
                 @click="onCell(i + 1, min, $event)"
               >
                 <div class="tt-slot">

@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import * as api from "../../lib/api";
 import { useBusyStore } from "../../stores/busy";
+import { useAuthStore } from "../../stores/auth";
 import ModulePicker from "../../components/structure/ModulePicker.vue";
 import UpgradeDialog from "../../components/structure/UpgradeDialog.vue";
 import Icon from "../../components/ui/Icon.vue";
@@ -22,6 +23,17 @@ import { useBanner } from "../../lib/banner";
  * Selecting a node in the pane opens its own page.
  */
 const busy = useBusyStore();
+
+/**
+ * Qui peut voir les OUTILS de structure.
+ *
+ * Deliberately not the page: the tree is how a teacher reaches the class they
+ * teach, and a console that hides the way in is a console that cannot be used.
+ * What `structure.write` gates is everything that reshapes the établissement,
+ * and the composition summary — an inventory of the whole complex is not a
+ * route to anything, it is a thing you are shown because you administer it.
+ */
+const mayEdit = computed(() => useAuthStore().can("structure.write"));
 
 const units = ref<api.TreeUnit[]>([]);
 const state = ref<api.Completeness | null>(null);
@@ -190,7 +202,13 @@ async function install() {
           ou ajoutez-en une ici.
         </div>
       </div>
-      <div class="page-actions">
+      <!-- L'ARBRE RESTE NAVIGABLE, les OUTILS non.
+           A teacher reaches their classe through this tree, so hiding the page
+           would hide the way in. What goes is everything that RESHAPES it —
+           "mettre à niveau", "structure type", "nouvel élément" — plus the
+           composition summary, which is an inventory of the établissement
+           rather than a route to anything. -->
+      <div v-if="mayEdit" class="page-actions">
         <button
           v-if="(state?.installedModules?.length ?? 0) > 0"
           class="btn"
@@ -305,8 +323,10 @@ async function install() {
     </div>
 
     <!-- The shape of the whole thing, which the tree shows one branch at a
-         time and this shows at a glance. -->
-    <div v-else class="card">
+         time and this shows at a glance. An inventory of the établissement is
+         not a route to anything, so it goes with the tools rather than with
+         the tree. -->
+    <div v-else-if="mayEdit" class="card">
       <div class="card-head">Composition</div>
       <div class="card-body">
         <div class="grid-cards">

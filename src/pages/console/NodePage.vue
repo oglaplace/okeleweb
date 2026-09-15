@@ -6,6 +6,7 @@ import { byId, type ActionSpec } from "../../lib/actions";
 import { useMarkEntry } from "../../lib/markEntry";
 import { KIND_FR } from "../../components/structure/kinds";
 import { useBusyStore } from "../../stores/busy";
+import { useAuthStore } from "../../stores/auth";
 import { useOrgStore } from "../../stores/org";
 import ActionDialog from "../../components/actions/ActionDialog.vue";
 import NodeActionBar from "../../components/console/NodeActionBar.vue";
@@ -176,11 +177,14 @@ async function loadBuilderOptions() {
   const niveauId = u.parentId;
   if (!niveauId) return;
 
-  const [offs, kids, people] = await Promise.all([
+  const [offs, kids, people, teach] = await Promise.all([
     api.academics.offerings(niveauId, yearId.value).catch(() => []),
     api.orgUnits.children(niveauId).catch(() => []),
     api.people.staff().catch(() => []),
+    // Who teaches what here, and which of those hours are the caller's own.
+    api.teaching.forClasse(u.id).then((r) => r.assignments).catch(() => []),
   ]);
+  teachingHere.value = teach;
   offerings.value = offs.map((o) => ({ id: o.id, subject: o.subject }));
   siblings.value = kids
     .filter((c) => c.kind === "CLASSE" && c.id !== u.id)
@@ -443,7 +447,12 @@ const tabs = computed<SheetTab[]>(() => {
   // A classe: its pupils under four column sets, plus its week.
   if (sheet.value) {
     return [
-      ...studentTabs(sheet.value, { periodId: periodId.value, editable: canEnterMarks.value }),
+      ...studentTabs(sheet.value, {
+        periodId: periodId.value,
+        editable: canEnterMarks.value,
+        // Money is a different permission from the register it travels with.
+        finance: maySeeFinance.value,
+      }),
       // Built from the modalité de paiement, so it is only real once the
       // ledger has landed. Until then it is a tab with a spinner behind it —
       // hiding it would make the strip jump under the operator's cursor.
@@ -508,6 +517,38 @@ const sheetRows = computed<Record<string, unknown>[]>(() => {
  * refuses the write regardless. Deciding it here as well is what stops the
  * grid from offering forty inputs that would each fail.
  */
+/**
+ * Les colonnes financières demandent un droit financier.
+ *
+ * "Gérer la scolarité" reached the classe and therefore read what every family
+ * owed, because scope answers WHICH classe and never WHICH COLUMNS. The API
+ * stops computing them; this stops promising them.
+ */
+const auth = useAuthStore();
+
+/**
+ * Dessiner et publier une grille est désormais son propre droit.
+ *
+ * It used to be `structure.write` — the key that also renames the école — so a
+ * censeur who should move Thursday's maths could only be given the whole tree.
+ */
+const mayEditTimetable = computed(() => auth.can("timetable.write"));
+
+/**
+ * Les cours que CE compte enseigne dans cette classe.
+ *
+ * Empty for anybody who teaches nothing here, and the grid then fades nothing —
+ * for a censeur the whole week is the document, not a haystack with three
+ * needles in it.
+ */
+const teachingHere = ref<api.TeachingAssignment[]>([]);
+const myOfferingIds = computed(() =>
+  teachingHere.value.filter((t) => t.mine).map((t) => t.courseOfferingId),
+);
+const maySeeFinance = computed(
+  () => auth.can("finance.read") || auth.can("finance.write"),
+);
+
 const canEnterMarks = computed(() => {
   const period = sheet.value?.periods.find((p) => p.id === periodId.value);
   return !!period && !period.locked;
@@ -905,7 +946,8 @@ const dueNow = computed(() => ledger.value?.totals.dueNowXaf ?? null);
           :version="gridVersion"
           :has-unpublished-changes="gridPending"
           :diff="gridDiff"
-          :readonly="!gridPublished && !gridIsDraft"
+          :readonly="!mayEditTimetable || (!gridPublished && !gridIsDraft)"
+          :mine-offering-ids="myOfferingIds"
           @changed="(slots) => (grid = slots)"
           @published="
             (v) => {
