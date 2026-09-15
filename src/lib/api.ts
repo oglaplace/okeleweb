@@ -14,12 +14,38 @@ export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (t: string) => localStorage.setItem(TOKEN_KEY, t);
 export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
 
+/**
+ * QUEL ÉTABLISSEMENT, pour une personne qui en sert plusieurs.
+ *
+ * A vacataire sells hours to two complexes and signs in with one number, so the
+ * token says WHO and this says WHERE. Kept beside the token rather than in the
+ * token because it is a choice the person makes and remakes — switching schools
+ * must not mean signing out and back in.
+ *
+ * Survives a reload deliberately: coming back to the console should land where
+ * you left it, not ask the question again.
+ */
+const TENANT_KEY = "ec_tenant";
+export const getTenant = () => localStorage.getItem(TENANT_KEY);
+export const setTenant = (id: string) => localStorage.setItem(TENANT_KEY, id);
+export const clearTenant = () => localStorage.removeItem(TENANT_KEY);
+
 /** Raised for any non-2xx. `code` carries the API's domain error code. */
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
     public readonly code?: string,
+    /**
+     * The rest of the body.
+     *
+     * Some refusals are QUESTIONS rather than failures, and they carry what
+     * the caller needs to answer them — TENANT_CHOICE ships the list of
+     * établissements. Dropping the body turned that into an error message with
+     * no way forward, which is how a teacher employed by two schools ended up
+     * unable to sign in to either.
+     */
+    public readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = "ApiError";
@@ -54,6 +80,45 @@ export const isSuspendedError = (e: unknown) =>
 export const isNoAccountError = (e: unknown) =>
   e instanceof ApiError && e.code === "NO_ACCOUNT";
 
+/** One établissement this person may sign in to. */
+/**
+ * Platform staff belong to no complex, so their membership has no tenant id and
+ * a header cannot carry null. `platform` is the name that membership answers to
+ * — the API knows it by the same name (auth.middleware PLATFORM_TENANT_KEY).
+ */
+export const PLATFORM_TENANT = "platform";
+
+/** What to put in `X-Tenant-Id` for a membership. */
+export const tenantKeyOf = (m: { tenantId: string | null }) =>
+  m.tenantId ?? PLATFORM_TENANT;
+
+export interface TenantChoice {
+  accountId: string;
+  tenantId: string | null;
+  name: string;
+  role: string | null;
+}
+
+/**
+ * Not a failure — a QUESTION.
+ *
+ * The number authenticated perfectly; it simply belongs to more than one
+ * établissement, which is the normal shape of a lecturer's working life. The
+ * answer travels back in `X-Tenant-Id`.
+ */
+export const isTenantChoiceError = (e: unknown) =>
+  e instanceof ApiError && e.code === "TENANT_CHOICE";
+
+/** The list to choose from, or empty when this was not that refusal. */
+export const tenantChoicesOf = (e: unknown): TenantChoice[] =>
+  isTenantChoiceError(e)
+    ? ((e as ApiError).details?.choices as TenantChoice[] | undefined) ?? []
+    : [];
+
+/** The stored choice named an établissement this person does not belong to. */
+export const isNotAMemberError = (e: unknown) =>
+  e instanceof ApiError && e.code === "NOT_A_MEMBER";
+
 async function request<T>(
   path: string,
   init: RequestInit & { auth?: boolean } = {},
@@ -70,6 +135,10 @@ async function request<T>(
     // bouncing the user to the login screen mid-task.
     const token = (await phoneAuth.getIdToken().catch(() => null)) ?? getToken();
     if (token) headers.set("Authorization", `Bearer ${token}`);
+    // WHERE, when the person belongs to more than one. Harmless otherwise: the
+    // API ignores it for anybody with a single membership.
+    const tenant = getTenant();
+    if (tenant) headers.set("X-Tenant-Id", tenant);
   }
 
   let res: Response;
@@ -100,6 +169,7 @@ async function request<T>(
       res.status,
       (body.error as string) || `Erreur ${res.status}`,
       body.code as string | undefined,
+      body,
     );
   }
   return body as T;
@@ -119,7 +189,24 @@ export const myDeployment = () => request<DeploymentInfo>("/platform/me/deployme
 
 // ─── identity ────────────────────────────────────────────────────────────────
 
+/** Un établissement auquel cette personne appartient. */
+export interface Membership {
+  accountId: string;
+  tenantId: string | null;
+  name: string;
+  slug: string | null;
+  /** True for the one this session is currently inside. */
+  current: boolean;
+}
+
 export interface Identity {
+  /**
+   * Toutes les écoles de cette personne. Une, le plus souvent.
+   *
+   * Carried on every identity response so the console can offer the switch
+   * without a second round trip — and without a second sign-in.
+   */
+  memberships?: Membership[];
   account: {
     id: string;
     phone: string;

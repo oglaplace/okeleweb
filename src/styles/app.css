@@ -386,6 +386,28 @@
   white-space: nowrap;
 }
 
+/* Sits exactly where the établissement name already sat, so a session with two
+   memberships looks like one with one — until you click it. */
+.who-org {
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 0 2px;
+  margin-left: -2px;
+  max-width: 100%;
+  cursor: pointer;
+  font-family: inherit;
+}
+.who-org:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--ink-1);
+}
+.who-org:disabled {
+  cursor: progress;
+}
+
 /* ---------- deployment badge ----------
    Encodes state in FORM as well as colour: a dot plus a word, because a school
    office monitor is often washed out and colour alone would not read. */
@@ -1811,6 +1833,31 @@ table.data td.c-text {
   font-size: var(--t-body);
   line-height: 1.5;
   margin-bottom: var(--s5);
+}
+
+/* One row per établissement: the name reads first, the role answers "as what".
+   Stacked buttons rather than a <select> — two or three choices, made once. */
+.org-pick {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  text-align: left;
+}
+.org-pick + .org-pick {
+  margin-top: var(--s2);
+}
+.org-name {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.org-role {
+  flex: none;
+  color: var(--ink-3);
+  font-size: var(--t-small);
 }
 
 .login-actions,

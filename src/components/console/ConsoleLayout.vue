@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
 import * as api from "../../lib/api";
 import { useAuthStore } from "../../stores/auth";
+import { tenantKeyOf } from "../../lib/api";
 import { useDeploymentStore } from "../../stores/deployment";
 import DeploymentBadge from "./DeploymentBadge.vue";
 import ThemeToggle from "../ThemeToggle.vue";
@@ -153,6 +154,36 @@ const pane = computed<"tree" | "scope" | null>(() => {
   return null;
 });
 
+/**
+ * CHANGER D'ÉTABLISSEMENT SANS SE DÉCONNECTER.
+ *
+ * A vacataire teaches in two complexes with one number; the session is the
+ * identity, the tenant is only which membership it is exercising. Switching
+ * rewrites the header the API reads and then reloads: the tree, the périodes,
+ * every cached list belongs to the établissement we are leaving, and dropping
+ * the whole page is the only way to be sure none of it survives the move.
+ */
+const switching = ref(false);
+const currentTenant = computed(() => {
+  const mine = auth.memberships.find((m) => m.current);
+  return mine ? tenantKeyOf(mine) : "";
+});
+
+async function switchOrg(event: Event) {
+  const key = (event.target as HTMLSelectElement).value;
+  const target = auth.memberships.find((m) => tenantKeyOf(m) === key);
+  if (!target || key === currentTenant.value) return;
+  switching.value = true;
+  try {
+    await auth.chooseTenant(target);
+    window.location.assign("/");
+  } catch {
+    switching.value = false;
+    // Put the control back on the établissement we never left.
+    (event.target as HTMLSelectElement).value = currentTenant.value;
+  }
+}
+
 async function logout() {
   await auth.signOut();
   await router.replace({ name: "login" });
@@ -245,7 +276,26 @@ async function logout() {
 
           <span class="who-text">
             <span class="who-name">{{ auth.profile?.fullName ?? "—" }}</span>
-            <span class="who-role">{{ myPhotoError ?? auth.profile?.complexName ?? "—" }}</span>
+            <!-- One membership: a label. Several: the label IS the switch. -->
+            <select
+              v-if="!myPhotoError && auth.memberships.length > 1"
+              class="who-org"
+              :value="currentTenant"
+              :disabled="switching"
+              title="Changer d'établissement"
+              @change="switchOrg"
+            >
+              <option
+                v-for="m in auth.memberships"
+                :key="m.accountId"
+                :value="tenantKeyOf(m)"
+              >
+                {{ m.name }}
+              </option>
+            </select>
+            <span v-else class="who-role">
+              {{ myPhotoError ?? auth.profile?.complexName ?? "—" }}
+            </span>
           </span>
         </div>
         <button class="btn sm" type="button" @click="logout">Se déconnecter</button>

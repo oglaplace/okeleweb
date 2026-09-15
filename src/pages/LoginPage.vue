@@ -2,6 +2,7 @@
 import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
+import type { TenantChoice } from "../lib/api";
 import { useBusyStore } from "../stores/busy";
 import { useDeploymentStore } from "../stores/deployment";
 import { firebaseConfigured } from "../lib/firebase";
@@ -28,6 +29,13 @@ const error = ref<string | null>(null);
  * code three more times and conclude the software is broken.
  */
 const unlinked = computed(() => auth.unlinkedPhone);
+
+/**
+ * The same number serves several établissements — a vacataire teaching in two
+ * complexes. Not a failure: a question, and the server already sent the list of
+ * possible answers with it.
+ */
+const choices = computed(() => auth.tenantChoices);
 const phoneReady = computed(() => /^\+242\d{9}$/.test(phone.value));
 
 const serverLabel = computed(
@@ -48,11 +56,29 @@ async function send() {
   }
 }
 
+async function choose(choice: TenantChoice) {
+  working.value = true;
+  error.value = null;
+  try {
+    await busy.run(() => auth.chooseTenant(choice));
+    await router.replace({ name: "landing" });
+  } catch (e) {
+    // Still unanswered (the list came back) → the picker stays up on its own.
+    if (!auth.tenantChoices.length) {
+      error.value = e instanceof Error ? e.message : "Établissement indisponible.";
+    }
+  } finally {
+    working.value = false;
+  }
+}
+
 async function verify() {
   working.value = true;
   error.value = null;
   try {
     await busy.run(() => auth.verifyOtp(code.value.trim(), phone.value));
+    // Signed in, but we do not yet know INTO WHAT. The picker below answers it.
+    if (auth.tenantChoices.length) return;
     // One destination. The landing route decides which console this account
     // belongs to, so nothing here has to know.
     await router.replace({ name: "landing" });
@@ -101,6 +127,34 @@ function restart() {
           </Alert>
           <button class="btn block" type="button" @click="restart">
             Essayer un autre numéro
+          </button>
+        </template>
+
+        <!-- Authenticated, several établissements. The only thing left to ask. -->
+        <template v-else-if="choices.length">
+          <div class="login-title">Choisissez votre établissement</div>
+          <div class="login-sub">
+            Ce numéro est rattaché à plusieurs établissements.
+          </div>
+          <Alert v-if="error" @close="error = null">{{ error }}</Alert>
+          <button
+            v-for="choice in choices"
+            :key="choice.accountId"
+            class="btn block org-pick"
+            type="button"
+            :disabled="working"
+            @click="choose(choice)"
+          >
+            <span class="org-name">{{ choice.name }}</span>
+            <span class="org-role">{{ choice.role }}</span>
+          </button>
+          <button
+            class="btn ghost block"
+            type="button"
+            style="margin-top: var(--s2)"
+            @click="restart"
+          >
+            Changer de numéro
           </button>
         </template>
 

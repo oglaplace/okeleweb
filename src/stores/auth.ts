@@ -44,6 +44,17 @@ export const useAuthStore = defineStore("auth", {
      * so the login screen says so instead of offering the form again.
      */
     unlinkedPhone: null as string | null,
+    /**
+     * LES ÉTABLISSEMENTS À CHOISIR — une question, pas une panne.
+     *
+     * A vacataire sells hours to several complexes and signs in with one
+     * number; the token says who they are and cannot say which school they
+     * mean. Non-empty means the API asked, and nothing else will work until it
+     * is answered.
+     */
+    tenantChoices: [] as api.TenantChoice[],
+    /** Every établissement this person belongs to — for the switcher. */
+    memberships: [] as api.Membership[],
   }),
   getters: {
     isAuthed: (s) => s.profile !== null,
@@ -114,6 +125,36 @@ export const useAuthStore = defineStore("auth", {
       try {
         this.adopt(await api.me());
       } catch (err) {
+        /*
+         * « Lequel ? » n'est pas « non ».
+         *
+         * The session is perfectly good; it simply has not said which school it
+         * means. Keeping the token and surfacing the list is what turns this
+         * from a dead end into a question — clearing it here was what left a
+         * teacher employed by two complexes unable to enter either.
+         */
+        if (api.isTenantChoiceError(err)) {
+          this.tenantChoices = api.tenantChoicesOf(err);
+          this.profile = null;
+          return;
+        }
+        /*
+         * A stored choice that no longer holds — they were removed from that
+         * school. Forget it and ask again rather than looping on a 403.
+         */
+        if (api.isNotAMemberError(err)) {
+          api.clearTenant();
+          try {
+            this.adopt(await api.me());
+            return;
+          } catch (retry) {
+            if (api.isTenantChoiceError(retry)) {
+              this.tenantChoices = api.tenantChoicesOf(retry);
+              this.profile = null;
+              return;
+            }
+          }
+        }
         // A network failure is NOT a bad session — clearing the token would
         // log the user out every time the internet blinked, which on a
         // CONNECTED school is constantly.
@@ -137,6 +178,16 @@ export const useAuthStore = defineStore("auth", {
       try {
         this.adopt(await api.me());
       } catch (err) {
+        /*
+         * Again: « lequel ? » n'est pas « non ». The OTP was right, the number
+         * is real, and the token stays — the screen asks which school and the
+         * answer finishes the sign-in.
+         */
+        if (api.isTenantChoiceError(err)) {
+          this.tenantChoices = api.tenantChoicesOf(err);
+          this.profile = null;
+          return;
+        }
         api.clearToken();
         this.profile = null;
         // Their code was right and their number is real; they simply have not
@@ -146,6 +197,34 @@ export const useAuthStore = defineStore("auth", {
           this.unlinkedPhone = phone;
         }
         throw err;
+      }
+    },
+
+    /**
+     * Répondre « celui-ci » — à la connexion comme en cours de route.
+     *
+     * The same act both times, which is why it is one method: answering the
+     * question at sign-in and switching schools an hour later differ only in
+     * whether a profile was already loaded. Switching therefore never signs
+     * anybody out.
+     */
+    async chooseTenant(target: { tenantId: string | null }) {
+      api.setTenant(api.tenantKeyOf(target));
+      this.tenantChoices = [];
+      this.loading = true;
+      try {
+        this.adopt(await api.me());
+      } catch (err) {
+        // The choice did not hold. Put the question back rather than stranding
+        // them on a half-signed-in console.
+        api.clearTenant();
+        if (api.isTenantChoiceError(err)) {
+          this.tenantChoices = api.tenantChoicesOf(err);
+        }
+        this.profile = null;
+        throw err;
+      } finally {
+        this.loading = false;
       }
     },
 
@@ -163,6 +242,18 @@ export const useAuthStore = defineStore("auth", {
         complexName: identity.deployment.tenant?.name ?? null,
       };
       this.unlinkedPhone = null;
+      this.tenantChoices = [];
+      this.memberships = identity.memberships ?? [];
+      /*
+       * Remember which school this session settled on.
+       *
+       * Without it a reload asks again — and for the many people who belong to
+       * exactly one, the API never asked in the first place, so this is simply
+       * how the header stays right after a refresh.
+       */
+      const mine = this.memberships.find((m) => m.current);
+      if (mine) api.setTenant(api.tenantKeyOf(mine));
+      else if (identity.deployment.tenant?.id) api.setTenant(identity.deployment.tenant.id);
       useDeploymentStore().info = identity.deployment;
       this.armIdleTimer();
     },
@@ -170,6 +261,10 @@ export const useAuthStore = defineStore("auth", {
     async signOut() {
       await phoneAuth.signOut().catch(() => {});
       api.clearToken();
+      // The chosen school goes with the session. Leaving it behind would send
+      // the next person to sign in on this machine straight into somebody
+      // else's établissement — or into a 403 they cannot read.
+      api.clearTenant();
       this.profile = null;
       this.unlinkedPhone = null;
       if (idleTimer) window.clearTimeout(idleTimer);
