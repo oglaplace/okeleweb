@@ -590,6 +590,12 @@ export interface StaffMember {
   lastName: string;
   phone: string | null;
   email: string | null;
+  /** L'état civil, pour la fiche. La liste n'en montre rien. */
+  birthDate: string | null;
+  birthPlace: string | null;
+  gender: string | null;
+  address: string | null;
+  cnssNumber: string | null;
   type: "PERMANENT" | "VACATAIRE" | "STAGIAIRE";
   baseAmountXaf: number;
   startsOn: string;

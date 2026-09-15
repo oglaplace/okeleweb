@@ -75,7 +75,6 @@ const gridDiff = ref<api.WeekDiff | null>(null);
 const gridIsDraft = ref(false);
 const offerings = ref<{ id: string; subject: { id: string; code: string; name: string } }[]>([]);
 const siblings = ref<{ id: string; name: string }[]>([]);
-const teachers = ref<{ id: string; label: string }[]>([]);
 const years = ref<api.AcademicYear[]>([]);
 const yearId = ref<string | null>(null);
 const loading = ref(true);
@@ -177,11 +176,11 @@ async function loadBuilderOptions() {
   const niveauId = u.parentId;
   if (!niveauId) return;
 
-  const [offs, kids, people, teach] = await Promise.all([
+  const [offs, kids, teach] = await Promise.all([
     api.academics.offerings(niveauId, yearId.value).catch(() => []),
     api.orgUnits.children(niveauId).catch(() => []),
-    api.people.staff().catch(() => []),
     // Who teaches what here, and which of those hours are the caller's own.
+    // Also the only honest source for the timetable's teacher picker.
     api.teaching.forClasse(u.id).then((r) => r.assignments).catch(() => []),
   ]);
   teachingHere.value = teach;
@@ -189,10 +188,6 @@ async function loadBuilderOptions() {
   siblings.value = kids
     .filter((c) => c.kind === "CLASSE" && c.id !== u.id)
     .map((c) => ({ id: c.id, name: c.name }));
-  teachers.value = people.map((person) => ({
-    id: person.id,
-    label: `${person.lastName} ${person.firstName}`,
-  }));
 }
 watch(yearId, () => {
   if (!loading.value) void loadSheet();
@@ -544,6 +539,23 @@ const mayEditTimetable = computed(() => auth.can("timetable.write"));
 const teachingHere = ref<api.TeachingAssignment[]>([]);
 const myOfferingIds = computed(() =>
   teachingHere.value.filter((t) => t.mine).map((t) => t.courseOfferingId),
+);
+
+/**
+ * QUI PEUT TENIR UNE HEURE DE CETTE CLASSE.
+ *
+ * C'était `api.people.staff()` — tout le personnel du complexe, proposé pour
+ * chaque case de la grille. Le comptable pouvait être inscrit au tableau en
+ * maths. `teachingHere` porte déjà la réponse: qui enseigne quelle matière
+ * dans cette classe. Une requête de moins, et un menu qui ne propose que des
+ * choix vrais.
+ */
+const teachers = computed(() =>
+  teachingHere.value.map((t) => ({
+    employmentId: t.employmentId,
+    courseOfferingId: t.courseOfferingId,
+    teacher: t.teacher,
+  })),
 );
 const maySeeFinance = computed(
   () => auth.can("finance.read") || auth.can("finance.write"),

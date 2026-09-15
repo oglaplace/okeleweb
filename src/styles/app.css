@@ -2752,11 +2752,19 @@ table.data td.c-text {
   margin-left: var(--s2);
 }
 
+/* Vit maintenant dans la fiche d'un employé, où la place est moins comptée
+   qu'au fond d'une cellule de tableau: le sélecteur d'unité prend la largeur
+   qu'il lui faut, le reste suit. */
 .assign-row {
   display: flex;
   align-items: center;
   gap: 6px;
   margin-top: 6px;
+  flex-wrap: wrap;
+}
+.assign-row > .unitsel {
+  flex: 1 1 220px;
+  min-width: 0;
 }
 .assign-row select,
 .assign-row input {
@@ -6923,72 +6931,6 @@ table.data td.is-muted {
 .subjects-niveau.is-on { font-weight: 600; }
 @media (max-width: 860px) {
   .subjects { grid-template-columns: 1fr; }
-}
-
-
-/* ── le sélecteur d'unité ─────────────────────────────────────────────────
-   Un champ de recherche et une liste, pas un composant de bibliothèque. La
-   liste est bornée en hauteur: elle s'ouvre au milieu d'un formulaire, et une
-   liste qui pousse le bouton « Ajouter » hors de l'écran est pire que le menu
-   déroulant qu'elle remplace. */
-.unitpick {
-  min-width: 0;
-}
-.unitpick-chosen {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-  min-width: 0;
-  padding: 7px 8px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--ink-2);
-}
-.unitpick-label {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--ink-1);
-}
-.unitpick-list {
-  list-style: none;
-  margin: 6px 0 0;
-  padding: 0;
-  max-height: 220px;
-  overflow-y: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-}
-.unitpick-row {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 7px 10px;
-  border: 0;
-  background: none;
-  color: var(--ink-1);
-  font: inherit;
-  cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.unitpick-row:hover,
-.unitpick-row:focus-visible {
-  background: var(--surface-2);
-}
-.unitpick-row.is-none {
-  color: var(--ink-3);
-  font-style: italic;
-}
-.unitpick-none {
-  padding: 10px;
-  color: var(--ink-3);
-  font-size: var(--t-small);
 }
 
 

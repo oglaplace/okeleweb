@@ -26,7 +26,20 @@ const props = defineProps<{
   academicYearId: string;
   slots: api.TimetableSlot[];
   offerings: { id: string; subject: { id: string; code: string; name: string } }[];
-  staff: { id: string; label: string }[];
+  /**
+   * QUI PEUT TENIR CETTE HEURE — pas « tout le personnel ».
+   *
+   * Le menu proposait chaque employé du complexe pour chaque case de la
+   * grille: le comptable pouvait se retrouver inscrit au tableau en maths, et
+   * un enseignant de français proposé pour l'heure de physique. Or le fait
+   * existe déjà — `TeachingAssignment` dit qui enseigne quelle matière dans
+   * quelle classe — et c'est exactement la question que pose cette case.
+   *
+   * Donc: les rattachements de CETTE classe, filtrés par la matière choisie.
+   * Un créneau sans enseignant reste possible — on dessine souvent la grille
+   * avant de savoir qui la tiendra.
+   */
+  staff: { employmentId: string; courseOfferingId: string; teacher: string }[];
   /** Other classes of the same niveau — the copy source. */
   siblings: { id: string; name: string }[];
   /** Whether anyone outside the office can see this week yet. */
@@ -424,6 +437,43 @@ function common(list: string[]): string {
   const first = list[0] ?? "";
   return list.every((v) => v === first) ? first : KEEP;
 }
+
+/**
+ * Les enseignants rattachés à une matière, dédupliqués.
+ *
+ * Deux rattachements de la même personne à la même matière — deux séries, deux
+ * groupes — font un seul nom dans un menu.
+ */
+function teachersFor(courseOfferingId: string) {
+  const seen = new Set<string>();
+  return props.staff
+    .filter((t) => t.courseOfferingId === courseOfferingId)
+    .filter((t) => !seen.has(t.employmentId) && seen.add(t.employmentId))
+    .map((t) => ({ id: t.employmentId, label: t.teacher }));
+}
+
+const draftTeachers = computed(() =>
+  draft.value ? teachersFor(draft.value.courseOfferingId) : [],
+);
+
+/**
+ * En édition multiple, la matière peut être « inchangée » — donc inconnue.
+ *
+ * On propose alors tous les rattachements de la classe: on ne sait pas quelle
+ * matière on corrige, et proposer une liste vide empêcherait la seule chose
+ * que l'opérateur est venu faire. L'API refuse de toute façon un conflit.
+ */
+const editTeachers = computed(() => {
+  const e = edit.value;
+  if (!e) return [];
+  if (e.courseOfferingId && e.courseOfferingId !== KEEP) {
+    return teachersFor(e.courseOfferingId);
+  }
+  const seen = new Set<string>();
+  return props.staff
+    .filter((t) => !seen.has(t.employmentId) && seen.add(t.employmentId))
+    .map((t) => ({ id: t.employmentId, label: t.teacher }));
+});
 
 /**
  * A lesson already on the grid is a thing to CORRECT, not only to delete.
@@ -890,8 +940,14 @@ const label = computed(() => {
             <label for="tt-emp">Enseignant</label>
             <select id="tt-emp" v-model="draft.employmentId">
               <option value="">— à affecter</option>
-              <option v-for="s in staff" :key="s.id" :value="s.id">{{ s.label }}</option>
+              <option v-for="t in draftTeachers" :key="t.id" :value="t.id">{{ t.label }}</option>
             </select>
+            <!-- Dit ici plutôt que par un menu vide: un menu vide ressemble à
+                 un écran cassé, et la réponse est sur un autre écran. -->
+            <span v-if="draft.courseOfferingId && !draftTeachers.length" class="hint">
+              Personne n'est rattaché à cette matière dans cette classe.
+              Rattachez-la depuis <strong>Enseignements</strong>.
+            </span>
           </div>
           <div class="field">
             <label for="tt-room">Salle</label>
@@ -958,7 +1014,7 @@ const label = computed(() => {
           <select id="tt-eemp" v-model="edit.employmentId">
             <option v-if="edit.employmentId === KEEP" :value="KEEP">— inchangé</option>
             <option value="">— à affecter</option>
-            <option v-for="s in staff" :key="s.id" :value="s.id">{{ s.label }}</option>
+            <option v-for="t in editTeachers" :key="t.id" :value="t.id">{{ t.label }}</option>
           </select>
         </div>
         <div class="field">

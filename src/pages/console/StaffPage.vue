@@ -6,7 +6,7 @@ import { useBusyStore } from "../../stores/busy";
 import { KIND_FR } from "../../components/structure/kinds";
 import Alert from "../../components/ui/Alert.vue";
 import PhotoInput from "../../components/ui/PhotoInput.vue";
-import UnitPicker from "../../components/ui/UnitPicker.vue";
+import UnitSelect from "../../components/structure/UnitSelect.vue";
 import DialogShell from "../../components/ui/DialogShell.vue";
 import { portraitRefusal, toPortraitDataUrl } from "../../lib/photo";
 import { useBanner, exclusive } from "../../lib/banner";
@@ -133,9 +133,21 @@ const projection = computed(() => {
   };
 });
 
-/** Assignment being added to an existing employment. */
-const assigning = ref<string | null>(null);
+/**
+ * Où l'on peut poster quelqu'un: partout.
+ *
+ * Un enseignant va dans une classe, un censeur dans un cycle, un comptable
+ * dans un département, un directeur général sur le complexe lui-même. Le seul
+ * genre qu'on exclut serait celui où personne ne travaille, et il n'y en a pas.
+ */
+const ASSIGNABLE_KINDS: api.OrgUnitKind[] = [
+  "COMPLEX", "ORG_DIVISION", "DEPARTMENT", "SCHOOL", "CYCLE",
+  "FACULTY", "FILIERE", "PARCOURS", "NIVEAU", "CLASSE",
+];
+
+/** Affectation en cours d'ajout, depuis la fiche d'un employé. */
 const assignForm = ref({ orgUnitId: "", role: "Enseignant" });
+const assignOpen = ref(false);
 
 /** The staff portrait — optional, exactly as for a pupil. See PhotoInput. */
 const photo = ref<string | null>(null);
@@ -344,10 +356,11 @@ async function add() {
 }
 
 async function assign(employmentId: string) {
-  if (!assignForm.value.orgUnitId) return;
+  if (!assignForm.value.orgUnitId || !assignForm.value.role.trim()) return;
   try {
     await busy.run(() => api.people.assign(employmentId, { ...assignForm.value }));
-    assigning.value = null;
+    assignOpen.value = false;
+    assignForm.value = { orgUnitId: "", role: "Enseignant" };
     await load();
   } catch (e) {
     error.value = e instanceof api.ApiError ? e.message : "Affectation impossible.";
@@ -366,6 +379,48 @@ async function assign(employmentId: string) {
 const opened = ref<api.StaffMember | null>(null);
 const accountBusy = ref(false);
 
+/**
+ * CE QU'IL OU ELLE ENSEIGNE.
+ *
+ * L'affectation dit où on travaille; le rattachement dit quelle matière, dans
+ * quelle classe. Chargé à l'ouverture de la fiche et pas avec la liste: une
+ * requête par employé sur quarante employés pour une fiche qu'on ouvre une
+ * fois n'est pas un compromis, c'est un gaspillage.
+ */
+const teachingLoad = ref<api.TeachingLoad[]>([]);
+const teachingLoading = ref(false);
+
+async function openFile(member: api.StaffMember) {
+  opened.value = member;
+  teachingLoad.value = [];
+  teachingLoading.value = true;
+  try {
+    teachingLoad.value = (await api.teaching.forEmployment(member.id)).assignments;
+  } catch {
+    // Une charge illisible ne doit pas emporter la fiche avec elle.
+    teachingLoad.value = [];
+  } finally {
+    teachingLoading.value = false;
+  }
+}
+
+function closeFile() {
+  opened.value = null;
+  assignOpen.value = false;
+  assignForm.value = { orgUnitId: "", role: "Enseignant" };
+}
+
+/** Groupée par classe, comme un emploi du temps se lit. */
+const loadByClasse = computed(() => {
+  const groups = new Map<string, { name: string; subjects: string[] }>();
+  for (const row of teachingLoad.value) {
+    const entry = groups.get(row.classeId) ?? { name: row.classeName, subjects: [] };
+    entry.subjects.push(row.subject);
+    groups.set(row.classeId, entry);
+  }
+  return [...groups.values()];
+});
+
 /** La fiche ouverte, relue dans la liste fraîche après chaque action. */
 const openedLive = computed(() =>
   opened.value ? staff.value.find((s) => s.id === opened.value!.id) ?? opened.value : null,
@@ -376,6 +431,8 @@ const openedLive = computed(() =>
  * la même clef que l'écran des accès, et pas une seconde règle à tenir.
  */
 const mayManageAccess = computed(() => auth.can("team.admin"));
+/** Affecter et retirer, c'est modifier l'établissement. Même clef qu'embaucher. */
+const mayEditStaff = computed(() => auth.can("structure.write"));
 
 async function toggleAccount(member: api.StaffMember) {
   if (!member.account) return;
@@ -616,13 +673,22 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
         </div>
         <div class="field-row">
           <div class="field"><label for="s-ou">Première affectation</label>
-            <!-- Un complexe porte deux cents unités : on cherche, on ne
-                 déroule pas. Voir UnitPicker. -->
-            <UnitPicker
+            <!--
+              Le même sélecteur que « Importer des élèves ».
+
+              J'en avais écrit un second la fois précédente sans regarder:
+              UnitSelect existait déjà, filtre en tapant, montre le chemin sous
+              chaque nom et se pilote au clavier. Deux composants pour un geste,
+              c'est un des deux qui prend du retard sur l'autre.
+
+              Tous les genres, pas seulement les classes: on affecte aussi à une
+              école, à un cycle ou à un département.
+            -->
+            <UnitSelect
               id="s-ou"
               v-model="form.orgUnitId"
-              :units="units"
-              empty-label="Aucune pour l'instant"
+              :kinds="ASSIGNABLE_KINDS"
+              placeholder="Aucune pour l'instant — rechercher…"
             />
           </div>
           <div class="field"><label for="s-ro">Fonction</label>
@@ -688,7 +754,7 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
                   </label>
                   <!-- Le nom OUVRE la fiche. C'est ce qu'on essayait de
                        cliquer depuis le début. -->
-                  <button class="row-text is-link" type="button" @click="opened = s">
+                  <button class="row-text is-link" type="button" @click="openFile(s)">
                     <span class="cell-strong">{{ s.lastName.toUpperCase() }} {{ s.firstName }}</span>
                     <span class="cell-sub">
                       {{ s.phone ?? "—" }}
@@ -705,37 +771,17 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
                 {{ xaf(s.baseAmountXaf) }}
                 <span class="cell-sub">{{ s.type === "VACATAIRE" ? "par heure" : "par mois" }}</span>
               </td>
+              <!--
+                Lecture seule. Affecter et retirer se font dans la fiche, avec
+                tout le reste de ce qu'on sait de la personne — un tableau qui
+                porte ses propres commandes oblige à décider par ligne ce qui
+                mérite un bouton, et la réponse est: rien.
+              -->
               <td class="c-text">
                 <span v-for="a in s.assignments" :key="a.id" class="pill" style="margin-right: 4px">
                   {{ a.orgUnit.name }} · {{ a.role }}
-                  <button
-                    class="pill-x"
-                    type="button"
-                    :title="`Retirer de ${a.orgUnit.name}`"
-                    @click="unassign(a.id)"
-                  >×</button>
                 </span>
                 <span v-if="!s.assignments.length" class="cell-sub">Non affecté</span>
-
-                <template v-if="assigning === s.id">
-                  <div class="assign-row">
-                    <UnitPicker v-model="assignForm.orgUnitId" :units="units" />
-                    <input v-model="assignForm.role" placeholder="Fonction" />
-                    <button
-                      class="btn sm primary"
-                      type="button"
-                      :disabled="!assignForm.orgUnitId"
-                      @click="assign(s.id)"
-                    >OK</button>
-                    <button class="btn sm ghost" type="button" @click="assigning = null">×</button>
-                  </div>
-                </template>
-                <button
-                  v-else
-                  class="btn sm ghost"
-                  type="button"
-                  @click="assigning = s.id"
-                >Affecter</button>
               </td>
             </tr>
           </tbody>
@@ -749,7 +795,7 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
       :title="`${openedLive.firstName} ${openedLive.lastName}`"
       :subtitle="TYPE_FR[openedLive.type]"
       icon="users"
-      @close="opened = null"
+      @close="closeFile"
     >
       <dl class="facts">
         <div><dt>Téléphone</dt><dd>{{ openedLive.phone ?? "—" }}</dd></div>
@@ -759,6 +805,15 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
           <dd>{{ xaf(openedLive.baseAmountXaf) }}</dd>
         </div>
         <div><dt>Embauché(e) le</dt><dd>{{ when(openedLive.startsOn) ?? "—" }}</dd></div>
+        <div><dt>Naissance</dt>
+          <dd>
+            {{ when(openedLive.birthDate) ?? "—" }}
+            <template v-if="openedLive.birthPlace"> à {{ openedLive.birthPlace }}</template>
+          </dd>
+        </div>
+        <div><dt>Sexe</dt><dd>{{ openedLive.gender ?? "—" }}</dd></div>
+        <div><dt>Adresse</dt><dd>{{ openedLive.address ?? "—" }}</dd></div>
+        <div><dt>N° CNSS</dt><dd>{{ openedLive.cnssNumber ?? "—" }}</dd></div>
         <!-- Affiché seulement quand le contrat a une fin : « — » sous
              « Fin de contrat » se lit comme une date manquante. -->
         <div v-if="openedLive.endsOn">
@@ -766,6 +821,7 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
         </div>
       </dl>
 
+      <!-- ── les affectations ── -->
       <div class="field" style="margin-top: var(--s3)">
         <label>Affectations</label>
         <div v-if="!openedLive.assignments.length" class="hint">
@@ -775,7 +831,58 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
         <div v-else>
           <span v-for="a in openedLive.assignments" :key="a.id" class="pill" style="margin-right: 4px">
             {{ a.orgUnit.name }} · {{ a.role }}
+            <button
+              v-if="mayEditStaff"
+              class="pill-x"
+              type="button"
+              :title="`Retirer de ${a.orgUnit.name}`"
+              @click="unassign(a.id)"
+            >×</button>
           </span>
+        </div>
+
+        <template v-if="mayEditStaff">
+          <div v-if="assignOpen" class="assign-row" style="margin-top: var(--s2)">
+            <UnitSelect
+              v-model="assignForm.orgUnitId"
+              :kinds="ASSIGNABLE_KINDS"
+              placeholder="Rechercher une unité…"
+            />
+            <input v-model="assignForm.role" placeholder="Fonction" />
+            <button
+              class="btn sm primary"
+              type="button"
+              :disabled="!assignForm.orgUnitId || !assignForm.role.trim()"
+              @click="assign(openedLive.id)"
+            >Affecter</button>
+            <button class="btn sm ghost" type="button" @click="assignOpen = false">×</button>
+          </div>
+          <button
+            v-else
+            class="btn sm ghost"
+            type="button"
+            style="margin-top: var(--s2)"
+            @click="assignOpen = true"
+          >Ajouter une affectation</button>
+        </template>
+      </div>
+
+      <!-- ── ce qu'il ou elle enseigne ── -->
+      <div class="field" style="margin-top: var(--s3)">
+        <label>Enseignements</label>
+        <div v-if="teachingLoading" class="skeleton" style="width: 55%" />
+        <div v-else-if="!loadByClasse.length" class="hint">
+          Aucune matière rattachée. Rattachez-les depuis
+          <strong>Enseignements</strong> — sans cela, cette personne ne peut
+          saisir aucune note ni faire aucun appel.
+        </div>
+        <div v-else>
+          <div v-for="g in loadByClasse" :key="g.name" style="margin-bottom: 4px">
+            <span class="cell-sub">{{ g.name }}</span>
+            <span v-for="sub in g.subjects" :key="sub" class="pill" style="margin-left: 4px">
+              {{ sub }}
+            </span>
+          </div>
         </div>
       </div>
 
