@@ -221,6 +221,13 @@ const initials = (name: string) =>
 const dateFmt = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString("fr-FR", { dateStyle: "medium" }) : "—";
 
+/** Une visite a une heure — voir la note dans SettingsPage. */
+const seenFmt = (iso: string | null) =>
+  iso
+    ? `${new Date(iso).toLocaleDateString("fr-FR", { dateStyle: "medium" })} à `
+      + new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
+    : "jamais";
+
 onMounted(() => {
   void load();
   void loadAccess();
@@ -372,7 +379,7 @@ onMounted(() => {
                     </span>
                   </td>
                   <td>{{ a.phone }}</td>
-                  <td>{{ dateFmt(a.lastSeenAt) }}</td>
+                  <td>{{ seenFmt(a.lastSeenAt) }}</td>
                   <td>
                     <span v-if="a.active" class="pill ok">Actif</span>
                     <span v-else class="pill danger">Désactivé</span>
@@ -446,7 +453,7 @@ onMounted(() => {
                     </span>
                   </td>
                   <td>{{ n.appVersion ?? "—" }}</td>
-                  <td>{{ dateFmt(n.lastSeenAt) }}</td>
+                  <td>{{ seenFmt(n.lastSeenAt) }}</td>
                 </tr>
               </tbody>
             </table>

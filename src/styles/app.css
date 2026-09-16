@@ -2608,6 +2608,14 @@ table.data td.c-text {
   font-weight: 650;
   color: var(--ink);
 }
+/* Le reliquat, sous la liste: une ligne, pas une seconde liste. */
+.inbox-foot {
+  padding: 8px 12px;
+  border-top: 1px solid var(--line-soft);
+  color: var(--ink-3);
+  font-size: var(--t-micro);
+}
+
 .inbox-empty {
   padding: var(--s5) var(--s4);
   font-size: var(--t-body);
@@ -3617,11 +3625,21 @@ table.data td.is-muted {
 .unitsel-search input:focus {
   outline: none;
 }
+/* Cinq lignes visibles sur un complexe qui en porte trente se lit comme une
+   liste de cinq: la barre de défilement est discrète et personne ne la
+   cherche. La hauteur suit l'écran, et le compte au-dessus dit ce qu'on n'a
+   pas encore sous les yeux. */
 .unitsel-list {
-  max-height: 260px;
+  max-height: min(52vh, 420px);
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 4px;
+}
+.unitsel-count {
+  padding: 4px 10px 6px;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--ink-3);
+  font-size: var(--t-micro);
 }
 .unitsel-item {
   display: flex;

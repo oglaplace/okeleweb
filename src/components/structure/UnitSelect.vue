@@ -132,6 +132,13 @@ onBeforeUnmount(() => document.removeEventListener("mousedown", onDocClick));
         />
       </div>
 
+      <!-- Combien il y en a, et combien restent sous la ligne de flottaison.
+           Une liste tronquée en silence passe pour une liste complète. -->
+      <div class="unitsel-count">
+        {{ matches.length }} sur {{ options.length }}
+        {{ options.length > 1 ? "unités" : "unité" }}
+      </div>
+
       <div class="unitsel-list" role="listbox">
         <button
           v-for="(o, i) in matches"

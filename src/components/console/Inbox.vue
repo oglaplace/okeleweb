@@ -37,8 +37,40 @@ async function load() {
 onMounted(load);
 watch(() => route.fullPath, load);
 
-const count = computed(() => state.value?.findings.length ?? 0);
-const blocking = computed(() => state.value?.blocking ?? 0);
+/**
+ * CE QUI EST À MOI DE FAIRE — et j'avais tranché l'inverse.
+ *
+ * La liste montrait TOUTES les constatations à tout le monde, en n'enlevant
+ * que le bouton « Corriger », au motif qu'une école à qui il manque ses
+ * coefficients en manque pour tout le monde: chacun saurait pourquoi les
+ * bulletins sont bloqués et à qui le dire.
+ *
+ * En usage c'est faux dans l'autre sens. L'enseignant de 6e A ouvre une pastille
+ * qui annonce « action requise », y lit huit lignes dont aucune ne le concerne
+ * et dont aucune ne lui est ouverte, et cesse de l'ouvrir. Une boîte de
+ * réception qu'on n'ouvre plus ne prévient plus de rien — y compris le jour où
+ * elle porte enfin quelque chose pour vous.
+ *
+ * Donc: ce que je peux faire. `allowed()` lit les permissions que l'action
+ * exige, c'est-à-dire la même règle que le rail d'actions et que l'API —
+ * une constatation sans action rattachée reste visible pour ceux qui
+ * administrent, puisqu'eux seuls peuvent y répondre par autre chose qu'un lien.
+ */
+const mine = computed(() => {
+  const all = state.value?.findings ?? [];
+  if (auth.isComplexAdmin) return all;
+  return all.filter((f) => mayFix(f.action));
+});
+
+const count = computed(() => mine.value.length);
+const blocking = computed(
+  () => mine.value.filter((f) => f.severity === "BLOCKING").length,
+);
+
+/** Ce qui reste chez les autres: dit une fois, sans le détailler. */
+const elsewhere = computed(
+  () => (state.value?.findings.length ?? 0) - count.value,
+);
 
 /** Where a finding's action lives — a screen of its own, or the generic form. */
 function actionTo(actionId: string) {
@@ -69,6 +101,18 @@ const STATUS_FR: Record<api.Readiness["status"], string> = {
   DEGRADED: "Opérationnel",
   BLOCKED: "Action requise",
 };
+
+/*
+ * Le titre parle de MA liste.
+ *
+ * `state.status` décrit l'établissement entier: annoncer « action requise » à
+ * quelqu'un dont la liste est vide l'envoie chercher ce qu'il n'a pas.
+ */
+const headline = computed(() => {
+  if (!state.value) return "Évaluation…";
+  if (!count.value) return "Rien à faire de votre côté";
+  return blocking.value > 0 ? STATUS_FR.BLOCKED : STATUS_FR.DEGRADED;
+});
 </script>
 
 <template>
@@ -103,22 +147,29 @@ const STATUS_FR: Record<api.Readiness["status"], string> = {
           }"
           aria-hidden="true"
         />
-        <span class="inbox-title">{{ state ? STATUS_FR[state.status] : "Évaluation…" }}</span>
+        <span class="inbox-title">{{ state ? headline : "Évaluation…" }}</span>
         <button class="hints-x" type="button" aria-label="Fermer" @click="open = false">×</button>
       </div>
 
       <div v-if="!state" class="inbox-empty">Évaluation de l'établissement…</div>
 
-      <div v-else-if="!state.findings.length" class="inbox-empty">
-        <strong>Tout est en place.</strong>
+      <div v-else-if="!count" class="inbox-empty">
+        <strong v-if="!state.findings.length">Tout est en place.</strong>
+        <strong v-else>Rien qui vous revienne.</strong>
         <p style="margin: 4px 0 0">
-          Structure, année, périodes, matières et coefficients : rien ne bloque.
+          <template v-if="!state.findings.length">
+            Structure, année, périodes, matières et coefficients : rien ne bloque.
+          </template>
+          <template v-else>
+            {{ elsewhere }} point(s) restent à régler par l'administration de
+            l'établissement.
+          </template>
         </p>
       </div>
 
       <ul v-else class="inbox-list">
         <li
-          v-for="f in state.findings"
+          v-for="f in mine"
           :key="f.id"
           class="inbox-item"
           :class="{ 'is-blocking': f.severity === 'BLOCKING' }"
@@ -140,6 +191,12 @@ const STATUS_FR: Record<api.Readiness["status"], string> = {
           </RouterLink>
         </li>
       </ul>
+
+      <!-- Dit, mais pas détaillé: savoir qu'il reste du travail ailleurs évite
+           de croire l'école prête; le lire ligne à ligne ne sert personne. -->
+      <div v-if="count && elsewhere > 0" class="inbox-foot">
+        {{ elsewhere }} autre(s) point(s) relèvent de l'administration.
+      </div>
     </div>
   </div>
 </template>

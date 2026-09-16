@@ -460,6 +460,29 @@ async function toggleAccount(member: api.StaffMember) {
 const when = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString("fr-FR") : null;
 
+/**
+ * UNE VISITE A UNE HEURE, pas seulement une date.
+ *
+ * « 15/09/2026 » ne distingue pas quelqu'un qui s'est connecté ce matin de
+ * quelqu'un qui est passé hier soir — et c'est exactement la distinction qu'on
+ * vient chercher dans cette colonne. Aujourd'hui, on affiche l'heure seule;
+ * au-delà, la date et l'heure.
+ */
+function stamp(iso: string | null): string | null {
+  if (!iso) return null;
+  const at = new Date(iso);
+  const today = new Date();
+  const sameDay =
+    at.getFullYear() === today.getFullYear() &&
+    at.getMonth() === today.getMonth() &&
+    at.getDate() === today.getDate();
+  const time = at.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  return sameDay
+    ? `aujourd'hui à ${time}`
+    : `${at.toLocaleDateString("fr-FR")} à ${time}`;
+}
+
+
 async function unassign(id: string) {
   try {
     await busy.run(() => api.people.endAssignment(id));
@@ -898,7 +921,7 @@ const TYPE_FR: Record<api.StaffMember["type"], string> = {
             <template v-if="openedLive.account.active">
               Peut se connecter.
               <template v-if="openedLive.account.lastSeenAt">
-                Dernière visite le {{ when(openedLive.account.lastSeenAt) }}.
+                Dernière visite {{ stamp(openedLive.account.lastSeenAt) }}.
               </template>
               <template v-else>Ne s'est encore jamais connecté(e).</template>
             </template>

@@ -275,10 +275,19 @@ function toggleInvite(key: string) {
  * ses fins. L'API le refuse désormais; l'écran ne le demande plus.
  */
 const events = ref<api.AccessEvent[]>([]);
+/**
+ * Le journal appartient aux opérateurs du PRODUIT, pas au directeur.
+ *
+ * Il a d'abord été ouvert à tout l'établissement, puis rendu à `team.admin` —
+ * ce qui n'allait pas non plus: c'est la clef du directeur, et le journal
+ * consigne précisément ce que le directeur fait. Un registre dont le sujet est
+ * aussi le seul lecteur ne tient plus personne.
+ */
+const maySeeJournal = computed(() => auth.profile?.isPlatformAdmin ?? false);
 const journalLoading = ref(true);
 
 async function loadJournal() {
-  if (!mayAdmin.value) {
+  if (!maySeeJournal.value) {
     journalLoading.value = false;
     return;
   }
@@ -315,8 +324,29 @@ onMounted(async () => {
   }
 });
 
-const when = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleDateString("fr-FR") : "jamais";
+/**
+ * UNE VISITE A UNE HEURE, pas seulement une date.
+ *
+ * « 15/09/2026 » ne distingue pas quelqu'un qui s'est connecté ce matin de
+ * quelqu'un qui est passé hier soir — et c'est exactement la distinction qu'on
+ * vient chercher dans cette colonne. Aujourd'hui, on affiche l'heure seule;
+ * au-delà, la date et l'heure.
+ */
+function stamp(iso: string | null): string | null {
+  if (!iso) return null;
+  const at = new Date(iso);
+  const today = new Date();
+  const sameDay =
+    at.getFullYear() === today.getFullYear() &&
+    at.getMonth() === today.getMonth() &&
+    at.getDate() === today.getDate();
+  const time = at.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  return sameDay
+    ? `aujourd'hui à ${time}`
+    : `${at.toLocaleDateString("fr-FR")} à ${time}`;
+}
+
+const when = (iso: string | null) => stamp(iso) ?? "jamais";
 </script>
 
 <template>
@@ -560,7 +590,7 @@ const when = (iso: string | null) =>
     </div>
 
     <!-- ── le journal ───────────────────────────────────────────────────── -->
-    <div v-if="mayAdmin" class="card" style="margin-top: var(--s4)">
+    <div v-if="maySeeJournal" class="card" style="margin-top: var(--s4)">
       <div class="card-head">
         Journal des accès
         <span class="unit-meta">qui a changé quoi, et quand</span>
